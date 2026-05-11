@@ -1,0 +1,1866 @@
+import bcrypt from "bcryptjs";
+import cors from "cors";
+import dotenv from "dotenv";
+import express from "express";
+import rateLimit from "express-rate-limit";
+import helmet from "helmet";
+import jwt from "jsonwebtoken";
+import multer from "multer";
+import pg from "pg";
+import { createClient } from "redis";
+import { z } from "zod";
+import { createReadStream, mkdirSync } from "node:fs";
+import { stat } from "node:fs/promises";
+import crypto from "node:crypto";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+dotenv.config();
+
+const { Pool } = pg;
+const app = express();
+const port = Number(process.env.PORT || 4000);
+const jwtSecret = process.env.JWT_SECRET || "replace-in-production";
+const jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || "replace-in-production-2";
+const maxDevices = Number(process.env.MAX_DEVICES_PER_USER || 2);
+const hlsKeySecret = process.env.HLS_KEY_SECRET || "replace-hls-secret";
+const adminEmail = process.env.ADMIN_EMAIL || "admin@example.com";
+const adminPassword = process.env.ADMIN_PASSWORD || "admin1234";
+
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:5173")
+  .split(",")
+  .map((item) => item.trim());
+
+const pool = process.env.DATABASE_URL ? new Pool({ connectionString: process.env.DATABASE_URL }) : null;
+/** Без автопереподключения: иначе при выключенном Redis сыпятся пустые error-события в консоль. */
+const redis = process.env.REDIS_URL
+  ? createClient({
+      url: process.env.REDIS_URL,
+      socket: {
+        reconnectStrategy: () => false
+      }
+    })
+  : null;
+let dbReady = false;
+
+const memState = {
+  refreshTokens: new Map(),
+  sessions: new Map(),
+  progressByUser: new Map([
+    [1, { lastVideoId: 102, watchedSeconds: { 101: 860, 102: 530 }, videoCompleted: { 101: true, 102: false } }]
+  ]),
+  /** @type {Array<{ id: number; title: string; slug: string | null; body: string; published: boolean; createdAt: string; updatedAt: string }>} */
+  news: [],
+  /** @type {Array<{ id: number; userId: number; senderRole: "admin" | "student"; text: string; createdAt: string }>} */
+  supportMessages: [],
+  /** @type {Map<string, string>} key: `${userId}:${role}` => ISO timestamp */
+  supportLastRead: new Map()
+};
+
+let memNewsNextId = 1;
+let memSupportMessageNextId = 1;
+
+let memNextUserId = 10_000;
+const memRegisteredUsersByEmail = new Map();
+const memRegisteredUsersById = new Map();
+
+const demoUser = {
+  id: 1,
+  email: "student@example.com",
+  passwordHash: bcrypt.hashSync("demo1234", 10),
+  nickname: "Student",
+  subscriptionType: "premium",
+  examDate: "2026-11-14"
+};
+
+const adminUser = {
+  id: 999,
+  email: adminEmail,
+  passwordHash: bcrypt.hashSync(adminPassword, 10),
+  nickname: "Admin",
+  subscriptionType: "admin"
+};
+
+const chapters = [
+  {
+    id: 1,
+    title: "Биохимия",
+    order: 1,
+    subtopics: [
+      {
+        id: 11,
+        title: "Молекулы",
+        order: 1,
+        videos: [
+          { id: 101, title: "Белки и аминокислоты", duration: 860, order: 1 },
+          { id: 102, title: "Углеводы и липиды", duration: 920, order: 2 }
+        ]
+      }
+    ]
+  },
+  {
+    id: 2,
+    title: "Иммунология",
+    order: 2,
+    subtopics: [
+      {
+        id: 21,
+        title: "Клеточный иммунитет",
+        order: 1,
+        videos: [{ id: 201, title: "Т-лимфоциты", duration: 780, order: 1 }]
+      }
+    ]
+  }
+];
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const uploadsDir = path.join(__dirname, "..", "uploads");
+mkdirSync(uploadsDir, { recursive: true });
+
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" }
+  })
+);
+app.use(cors({ origin: allowedOrigins, credentials: true }));
+app.use(express.json({ limit: "1mb" }));
+app.use(
+  rateLimit({
+    windowMs: 60_000,
+    max: 120,
+    standardHeaders: true,
+    legacyHeaders: false
+  })
+);
+
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6)
+});
+
+const registerSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+  nickname: z.string().min(1).max(80).optional()
+});
+
+const activateSubscriptionSchema = z.object({
+  plan: z.enum(["basic", "pro", "mentor"])
+});
+
+const refreshSchema = z.object({
+  refreshToken: z.string().min(20)
+});
+
+const progressSchema = z.object({
+  watchedSeconds: z.number().int().min(0),
+  completed: z.boolean().optional().default(false)
+});
+
+const courseSchema = z.object({ title: z.string().min(1) });
+const subtopicSchema = z.object({
+  courseId: z.coerce.number().int(),
+  title: z.string().min(1)
+});
+const videoSchema = z.object({
+  subtopicId: z.coerce.number().int(),
+  title: z.string().min(1),
+  duration: z.coerce.number().int().min(0).optional().default(0),
+  streamPath: z.string().optional().default("")
+});
+const reorderSchema = z.object({
+  courses: z.array(z.coerce.number().int()).optional(),
+  subtopics: z
+    .array(
+      z.object({
+        courseId: z.coerce.number().int(),
+        ids: z.array(z.coerce.number().int())
+      })
+    )
+    .optional(),
+  videos: z
+    .array(
+      z.object({
+        subtopicId: z.coerce.number().int(),
+        ids: z.array(z.coerce.number().int())
+      })
+    )
+    .optional()
+});
+
+const newsCreateSchema = z.object({
+  title: z.string().min(1).max(500),
+  slug: z.string().max(200).optional().nullable(),
+  body: z.string().max(100_000).optional().default(""),
+  published: z.boolean().optional().default(false)
+});
+
+const newsUpdateSchema = z.object({
+  title: z.string().min(1).max(500).optional(),
+  slug: z.string().max(200).nullable().optional(),
+  body: z.string().max(100_000).optional(),
+  published: z.boolean().optional()
+});
+
+const supportMessageCreateSchema = z.object({
+  text: z.string().min(1).max(2000),
+  videoId: z.coerce.number().int().positive().optional()
+});
+
+function normalizeEmail(email) {
+  return String(email || "")
+    .trim()
+    .toLowerCase();
+}
+
+function getDeviceId(req) {
+  return req.headers["x-device-id"] || "unknown-device";
+}
+
+function getIp(req) {
+  return req.ip || req.socket.remoteAddress || null;
+}
+
+function getOrigin(req) {
+  return req.headers.origin || "";
+}
+
+function uaHash(req) {
+  const ua = String(req.headers["user-agent"] || "");
+  return crypto.createHash("sha256").update(ua).digest("hex");
+}
+
+function getDeviceFromRequest(req) {
+  return String(req.headers["x-device-id"] || req.query.did || "unknown-device");
+}
+
+/** Clear TS samples (CORS *); demo manifest points here after token check. */
+const demoHlsRemoteBase =
+  "https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/v1";
+
+/**
+ * Validates JWT for HLS manifest/segment (?token= & optional did=).
+ * @returns {object|null} payload or null if response already sent
+ */
+function verifyVideoAccessForHls(req, res, videoId) {
+  const accessToken = String(req.query.token || "");
+  if (!accessToken) {
+    res.status(401).json({ message: "Missing video token" });
+    return null;
+  }
+
+  let accessPayload;
+  try {
+    accessPayload = jwt.verify(accessToken, jwtSecret);
+    if (accessPayload.type !== "video-access" || Number(accessPayload.videoId) !== videoId) {
+      res.status(401).json({ message: "Invalid access token" });
+      return null;
+    }
+  } catch {
+    res.status(401).json({ message: "Invalid access token" });
+    return null;
+  }
+
+  const reqDevice = getDeviceFromRequest(req);
+  if (accessPayload.deviceId && accessPayload.deviceId !== reqDevice) {
+    res.status(401).json({ message: "Invalid device" });
+    return null;
+  }
+  if (accessPayload.uah && accessPayload.uah !== uaHash(req)) {
+    res.status(401).json({ message: "Invalid user-agent" });
+    return null;
+  }
+  const reqOrigin = getOrigin(req);
+  if (accessPayload.origin && accessPayload.origin !== reqOrigin) {
+    res.status(401).json({ message: "Invalid origin" });
+    return null;
+  }
+  const reqIp = getIp(req) || "";
+  if (accessPayload.ip && accessPayload.ip !== reqIp) {
+    res.status(401).json({ message: "Invalid ip" });
+    return null;
+  }
+
+  return accessPayload;
+}
+
+function signAccessToken(user) {
+  return jwt.sign(
+    {
+      userId: user.id,
+      email: user.email,
+      role: user.subscriptionType === "admin" ? "admin" : "student",
+      subscription: user.subscriptionType
+    },
+    jwtSecret,
+    { expiresIn: "15m" }
+  );
+}
+
+function signRefreshToken(user, deviceId) {
+  return jwt.sign({ userId: user.id, type: "refresh", deviceId }, jwtRefreshSecret, {
+    expiresIn: "7d"
+  });
+}
+
+async function putSession(userId, deviceId, ip, userAgent) {
+  if (pool) {
+    await pool.query(
+      `insert into sessions (user_id, device_id, ip, user_agent, last_active)
+       values ($1, $2, $3, $4, now())
+       on conflict (user_id, device_id) do update
+       set ip = excluded.ip, user_agent = excluded.user_agent, last_active = now()`,
+      [userId, deviceId, ip, userAgent]
+    );
+
+    const result = await pool.query(
+      `select id from sessions
+       where user_id = $1
+       order by last_active desc`,
+      [userId]
+    );
+
+    if (result.rows.length > maxDevices) {
+      const staleIds = result.rows.slice(maxDevices).map((row) => row.id);
+      await pool.query(`delete from sessions where id = any($1::bigint[])`, [staleIds]);
+    }
+    return;
+  }
+
+  const key = String(userId);
+  const list = memState.sessions.get(key) || [];
+  const filtered = list.filter((item) => item.deviceId !== deviceId);
+  filtered.unshift({ deviceId, ip, userAgent, lastActive: Date.now() });
+  memState.sessions.set(key, filtered.slice(0, maxDevices));
+}
+
+async function storeRefreshToken(userId, deviceId, token) {
+  if (dbReady) {
+    const tokenHash = await bcrypt.hash(token, 10);
+    await pool.query(
+      `insert into refresh_tokens (user_id, device_id, token_hash, expires_at)
+       values ($1, $2, $3, now() + interval '7 days')
+       on conflict (user_id, device_id) do update
+       set token_hash = excluded.token_hash, expires_at = excluded.expires_at`,
+      [userId, deviceId, tokenHash]
+    );
+    return;
+  }
+
+  if (redis?.isReady) {
+    await redis.setEx(`refresh:${userId}:${deviceId}`, 60 * 60 * 24 * 7, token);
+    return;
+  }
+  memState.refreshTokens.set(`${userId}:${deviceId}`, token);
+}
+
+async function getRefreshToken(userId, deviceId) {
+  if (dbReady) {
+    const result = await pool.query(
+      `select token_hash, expires_at from refresh_tokens
+       where user_id = $1 and device_id = $2`,
+      [userId, deviceId]
+    );
+    return result.rows[0] || null;
+  }
+
+  if (redis?.isReady) {
+    return redis.get(`refresh:${userId}:${deviceId}`);
+  }
+  return memState.refreshTokens.get(`${userId}:${deviceId}`) || null;
+}
+
+async function deleteRefreshToken(userId, deviceId) {
+  if (dbReady) {
+    await pool.query(`delete from refresh_tokens where user_id = $1 and device_id = $2`, [
+      userId,
+      deviceId
+    ]);
+    return;
+  }
+
+  if (redis?.isReady) {
+    await redis.del(`refresh:${userId}:${deviceId}`);
+    return;
+  }
+  memState.refreshTokens.delete(`${userId}:${deviceId}`);
+}
+
+async function auth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  if (!token) return res.status(401).json({ message: "Missing token" });
+
+  try {
+    req.user = jwt.verify(token, jwtSecret);
+    return next();
+  } catch {
+    return res.status(401).json({ message: "Invalid token" });
+  }
+}
+
+function requireAdmin(req, res, next) {
+  if (req.user?.role !== "admin") {
+    return res.status(403).json({ message: "Admin only" });
+  }
+  return next();
+}
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, uploadsDir),
+    filename: (_req, file, cb) => {
+      const safeExt = path.extname(file.originalname || "").slice(0, 10) || ".bin";
+      cb(null, `${crypto.randomUUID()}${safeExt}`);
+    }
+  }),
+  limits: { fileSize: 1024 * 1024 * 1024 }
+});
+
+async function seedDemoData() {
+  if (!dbReady) return;
+
+  await pool.query(
+    `insert into users (id, email, password_hash, nickname, subscription_type, exam_date)
+     values ($1, $2, $3, $4, $5, $6)
+     on conflict (email) do nothing`,
+    [
+      demoUser.id,
+      demoUser.email,
+      demoUser.passwordHash,
+      demoUser.nickname,
+      demoUser.subscriptionType,
+      demoUser.examDate
+    ]
+  );
+
+  await pool.query(
+    `insert into users (id, email, password_hash, nickname, subscription_type)
+     values ($1, $2, $3, $4, $5)
+     on conflict (email) do update
+     set password_hash = excluded.password_hash,
+         nickname = excluded.nickname,
+         subscription_type = excluded.subscription_type`,
+    [adminUser.id, adminUser.email, adminUser.passwordHash, adminUser.nickname, "admin"]
+  );
+
+  await pool.query(
+    `insert into courses (id, title, "order")
+     values (1, 'Биохимия', 1), (2, 'Иммунология', 2)
+     on conflict (id) do nothing`
+  );
+
+  await pool.query(
+    `insert into subtopics (id, course_id, title, "order")
+     values
+       (11, 1, 'Молекулы', 1),
+       (21, 2, 'Клеточный иммунитет', 1)
+     on conflict (id) do nothing`
+  );
+
+  await pool.query(
+    `insert into videos (id, subtopic_id, title, duration, stream_path, "order")
+     values
+       (101, 11, 'Белки и аминокислоты', 860, 'hls/101/manifest.m3u8', 1),
+       (102, 11, 'Углеводы и липиды', 920, 'hls/102/manifest.m3u8', 2),
+       (201, 21, 'Т-лимфоциты', 780, 'hls/201/manifest.m3u8', 1)
+     on conflict (id) do nothing`
+  );
+
+  await pool.query(
+    `select setval(pg_get_serial_sequence('users','id'), coalesce((select max(id) from users), 1), true)`
+  );
+  await pool.query(
+    `select setval(pg_get_serial_sequence('courses','id'), coalesce((select max(id) from courses), 1), true)`
+  );
+  await pool.query(
+    `select setval(pg_get_serial_sequence('subtopics','id'), coalesce((select max(id) from subtopics), 1), true)`
+  );
+  await pool.query(
+    `select setval(pg_get_serial_sequence('videos','id'), coalesce((select max(id) from videos), 1), true)`
+  );
+}
+
+async function ensureNewsTable() {
+  if (!pool) return;
+  await pool.query(`
+    create table if not exists news (
+      id bigserial primary key,
+      title text not null,
+      slug text,
+      body text not null default '',
+      published boolean not null default false,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    )
+  `);
+  await pool.query(`
+    create unique index if not exists news_slug_unique on news (slug)
+    where slug is not null and length(btrim(slug)) > 0
+  `);
+}
+
+async function ensureSupportMessagesTable() {
+  if (!pool) return;
+  await pool.query(`
+    create table if not exists support_messages (
+      id bigserial primary key,
+      user_id bigint not null references users(id) on delete cascade,
+      video_id bigint references videos(id) on delete set null,
+      sender_role text not null check (sender_role in ('admin', 'student')),
+      text text not null,
+      created_at timestamptz not null default now()
+    )
+  `);
+  await pool.query(`alter table support_messages add column if not exists video_id bigint`);
+  await pool.query(`
+    do $$ begin
+      alter table support_messages
+      add constraint support_messages_video_id_fkey
+      foreign key (video_id) references videos(id) on delete set null;
+    exception when duplicate_object then null;
+    end $$;
+  `);
+  await pool.query(`
+    create index if not exists idx_support_messages_user_created
+    on support_messages (user_id, created_at asc)
+  `);
+  await pool.query(`
+    create index if not exists idx_support_messages_user_video_created
+    on support_messages (user_id, video_id, created_at asc)
+  `);
+}
+
+function getVideoTitleById(videoId) {
+  const vid = Number(videoId);
+  if (!Number.isFinite(vid)) return null;
+  for (const course of chapters) {
+    for (const subtopic of course.subtopics || []) {
+      const video = (subtopic.videos || []).find((v) => Number(v.id) === vid);
+      if (video) return video.title || null;
+    }
+  }
+  return null;
+}
+
+async function ensureSupportReadsTable() {
+  if (!pool) return;
+  await pool.query(`
+    create table if not exists support_reads (
+      user_id bigint not null references users(id) on delete cascade,
+      reader_role text not null check (reader_role in ('admin', 'student')),
+      last_read_at timestamptz not null default now(),
+      primary key (user_id, reader_role)
+    )
+  `);
+}
+
+async function getSupportLastRead(userId, role) {
+  if (!dbReady) {
+    return memState.supportLastRead.get(`${userId}:${role}`) || null;
+  }
+  const result = await pool.query(
+    `select last_read_at as "lastReadAt" from support_reads where user_id = $1 and reader_role = $2 limit 1`,
+    [userId, role]
+  );
+  return result.rows[0]?.lastReadAt || null;
+}
+
+async function setSupportLastRead(userId, role) {
+  if (!dbReady) {
+    memState.supportLastRead.set(`${userId}:${role}`, new Date().toISOString());
+    return;
+  }
+  await pool.query(
+    `insert into support_reads (user_id, reader_role, last_read_at)
+     values ($1, $2, now())
+     on conflict (user_id, reader_role) do update
+     set last_read_at = excluded.last_read_at`,
+    [userId, role]
+  );
+}
+
+function normalizeNewsSlug(slug) {
+  const s = String(slug ?? "").trim();
+  return s.length ? s : null;
+}
+
+function memNewsSlugTaken(slug, exceptId) {
+  if (!slug) return false;
+  return memState.news.some((n) => n.slug === slug && n.id !== exceptId);
+}
+
+function getMemRegisteredUserById(userId) {
+  return memRegisteredUsersById.get(Number(userId)) || null;
+}
+
+function getAuthUserForRefresh(userId) {
+  const id = Number(userId);
+  if (id === adminUser.id) return adminUser;
+  if (id === demoUser.id) return demoUser;
+  return getMemRegisteredUserById(id);
+}
+
+async function getUserByEmail(email) {
+  const key = normalizeEmail(email);
+  if (key === normalizeEmail(adminUser.email)) return adminUser;
+  if (!dbReady) {
+    const registered = memRegisteredUsersByEmail.get(key);
+    if (registered) return registered;
+    if (key === normalizeEmail(demoUser.email)) return demoUser;
+    return null;
+  }
+
+  const result = await pool.query(
+    `select id, email, password_hash, nickname, subscription_type, exam_date
+     from users where lower(trim(email)) = $1 limit 1`,
+    [key]
+  );
+  if (!result.rows[0]) return null;
+
+  const row = result.rows[0];
+  return {
+    id: row.id,
+    email: row.email,
+    passwordHash: row.password_hash,
+    nickname: row.nickname,
+    subscriptionType: row.subscription_type,
+    examDate: row.exam_date
+  };
+}
+
+async function getUserPublicById(userId) {
+  const id = Number(userId);
+  if (id === adminUser.id) {
+    return { id: adminUser.id, email: adminUser.email, nickname: adminUser.nickname };
+  }
+  if (id === demoUser.id) {
+    return { id: demoUser.id, email: demoUser.email, nickname: demoUser.nickname };
+  }
+  const memUser = getMemRegisteredUserById(id);
+  if (memUser) {
+    return { id: memUser.id, email: memUser.email, nickname: memUser.nickname };
+  }
+  if (!dbReady) return null;
+  const result = await pool.query(`select id, email, nickname from users where id = $1 limit 1`, [id]);
+  if (!result.rows[0]) return null;
+  return {
+    id: result.rows[0].id,
+    email: result.rows[0].email,
+    nickname: result.rows[0].nickname
+  };
+}
+
+async function fetchChapters() {
+  if (!dbReady) return chapters;
+
+  const result = await pool.query(
+    `select
+       c.id as course_id, c.title as course_title, c."order" as course_order,
+       s.id as subtopic_id, s.title as subtopic_title, s."order" as subtopic_order,
+       v.id as video_id, v.title as video_title, v.duration, v.stream_path, v."order" as video_order
+     from courses c
+     left join subtopics s on s.course_id = c.id
+     left join videos v on v.subtopic_id = s.id
+     order by c."order", s."order", v."order"`
+  );
+
+  const courseMap = new Map();
+  for (const row of result.rows) {
+    if (!courseMap.has(row.course_id)) {
+      courseMap.set(row.course_id, {
+        id: row.course_id,
+        title: row.course_title,
+        order: row.course_order,
+        subtopics: []
+      });
+    }
+
+    const course = courseMap.get(row.course_id);
+    if (!row.subtopic_id) continue;
+
+    let subtopic = course.subtopics.find((item) => item.id === row.subtopic_id);
+    if (!subtopic) {
+      subtopic = {
+        id: row.subtopic_id,
+        title: row.subtopic_title,
+        order: row.subtopic_order,
+        videos: []
+      };
+      course.subtopics.push(subtopic);
+    }
+
+    if (row.video_id) {
+      subtopic.videos.push({
+        id: row.video_id,
+        title: row.video_title,
+        duration: row.duration,
+        streamPath: row.stream_path,
+        order: row.video_order
+      });
+    }
+  }
+
+  return Array.from(courseMap.values());
+}
+
+function countVideosInChapterTree(tree) {
+  return tree.reduce(
+    (acc, course) => acc + course.subtopics.reduce((n, st) => n + st.videos.length, 0),
+    0
+  );
+}
+
+async function fetchProgress(userId) {
+  if (!dbReady) {
+    const base = memState.progressByUser.get(userId) || {
+      lastVideoId: null,
+      watchedSeconds: {},
+      videoCompleted: {}
+    };
+    if (!base.videoCompleted) base.videoCompleted = {};
+    const totalVideos = countVideosInChapterTree(chapters);
+    let completedCount = 0;
+    for (const v of Object.values(base.videoCompleted)) {
+      if (v) completedCount += 1;
+    }
+    return { ...base, completedCount, totalVideos };
+  }
+
+  const [summaryResult, watchedResult, totalResult] = await Promise.all([
+    pool.query(`select last_video_id from users where id = $1`, [userId]),
+    pool.query(`select video_id, watched_seconds, completed from progress where user_id = $1`, [userId]),
+    pool.query(`select count(*)::int as total from videos`)
+  ]);
+
+  const watchedSeconds = {};
+  const videoCompleted = {};
+  let completedCount = 0;
+  for (const row of watchedResult.rows) {
+    watchedSeconds[row.video_id] = row.watched_seconds;
+    if (row.completed) {
+      videoCompleted[row.video_id] = true;
+      completedCount += 1;
+    }
+  }
+
+  const totalVideos = totalResult.rows[0]?.total || 0;
+  return {
+    lastVideoId: summaryResult.rows[0]?.last_video_id ?? null,
+    watchedSeconds,
+    videoCompleted,
+    completedCount,
+    totalVideos
+  };
+}
+
+async function saveProgress(userId, videoId, watchedSeconds, completed) {
+  if (!dbReady) {
+    const userState = memState.progressByUser.get(userId) || {
+      watchedSeconds: {},
+      videoCompleted: {}
+    };
+    if (!userState.videoCompleted) userState.videoCompleted = {};
+    userState.lastVideoId = videoId;
+    userState.watchedSeconds[videoId] = watchedSeconds;
+    userState.videoCompleted[videoId] = Boolean(completed);
+    memState.progressByUser.set(userId, userState);
+    return;
+  }
+
+  await pool.query(
+    `insert into progress (user_id, video_id, watched_seconds, completed, updated_at)
+     values ($1, $2, $3, $4, now())
+     on conflict (user_id, video_id) do update
+     set watched_seconds = excluded.watched_seconds,
+         completed = excluded.completed,
+         updated_at = now()`,
+    [userId, videoId, watchedSeconds, completed]
+  );
+  await pool.query(`update users set last_video_id = $2 where id = $1`, [userId, videoId]);
+}
+
+async function sendAuthTokensForUser(req, res, user) {
+  const deviceId = String(getDeviceId(req));
+  const ip = getIp(req);
+  const userAgent = req.headers["user-agent"] || "";
+  await putSession(user.id, deviceId, ip, userAgent);
+  const token = signAccessToken(user);
+  const refreshToken = signRefreshToken(user, deviceId);
+  await storeRefreshToken(user.id, deviceId, refreshToken);
+  return res.json({
+    token,
+    refreshToken,
+    profile: {
+      id: user.id,
+      email: user.email,
+      nickname: user.nickname,
+      subscriptionType: user.subscriptionType
+    }
+  });
+}
+
+app.get("/health", async (_req, res) => {
+  const redisOk = redis?.isReady || false;
+  let dbOk = false;
+
+  if (pool) {
+    try {
+      await pool.query("select 1");
+      dbOk = true;
+    } catch {
+      dbOk = false;
+    }
+  }
+
+  res.json({ ok: true, dbOk, redisOk });
+});
+
+app.post("/auth/login", async (req, res) => {
+  const parsed = loginSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Invalid payload" });
+
+  const { email, password } = parsed.data;
+
+  const user = await getUserByEmail(email);
+  if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+    return res.status(401).json({ message: "Invalid credentials" });
+  }
+
+  if (dbReady && user.id === adminUser.id) {
+    await pool.query(
+      `insert into users (id, email, password_hash, nickname, subscription_type)
+       values ($1, $2, $3, $4, $5)
+       on conflict (email) do update
+       set password_hash = excluded.password_hash,
+           nickname = excluded.nickname,
+           subscription_type = excluded.subscription_type`,
+      [adminUser.id, adminUser.email, adminUser.passwordHash, adminUser.nickname, "admin"]
+    );
+  }
+
+  return sendAuthTokensForUser(req, res, user);
+});
+
+app.post("/auth/register", async (req, res) => {
+  const parsed = registerSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
+  }
+
+  const email = normalizeEmail(parsed.data.email);
+  const nickname = (parsed.data.nickname?.trim() || email.split("@")[0] || "user").slice(0, 80);
+
+  if (email === normalizeEmail(adminUser.email) || email === normalizeEmail(demoUser.email)) {
+    return res.status(409).json({ message: "Этот email зарезервирован" });
+  }
+
+  const existing = await getUserByEmail(email);
+  if (existing) {
+    return res.status(409).json({ message: "Пользователь с таким email уже есть" });
+  }
+
+  const passwordHash = await bcrypt.hash(parsed.data.password, 10);
+
+  if (dbReady) {
+    try {
+      const created = await pool.query(
+        `insert into users (email, password_hash, nickname, subscription_type)
+         values ($1, $2, $3, 'free')
+         returning id, email, nickname, subscription_type`,
+        [email, passwordHash, nickname]
+      );
+      const row = created.rows[0];
+      const user = {
+        id: row.id,
+        email: row.email,
+        passwordHash,
+        nickname: row.nickname,
+        subscriptionType: row.subscription_type
+      };
+      return sendAuthTokensForUser(req, res, user);
+    } catch (error) {
+      if (error.code === "23505") {
+        return res.status(409).json({ message: "Пользователь с таким email уже есть" });
+      }
+      return res.status(500).json({ message: "Регистрация не удалась", error: error.message });
+    }
+  }
+
+  const id = memNextUserId++;
+  const user = { id, email, passwordHash, nickname, subscriptionType: "free" };
+  memRegisteredUsersByEmail.set(email, user);
+  memRegisteredUsersById.set(id, user);
+  memState.progressByUser.set(id, { lastVideoId: null, watchedSeconds: {}, videoCompleted: {} });
+  return sendAuthTokensForUser(req, res, user);
+});
+
+app.post("/billing/activate-subscription", auth, async (req, res) => {
+  const parsed = activateSubscriptionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
+  }
+
+  if (req.user?.role === "admin") {
+    return res.status(403).json({ message: "Admin subscription cannot be changed" });
+  }
+
+  const planToSubscription = {
+    basic: "basic",
+    pro: "premium",
+    mentor: "mentor"
+  };
+
+  const nextSubscription = planToSubscription[parsed.data.plan];
+
+  try {
+    if (dbReady) {
+      const updated = await pool.query(
+        `update users
+         set subscription_type = $2
+         where id = $1
+         returning id, email, nickname, subscription_type`,
+        [req.user.userId, nextSubscription]
+      );
+      if (!updated.rows[0]) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      const row = updated.rows[0];
+      return res.json({
+        profile: {
+          id: row.id,
+          email: row.email,
+          nickname: row.nickname,
+          subscriptionType: row.subscription_type
+        }
+      });
+    }
+
+    const user = getMemRegisteredUserById(req.user.userId);
+    if (user) {
+      user.subscriptionType = nextSubscription;
+      memRegisteredUsersById.set(user.id, user);
+      memRegisteredUsersByEmail.set(normalizeEmail(user.email), user);
+      return res.json({
+        profile: {
+          id: user.id,
+          email: user.email,
+          nickname: user.nickname,
+          subscriptionType: user.subscriptionType
+        }
+      });
+    }
+
+    if (req.user.userId === demoUser.id) {
+      demoUser.subscriptionType = nextSubscription;
+      return res.json({
+        profile: {
+          id: demoUser.id,
+          email: demoUser.email,
+          nickname: demoUser.nickname,
+          subscriptionType: demoUser.subscriptionType
+        }
+      });
+    }
+
+    return res.status(404).json({ message: "User not found" });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to activate subscription", error: error.message });
+  }
+});
+
+// Admin API (MVP)
+app.get("/admin/catalog", auth, requireAdmin, async (_req, res) => {
+  try {
+    const items = await fetchChapters();
+    res.json(items);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to load catalog", error: error.message });
+  }
+});
+
+app.post("/admin/courses", auth, requireAdmin, async (req, res) => {
+  const parsed = courseSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
+  }
+  if (!dbReady) return res.status(503).json({ message: "DB required for admin" });
+
+  const maxRes = await pool.query(`select coalesce(max("order"), 0) as max_order from courses`);
+  const nextOrder = Number(maxRes.rows[0]?.max_order || 0) + 1;
+  const created = await pool.query(
+    `insert into courses (title, "order") values ($1, $2) returning id, title, "order"`,
+    [parsed.data.title, nextOrder]
+  );
+  res.status(201).json(created.rows[0]);
+});
+
+app.post("/admin/subtopics", auth, requireAdmin, async (req, res) => {
+  const parsed = subtopicSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
+  }
+  if (!dbReady) return res.status(503).json({ message: "DB required for admin" });
+
+  const maxRes = await pool.query(
+    `select coalesce(max("order"), 0) as max_order from subtopics where course_id = $1`,
+    [parsed.data.courseId]
+  );
+  const nextOrder = Number(maxRes.rows[0]?.max_order || 0) + 1;
+  const created = await pool.query(
+    `insert into subtopics (course_id, title, "order") values ($1, $2, $3)
+     returning id, course_id, title, "order"`,
+    [parsed.data.courseId, parsed.data.title, nextOrder]
+  );
+  res.status(201).json(created.rows[0]);
+});
+
+app.post("/admin/videos", auth, requireAdmin, async (req, res) => {
+  const parsed = videoSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
+  }
+  if (!dbReady) return res.status(503).json({ message: "DB required for admin" });
+
+  const maxRes = await pool.query(
+    `select coalesce(max("order"), 0) as max_order from videos where subtopic_id = $1`,
+    [parsed.data.subtopicId]
+  );
+  const nextOrder = Number(maxRes.rows[0]?.max_order || 0) + 1;
+  const created = await pool.query(
+    `insert into videos (subtopic_id, title, duration, stream_path, "order")
+     values ($1, $2, $3, $4, $5)
+     returning id, subtopic_id, title, duration, stream_path, "order"`,
+    [parsed.data.subtopicId, parsed.data.title, parsed.data.duration, parsed.data.streamPath, nextOrder]
+  );
+  res.status(201).json(created.rows[0]);
+});
+
+app.post("/admin/reorder", auth, requireAdmin, async (req, res) => {
+  const parsed = reorderSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
+  }
+  if (!dbReady) return res.status(503).json({ message: "DB required for admin" });
+
+  await pool.query("begin");
+  try {
+    if (parsed.data.courses?.length) {
+      for (let i = 0; i < parsed.data.courses.length; i += 1) {
+        await pool.query(`update courses set "order" = $2 where id = $1`, [parsed.data.courses[i], i + 1]);
+      }
+    }
+    if (parsed.data.subtopics?.length) {
+      for (const group of parsed.data.subtopics) {
+        for (let i = 0; i < group.ids.length; i += 1) {
+          await pool.query(
+            `update subtopics set "order" = $3, course_id = $2 where id = $1`,
+            [group.ids[i], group.courseId, i + 1]
+          );
+        }
+      }
+    }
+    if (parsed.data.videos?.length) {
+      for (const group of parsed.data.videos) {
+        for (let i = 0; i < group.ids.length; i += 1) {
+          await pool.query(
+            `update videos set "order" = $3, subtopic_id = $2 where id = $1`,
+            [group.ids[i], group.subtopicId, i + 1]
+          );
+        }
+      }
+    }
+    await pool.query("commit");
+    res.status(204).send();
+  } catch (error) {
+    await pool.query("rollback");
+    res.status(500).json({ message: "Reorder failed", error: error.message });
+  }
+});
+
+app.post("/admin/videos/:videoId/upload", auth, requireAdmin, upload.single("file"), async (req, res) => {
+  const videoId = Number(req.params.videoId);
+  if (!dbReady) return res.status(503).json({ message: "DB required for admin" });
+  if (!req.file) return res.status(400).json({ message: "Missing file" });
+
+  const streamPath = `upload:${req.file.filename}`;
+  const updated = await pool.query(
+    `update videos set stream_path = $2 where id = $1
+     returning id, subtopic_id, title, duration, stream_path, "order"`,
+    [videoId, streamPath]
+  );
+  if (!updated.rows[0]) return res.status(404).json({ message: "Video not found" });
+  res.json(updated.rows[0]);
+});
+
+app.get("/admin/users", auth, requireAdmin, async (_req, res) => {
+  try {
+    if (!dbReady) {
+      const rows = [
+        {
+          id: demoUser.id,
+          email: demoUser.email,
+          nickname: demoUser.nickname,
+          subscriptionType: demoUser.subscriptionType,
+          examDate: demoUser.examDate ?? null,
+          createdAt: null
+        },
+        {
+          id: adminUser.id,
+          email: adminUser.email,
+          nickname: adminUser.nickname,
+          subscriptionType: "admin",
+          examDate: null,
+          createdAt: null
+        }
+      ];
+      for (const u of memRegisteredUsersById.values()) {
+        if (rows.some((r) => r.id === u.id)) continue;
+        rows.push({
+          id: u.id,
+          email: u.email,
+          nickname: u.nickname,
+          subscriptionType: u.subscriptionType,
+          examDate: u.examDate ?? null,
+          createdAt: null
+        });
+      }
+      rows.sort((a, b) => a.id - b.id);
+      return res.json(rows);
+    }
+
+    const r = await pool.query(
+      `select id, email, nickname, subscription_type as "subscriptionType",
+              exam_date as "examDate", created_at as "createdAt"
+       from users order by id`
+    );
+    res.json(r.rows);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to list users", error: error.message });
+  }
+});
+
+app.get("/admin/news", auth, requireAdmin, async (_req, res) => {
+  try {
+    if (!dbReady) {
+      const sorted = [...memState.news].sort((a, b) => b.id - a.id);
+      return res.json(sorted);
+    }
+    const r = await pool.query(
+      `select id, title, slug, body, published,
+              created_at as "createdAt", updated_at as "updatedAt"
+       from news order by id desc`
+    );
+    res.json(r.rows);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to list news", error: error.message });
+  }
+});
+
+app.post("/admin/news", auth, requireAdmin, async (req, res) => {
+  const parsed = newsCreateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
+  }
+  const slug = normalizeNewsSlug(parsed.data.slug);
+  const now = new Date().toISOString();
+
+  try {
+    if (!dbReady) {
+      if (memNewsSlugTaken(slug, 0)) {
+        return res.status(409).json({ message: "Новость с таким slug уже есть" });
+      }
+      const row = {
+        id: memNewsNextId++,
+        title: parsed.data.title,
+        slug,
+        body: parsed.data.body ?? "",
+        published: parsed.data.published,
+        createdAt: now,
+        updatedAt: now
+      };
+      memState.news.push(row);
+      return res.status(201).json(row);
+    }
+
+    const created = await pool.query(
+      `insert into news (title, slug, body, published, updated_at)
+       values ($1, $2, $3, $4, now())
+       returning id, title, slug, body, published, created_at as "createdAt", updated_at as "updatedAt"`,
+      [parsed.data.title, slug, parsed.data.body ?? "", parsed.data.published]
+    );
+    res.status(201).json(created.rows[0]);
+  } catch (error) {
+    if (error.code === "23505") {
+      return res.status(409).json({ message: "Новость с таким slug уже есть" });
+    }
+    res.status(500).json({ message: "Failed to create news", error: error.message });
+  }
+});
+
+app.patch("/admin/news/:newsId", auth, requireAdmin, async (req, res) => {
+  const id = Number(req.params.newsId);
+  if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+  const parsed = newsUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
+  }
+
+  const nextSlug = parsed.data.slug !== undefined ? normalizeNewsSlug(parsed.data.slug) : undefined;
+
+  try {
+    if (!dbReady) {
+      const idx = memState.news.findIndex((n) => n.id === id);
+      if (idx < 0) return res.status(404).json({ message: "Not found" });
+      if (nextSlug !== undefined && memNewsSlugTaken(nextSlug, id)) {
+        return res.status(409).json({ message: "Новость с таким slug уже есть" });
+      }
+      const cur = memState.news[idx];
+      const updated = {
+        ...cur,
+        title: parsed.data.title ?? cur.title,
+        slug: nextSlug !== undefined ? nextSlug : cur.slug,
+        body: parsed.data.body !== undefined ? parsed.data.body : cur.body,
+        published: parsed.data.published !== undefined ? parsed.data.published : cur.published,
+        updatedAt: new Date().toISOString()
+      };
+      memState.news[idx] = updated;
+      return res.json(updated);
+    }
+
+    const fields = [];
+    const values = [];
+    let p = 1;
+    if (parsed.data.title !== undefined) {
+      fields.push(`title = $${p++}`);
+      values.push(parsed.data.title);
+    }
+    if (nextSlug !== undefined) {
+      fields.push(`slug = $${p++}`);
+      values.push(nextSlug);
+    }
+    if (parsed.data.body !== undefined) {
+      fields.push(`body = $${p++}`);
+      values.push(parsed.data.body);
+    }
+    if (parsed.data.published !== undefined) {
+      fields.push(`published = $${p++}`);
+      values.push(parsed.data.published);
+    }
+    if (!fields.length) {
+      const cur = await pool.query(
+        `select id, title, slug, body, published, created_at as "createdAt", updated_at as "updatedAt" from news where id = $1`,
+        [id]
+      );
+      if (!cur.rows[0]) return res.status(404).json({ message: "Not found" });
+      return res.json(cur.rows[0]);
+    }
+    fields.push(`updated_at = now()`);
+    values.push(id);
+    const q = `update news set ${fields.join(", ")} where id = $${p} returning id, title, slug, body, published, created_at as "createdAt", updated_at as "updatedAt"`;
+    const result = await pool.query(q, values);
+    if (!result.rows[0]) return res.status(404).json({ message: "Not found" });
+    res.json(result.rows[0]);
+  } catch (error) {
+    if (error.code === "23505") {
+      return res.status(409).json({ message: "Новость с таким slug уже есть" });
+    }
+    res.status(500).json({ message: "Failed to update news", error: error.message });
+  }
+});
+
+app.delete("/admin/news/:newsId", auth, requireAdmin, async (req, res) => {
+  const id = Number(req.params.newsId);
+  if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+
+  try {
+    if (!dbReady) {
+      const before = memState.news.length;
+      memState.news = memState.news.filter((n) => n.id !== id);
+      if (memState.news.length === before) return res.status(404).json({ message: "Not found" });
+      return res.status(204).send();
+    }
+    const del = await pool.query(`delete from news where id = $1`, [id]);
+    if (!del.rowCount) return res.status(404).json({ message: "Not found" });
+    return res.status(204).send();
+  } catch (error) {
+    res.status(500).json({ message: "Failed to delete news", error: error.message });
+  }
+});
+
+app.get("/news", async (_req, res) => {
+  try {
+    if (!dbReady) {
+      const pub = memState.news
+        .filter((n) => n.published)
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+        .map((n) => ({
+          id: n.id,
+          title: n.title,
+          slug: n.slug,
+          body: n.body,
+          updatedAt: n.updatedAt
+        }));
+      return res.json(pub);
+    }
+    const r = await pool.query(
+      `select id, title, slug, body, updated_at as "updatedAt"
+       from news where published = true order by updated_at desc limit 100`
+    );
+    res.json(r.rows);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to load news", error: error.message });
+  }
+});
+
+app.get("/support/messages", auth, async (req, res) => {
+  try {
+    const currentRole = req.user?.role === "admin" ? "admin" : "student";
+    const targetUserId =
+      currentRole === "admin" && req.query.userId ? Number(req.query.userId) : Number(req.user.userId);
+    const targetVideoId = req.query.videoId ? Number(req.query.videoId) : null;
+    if (!Number.isFinite(targetUserId)) {
+      return res.status(400).json({ message: "Invalid userId" });
+    }
+    if (targetVideoId !== null && !Number.isFinite(targetVideoId)) {
+      return res.status(400).json({ message: "Invalid videoId" });
+    }
+
+    const userMeta = await getUserPublicById(targetUserId);
+    if (!userMeta) return res.status(404).json({ message: "User not found" });
+
+    if (!dbReady) {
+      const messages = memState.supportMessages
+        .filter((m) => m.userId === targetUserId && (targetVideoId == null || Number(m.videoId) === targetVideoId))
+        .sort((a, b) => a.id - b.id)
+        .map((m) => ({
+          id: m.id,
+          userId: m.userId,
+          videoId: m.videoId ?? null,
+          videoTitle: m.videoId ? getVideoTitleById(m.videoId) : null,
+          senderRole: m.senderRole,
+          text: m.text,
+          createdAt: m.createdAt
+        }));
+      return res.json({ user: userMeta, messages });
+    }
+
+    let result;
+    if (targetVideoId == null) {
+      result = await pool.query(
+        `select sm.id, sm.user_id as "userId", sm.video_id as "videoId", v.title as "videoTitle",
+                sm.sender_role as "senderRole", sm.text, sm.created_at as "createdAt"
+         from support_messages sm
+         left join videos v on v.id = sm.video_id
+         where sm.user_id = $1
+         order by sm.created_at asc, sm.id asc`,
+        [targetUserId]
+      );
+    } else {
+      result = await pool.query(
+        `select sm.id, sm.user_id as "userId", sm.video_id as "videoId", v.title as "videoTitle",
+                sm.sender_role as "senderRole", sm.text, sm.created_at as "createdAt"
+         from support_messages sm
+         left join videos v on v.id = sm.video_id
+         where sm.user_id = $1 and sm.video_id = $2
+         order by sm.created_at asc, sm.id asc`,
+        [targetUserId, targetVideoId]
+      );
+    }
+    return res.json({ user: userMeta, messages: result.rows });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to load support messages", error: error.message });
+  }
+});
+
+app.post("/support/messages", auth, async (req, res) => {
+  const parsed = supportMessageCreateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
+  }
+
+  try {
+    const currentRole = req.user?.role === "admin" ? "admin" : "student";
+    const targetUserId =
+      currentRole === "admin" && req.body?.userId ? Number(req.body.userId) : Number(req.user.userId);
+    if (!Number.isFinite(targetUserId)) {
+      return res.status(400).json({ message: "Invalid userId" });
+    }
+
+    const userMeta = await getUserPublicById(targetUserId);
+    if (!userMeta) return res.status(404).json({ message: "User not found" });
+
+    const cleanText = parsed.data.text.trim();
+    if (!cleanText) return res.status(400).json({ message: "Message is empty" });
+    const targetVideoId = parsed.data.videoId ?? null;
+
+    if (targetVideoId !== null) {
+      if (!dbReady) {
+        if (!getVideoTitleById(targetVideoId)) {
+          return res.status(404).json({ message: "Video not found" });
+        }
+      } else {
+        const videoResult = await pool.query(`select id from videos where id = $1`, [targetVideoId]);
+        if (!videoResult.rows[0]) {
+          return res.status(404).json({ message: "Video not found" });
+        }
+      }
+    }
+
+    if (!dbReady) {
+      const row = {
+        id: memSupportMessageNextId++,
+        userId: targetUserId,
+        videoId: targetVideoId,
+        senderRole: currentRole,
+        text: cleanText,
+        createdAt: new Date().toISOString()
+      };
+      memState.supportMessages.push(row);
+      return res.status(201).json(row);
+    }
+
+    const created = await pool.query(
+      `insert into support_messages (user_id, video_id, sender_role, text)
+       values ($1, $2, $3, $4)
+       returning id, user_id as "userId", video_id as "videoId", sender_role as "senderRole", text, created_at as "createdAt"`,
+      [targetUserId, targetVideoId, currentRole, cleanText]
+    );
+    return res.status(201).json(created.rows[0]);
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to send support message", error: error.message });
+  }
+});
+
+app.post("/support/mark-read", auth, async (req, res) => {
+  try {
+    const currentRole = req.user?.role === "admin" ? "admin" : "student";
+    const targetUserId =
+      currentRole === "admin" && req.body?.userId ? Number(req.body.userId) : Number(req.user.userId);
+    if (!Number.isFinite(targetUserId)) {
+      return res.status(400).json({ message: "Invalid userId" });
+    }
+    const userMeta = await getUserPublicById(targetUserId);
+    if (!userMeta) return res.status(404).json({ message: "User not found" });
+    await setSupportLastRead(targetUserId, currentRole);
+    return res.status(204).send();
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to mark messages as read", error: error.message });
+  }
+});
+
+app.get("/support/unread", auth, async (req, res) => {
+  try {
+    const currentRole = req.user?.role === "admin" ? "admin" : "student";
+    if (currentRole === "student") {
+      const userId = Number(req.user.userId);
+      const lastRead = await getSupportLastRead(userId, "student");
+      if (!dbReady) {
+        const total = memState.supportMessages.filter(
+          (m) => m.userId === userId && m.senderRole === "admin" && (!lastRead || m.createdAt > lastRead)
+        ).length;
+        return res.json({ total });
+      }
+      const result = await pool.query(
+        `select count(*)::int as total
+         from support_messages
+         where user_id = $1
+           and sender_role = 'admin'
+           and ($2::timestamptz is null or created_at > $2::timestamptz)`,
+        [userId, lastRead]
+      );
+      return res.json({ total: result.rows[0]?.total || 0 });
+    }
+
+    if (!dbReady) {
+      const candidates = [demoUser, ...Array.from(memRegisteredUsersById.values())];
+      const byUser = [];
+      for (const u of candidates) {
+        const lastRead = await getSupportLastRead(u.id, "admin");
+        const count = memState.supportMessages.filter(
+          (m) => m.userId === u.id && m.senderRole === "student" && (!lastRead || m.createdAt > lastRead)
+        ).length;
+        if (count > 0) byUser.push({ userId: u.id, count });
+      }
+      const total = byUser.reduce((sum, item) => sum + item.count, 0);
+      return res.json({ total, byUser });
+    }
+
+    const usersResult = await pool.query(`select id from users where subscription_type <> 'admin' order by id`);
+    const byUser = [];
+    for (const row of usersResult.rows) {
+      const userId = row.id;
+      const lastRead = await getSupportLastRead(userId, "admin");
+      const countResult = await pool.query(
+        `select count(*)::int as total
+         from support_messages
+         where user_id = $1
+           and sender_role = 'student'
+           and ($2::timestamptz is null or created_at > $2::timestamptz)`,
+        [userId, lastRead]
+      );
+      const count = countResult.rows[0]?.total || 0;
+      if (count > 0) byUser.push({ userId, count });
+    }
+    const total = byUser.reduce((sum, item) => sum + item.count, 0);
+    return res.json({ total, byUser });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to load unread counters", error: error.message });
+  }
+});
+
+app.post("/auth/refresh", async (req, res) => {
+  const parsed = refreshSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Invalid payload" });
+
+  try {
+    const payload = jwt.verify(parsed.data.refreshToken, jwtRefreshSecret);
+    if (payload.type !== "refresh") return res.status(401).json({ message: "Invalid token type" });
+
+    const user = dbReady ? await pool.query(`select * from users where id = $1`, [payload.userId]) : null;
+
+    const stored = await getRefreshToken(payload.userId, payload.deviceId);
+    if (dbReady) {
+      if (!stored || new Date(stored.expires_at) < new Date()) {
+        return res.status(401).json({ message: "Refresh token expired" });
+      }
+      const matches = await bcrypt.compare(parsed.data.refreshToken, stored.token_hash);
+      if (!matches) return res.status(401).json({ message: "Refresh token revoked" });
+    } else if (!stored || stored !== parsed.data.refreshToken) {
+      return res.status(401).json({ message: "Refresh token revoked" });
+    }
+
+    let authUser;
+    if (dbReady) {
+      if (!user.rows[0]) {
+        return res.status(401).json({ message: "User not found" });
+      }
+      authUser = {
+        id: user.rows[0].id,
+        email: user.rows[0].email,
+        subscriptionType: user.rows[0].subscription_type
+      };
+    } else {
+      authUser = getAuthUserForRefresh(payload.userId);
+      if (!authUser) {
+        return res.status(401).json({ message: "User not found" });
+      }
+    }
+
+    const token = signAccessToken(authUser);
+    const nextRefresh = signRefreshToken(authUser, payload.deviceId);
+    await storeRefreshToken(payload.userId, payload.deviceId, nextRefresh);
+
+    return res.json({ token, refreshToken: nextRefresh });
+  } catch {
+    return res.status(401).json({ message: "Invalid refresh token" });
+  }
+});
+
+app.post("/auth/logout", async (req, res) => {
+  const parsed = refreshSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Invalid payload" });
+
+  try {
+    const payload = jwt.verify(parsed.data.refreshToken, jwtRefreshSecret);
+    await deleteRefreshToken(payload.userId, payload.deviceId);
+    return res.status(204).send();
+  } catch {
+    return res.status(204).send();
+  }
+});
+
+app.get("/chapters", auth, (_req, res) => {
+  fetchChapters()
+    .then((items) => res.json(items))
+    .catch((error) => res.status(500).json({ message: "Failed to load chapters", error: error.message }));
+});
+
+app.get("/progress", auth, async (req, res) => {
+  try {
+    const progress = await fetchProgress(req.user.userId);
+    const completedCount =
+      typeof progress.completedCount === "number"
+        ? progress.completedCount
+        : Object.values(progress.videoCompleted || {}).filter(Boolean).length ||
+          Object.values(progress.watchedSeconds).filter((sec) => sec >= 600).length;
+
+    res.json({
+      lastVideoId: progress.lastVideoId,
+      completedCount,
+      totalVideos: progress.totalVideos,
+      percentage: progress.totalVideos ? Math.round((completedCount / progress.totalVideos) * 100) : 0,
+      watchedSeconds: progress.watchedSeconds,
+      videoCompleted: progress.videoCompleted || {}
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to load progress", error: error.message });
+  }
+});
+
+app.post("/videos/:videoId/position", auth, async (req, res) => {
+  const videoId = Number(req.params.videoId);
+  const parsed = progressSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Invalid payload" });
+
+  try {
+    await saveProgress(
+      req.user.userId,
+      videoId,
+      parsed.data.watchedSeconds,
+      Boolean(parsed.data.completed)
+    );
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to save progress", error: error.message });
+  }
+
+  res.status(204).send();
+});
+
+app.post("/videos/:videoId/access-token", auth, (req, res) => {
+  const videoId = Number(req.params.videoId);
+  const deviceId = getDeviceFromRequest(req);
+  const ip = getIp(req);
+  const origin = getOrigin(req);
+  const originOk = origin && allowedOrigins.includes(origin);
+
+  const token = jwt.sign(
+    {
+      userId: req.user.userId,
+      videoId,
+      type: "video-access",
+      deviceId,
+      ip: ip || "",
+      uah: uaHash(req),
+      origin: originOk ? origin : ""
+    },
+    jwtSecret,
+    { expiresIn: "5m" }
+  );
+
+  res.json({ token, expiresIn: 300 });
+});
+
+function getUploadFilenameFromStreamPath(streamPath) {
+  if (!streamPath) return null;
+  if (streamPath.startsWith("upload:")) return streamPath.slice("upload:".length);
+  if (streamPath.startsWith("/uploads/")) return streamPath.slice("/uploads/".length);
+  return null;
+}
+
+// Protected MP4 streaming (MVP): signed URL only, supports Range.
+app.get("/media/:videoId", async (req, res) => {
+  const videoId = Number(req.params.videoId);
+  const accessToken = String(req.query.token || "");
+  if (!accessToken) return res.status(401).json({ message: "Missing video token" });
+
+  let accessPayload;
+  try {
+    accessPayload = jwt.verify(accessToken, jwtSecret);
+    if (accessPayload.type !== "video-access" || Number(accessPayload.videoId) !== videoId) {
+      return res.status(401).json({ message: "Invalid access token" });
+    }
+  } catch {
+    return res.status(401).json({ message: "Invalid access token" });
+  }
+
+  // Bind token to device + UA (+ optional IP/origin) to prevent reuse elsewhere.
+  const reqDevice = getDeviceFromRequest(req);
+  if (accessPayload.deviceId && accessPayload.deviceId !== reqDevice) {
+    return res.status(401).json({ message: "Invalid device" });
+  }
+  if (accessPayload.uah && accessPayload.uah !== uaHash(req)) {
+    return res.status(401).json({ message: "Invalid user-agent" });
+  }
+  const reqOrigin = getOrigin(req);
+  if (accessPayload.origin && accessPayload.origin !== reqOrigin) {
+    return res.status(401).json({ message: "Invalid origin" });
+  }
+  const reqIp = getIp(req) || "";
+  if (accessPayload.ip && accessPayload.ip !== reqIp) {
+    return res.status(401).json({ message: "Invalid ip" });
+  }
+
+  if (!dbReady) return res.status(503).json({ message: "DB required for media" });
+
+  const result = await pool.query(`select stream_path from videos where id = $1`, [videoId]);
+  const streamPath = result.rows[0]?.stream_path || "";
+  const filename = getUploadFilenameFromStreamPath(streamPath);
+  if (!filename) return res.status(404).json({ message: "No uploaded media for this video" });
+
+  const filePath = path.join(uploadsDir, filename);
+  let fileStat;
+  try {
+    fileStat = await stat(filePath);
+  } catch {
+    return res.status(404).json({ message: "File not found" });
+  }
+
+  res.setHeader("Content-Type", "video/mp4");
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
+  res.setHeader("Accept-Ranges", "bytes");
+
+  const range = req.headers.range;
+  if (!range) {
+    res.setHeader("Content-Length", fileStat.size);
+    return createReadStream(filePath).pipe(res);
+  }
+
+  const match = /^bytes=(\d+)-(\d*)$/.exec(range);
+  if (!match) return res.status(416).send();
+
+  const start = Number(match[1]);
+  const end = match[2]
+    ? Number(match[2])
+    : Math.min(start + 1024 * 1024 - 1, fileStat.size - 1);
+  if (Number.isNaN(start) || Number.isNaN(end) || start >= fileStat.size) {
+    return res.status(416).send();
+  }
+
+  res.status(206);
+  res.setHeader("Content-Range", `bytes ${start}-${end}/${fileStat.size}`);
+  res.setHeader("Content-Length", end - start + 1);
+  return createReadStream(filePath, { start, end }).pipe(res);
+});
+app.get("/hls/:videoId/manifest.m3u8", (req, res) => {
+  const videoId = Number(req.params.videoId);
+  if (!verifyVideoAccessForHls(req, res, videoId)) return;
+
+  const accessToken = String(req.query.token || "");
+  const query = new URLSearchParams({
+    token: accessToken,
+    did: getDeviceFromRequest(req)
+  }).toString();
+  const host = `${req.protocol}://${req.get("host")}`;
+  const segment0 = `${host}/hls/${videoId}/segment_000.ts?${query}`;
+  const segment1 = `${host}/hls/${videoId}/segment_001.ts?${query}`;
+  const body = [
+    "#EXTM3U",
+    "#EXT-X-VERSION:3",
+    "#EXT-X-TARGETDURATION:6",
+    "#EXT-X-MEDIA-SEQUENCE:0",
+    "#EXTINF:6.0,",
+    segment0,
+    "#EXTINF:6.0,",
+    segment1,
+    "#EXT-X-ENDLIST"
+  ].join("\n");
+
+  res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+  res.setHeader("Cache-Control", "private, max-age=30");
+  res.send(body);
+});
+
+app.get("/hls/:videoId/segment_000.ts", (req, res) => {
+  const videoId = Number(req.params.videoId);
+  if (!verifyVideoAccessForHls(req, res, videoId)) return;
+  res.redirect(302, `${demoHlsRemoteBase}/fileSequence0.ts`);
+});
+
+app.get("/hls/:videoId/segment_001.ts", (req, res) => {
+  const videoId = Number(req.params.videoId);
+  if (!verifyVideoAccessForHls(req, res, videoId)) return;
+  res.redirect(302, `${demoHlsRemoteBase}/fileSequence1.ts`);
+});
+
+app.get("/hls/:videoId/key", (req, res) => {
+  const videoId = Number(req.params.videoId);
+  const token = String(req.query.token || "");
+  if (!token) return res.status(401).json({ message: "Missing key token" });
+
+  try {
+    const payload = jwt.verify(token, hlsKeySecret);
+    if (payload.type !== "hls-key" || Number(payload.videoId) !== videoId) {
+      return res.status(401).json({ message: "Invalid key token" });
+    }
+  } catch {
+    return res.status(401).json({ message: "Invalid key token" });
+  }
+
+  const key = Buffer.from("00112233445566778899aabbccddeeff", "hex");
+  res.setHeader("Content-Type", "application/octet-stream");
+  res.setHeader("Cache-Control", "no-store");
+  res.send(key);
+});
+
+function formatRedisConnectError(err) {
+  if (!err) return "unknown";
+  if (typeof err === "string") return err;
+  if (err.code) return String(err.code);
+  if (Array.isArray(err.errors) && err.errors.length) {
+    const first = err.errors[0];
+    if (first?.code) return String(first.code);
+    if (first?.message) return String(first.message);
+  }
+  const msg = err.message?.trim();
+  return msg || err.name || "connection failed";
+}
+
+async function start() {
+  if (redis) {
+    const onRedisRuntimeError = (err) => {
+      console.warn("[redis]", formatRedisConnectError(err));
+    };
+    try {
+      await redis.connect();
+      console.log("Redis connected");
+      redis.on("error", onRedisRuntimeError);
+    } catch (error) {
+      console.log(
+        "Redis недоступен — refresh-токены в памяти. Чтобы включить Redis, поднимите сервер или удалите REDIS_URL из .env. Причина:",
+        formatRedisConnectError(error)
+      );
+      try {
+        await redis.disconnect();
+      } catch {
+        /* уже отключён */
+      }
+    }
+  }
+
+  if (pool) {
+    try {
+      await pool.query("select 1");
+      try {
+        await ensureNewsTable();
+      } catch (e) {
+        console.error("Таблица news / индекс — пропуск (проверьте миграцию):", e.message);
+      }
+      try {
+        await ensureSupportMessagesTable();
+      } catch (e) {
+        console.error("Таблица support_messages / индекс — пропуск (проверьте миграцию):", e.message);
+      }
+      try {
+        await ensureSupportReadsTable();
+      } catch (e) {
+        console.error("Таблица support_reads — пропуск (проверьте миграцию):", e.message);
+      }
+      await seedDemoData();
+      dbReady = true;
+      console.log("PostgreSQL connected");
+    } catch (error) {
+      dbReady = false;
+      console.error("PostgreSQL init failed — работаем без БД (in-memory):", error.message);
+      if (error.stack) console.error(error.stack);
+    }
+  }
+
+  const server = app.listen(port, () => {
+    console.log(`API running on http://localhost:${port}`);
+  });
+  server.on("error", (err) => {
+    console.error(`Не удалось занять порт ${port}:`, err.code || err.message);
+    if (err.code === "EADDRINUSE") {
+      console.error("Остановите другой процесс на этом порту или задайте переменную PORT в .env");
+    }
+    process.exit(1);
+  });
+}
+
+start().catch((error) => {
+  console.error("Критическая ошибка при старте:", error);
+  process.exit(1);
+});

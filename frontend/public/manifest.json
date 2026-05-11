@@ -1,0 +1,15 @@
+{
+  "name": "Let me explain",
+  "short_name": "Let me explain",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3e69ae",
+  "icons": [
+    {
+      "src": "/9ff6137d-ee1d-4cd6-a762-9795d7540eae.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
