@@ -7,7 +7,7 @@ const subscriptionPlans = [
     id: "basic",
     icon: "📘",
     name: "Базовая",
-    price: "990 ₽/мес",
+    price: "990 сом/мес",
     isRecommended: false,
     bullets: ["Доступ к основным предметам", "Личный кабинет и прогресс", "Поддержка по email"]
   },
@@ -15,7 +15,7 @@ const subscriptionPlans = [
     id: "pro",
     icon: "🚀",
     name: "Продвинутая",
-    price: "1990 ₽/мес",
+    price: "1990 сом/мес",
     isRecommended: true,
     bullets: ["Все предметы и главы", "Приоритетная поддержка", "Расширенные тесты и конспекты"]
   },
@@ -23,7 +23,7 @@ const subscriptionPlans = [
     id: "mentor",
     icon: "🎓",
     name: "Ментор",
-    price: "3490 ₽/мес",
+    price: "3490 сом/мес",
     isRecommended: false,
     bullets: ["Все возможности Pro", "Разборы с куратором", "Персональный учебный план"]
   }

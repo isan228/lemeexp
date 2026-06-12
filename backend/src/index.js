@@ -9,6 +9,16 @@ import multer from "multer";
 import pg from "pg";
 import { createClient } from "redis";
 import { z } from "zod";
+import {
+  createFinikPayment,
+  extractPaymentIdFromWebhook,
+  getFrontendBaseUrl,
+  getPlanAmount,
+  getPlanTitle,
+  isFinikConfigured,
+  PLAN_TO_SUBSCRIPTION,
+  verifyFinikWebhook
+} from "./finik.js";
 import { createReadStream, mkdirSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import crypto from "node:crypto";
@@ -46,6 +56,7 @@ let dbReady = false;
 const memState = {
   refreshTokens: new Map(),
   sessions: new Map(),
+  paymentsById: new Map(),
   progressByUser: new Map([
     [1, { lastVideoId: 102, watchedSeconds: { 101: 860, 102: 530 }, videoCompleted: { 101: true, 102: false } }]
   ]),
@@ -501,6 +512,29 @@ async function ensureNewsTable() {
   `);
 }
 
+async function ensurePaymentsTable() {
+  if (!pool) return;
+  await pool.query(`
+    create table if not exists payments (
+      id bigserial primary key,
+      payment_id uuid not null unique,
+      user_id bigint not null references users(id) on delete cascade,
+      plan text not null,
+      amount numeric(12, 2) not null,
+      status text not null default 'pending',
+      finik_transaction_id text,
+      finik_receipt_number text,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    )
+  `);
+  await pool.query(`create index if not exists idx_payments_user on payments(user_id)`);
+  await pool.query(`create index if not exists idx_payments_status on payments(status)`);
+  await pool.query(
+    `create index if not exists idx_payments_finik_tx on payments(finik_transaction_id)`
+  );
+}
+
 async function ensureSupportMessagesTable() {
   if (!pool) return;
   await pool.query(`
@@ -896,7 +930,59 @@ app.post("/auth/register", async (req, res) => {
   return sendAuthTokensForUser(req, res, user);
 });
 
-app.post("/billing/activate-subscription", auth, async (req, res) => {
+async function activateSubscriptionForUser(userId, plan) {
+  const nextSubscription = PLAN_TO_SUBSCRIPTION[plan];
+  if (!nextSubscription) {
+    throw new Error("Unknown plan");
+  }
+
+  if (dbReady) {
+    const updated = await pool.query(
+      `update users
+       set subscription_type = $2
+       where id = $1
+       returning id, email, nickname, subscription_type`,
+      [userId, nextSubscription]
+    );
+    if (!updated.rows[0]) {
+      return null;
+    }
+    const row = updated.rows[0];
+    return {
+      id: row.id,
+      email: row.email,
+      nickname: row.nickname,
+      subscriptionType: row.subscription_type
+    };
+  }
+
+  const user = getMemRegisteredUserById(userId);
+  if (user) {
+    user.subscriptionType = nextSubscription;
+    memRegisteredUsersById.set(user.id, user);
+    memRegisteredUsersByEmail.set(normalizeEmail(user.email), user);
+    return {
+      id: user.id,
+      email: user.email,
+      nickname: user.nickname,
+      subscriptionType: user.subscriptionType
+    };
+  }
+
+  if (userId === demoUser.id) {
+    demoUser.subscriptionType = nextSubscription;
+    return {
+      id: demoUser.id,
+      email: demoUser.email,
+      nickname: demoUser.nickname,
+      subscriptionType: demoUser.subscriptionType
+    };
+  }
+
+  return null;
+}
+
+app.post("/billing/create-payment", auth, async (req, res) => {
   const parsed = activateSubscriptionSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
@@ -906,65 +992,235 @@ app.post("/billing/activate-subscription", auth, async (req, res) => {
     return res.status(403).json({ message: "Admin subscription cannot be changed" });
   }
 
-  const planToSubscription = {
-    basic: "basic",
-    pro: "premium",
-    mentor: "mentor"
-  };
+  if (!isFinikConfigured()) {
+    return res.status(503).json({ message: "Finik payment is not configured on the server" });
+  }
 
-  const nextSubscription = planToSubscription[parsed.data.plan];
+  const plan = parsed.data.plan;
+  const amount = getPlanAmount(plan);
+  if (!amount || amount <= 0) {
+    return res.status(400).json({ message: "Invalid plan amount" });
+  }
+
+  const paymentId = crypto.randomUUID();
+  const redirectUrl = `${getFrontendBaseUrl().replace(/\/$/, "")}/payment/success?paymentId=${paymentId}`;
 
   try {
     if (dbReady) {
-      const updated = await pool.query(
-        `update users
-         set subscription_type = $2
-         where id = $1
-         returning id, email, nickname, subscription_type`,
-        [req.user.userId, nextSubscription]
+      await pool.query(
+        `insert into payments (payment_id, user_id, plan, amount, status)
+         values ($1, $2, $3, $4, 'pending')`,
+        [paymentId, req.user.userId, plan, amount]
       );
-      if (!updated.rows[0]) {
-        return res.status(404).json({ message: "User not found" });
-      }
-      const row = updated.rows[0];
-      return res.json({
-        profile: {
-          id: row.id,
-          email: row.email,
-          nickname: row.nickname,
-          subscriptionType: row.subscription_type
-        }
+    } else {
+      memState.paymentsById.set(paymentId, {
+        paymentId,
+        userId: req.user.userId,
+        plan,
+        amount,
+        status: "pending"
       });
     }
 
-    const user = getMemRegisteredUserById(req.user.userId);
-    if (user) {
-      user.subscriptionType = nextSubscription;
-      memRegisteredUsersById.set(user.id, user);
-      memRegisteredUsersByEmail.set(normalizeEmail(user.email), user);
+    const finik = await createFinikPayment({
+      paymentId,
+      amount,
+      plan,
+      redirectUrl
+    });
+
+    return res.json({
+      paymentId,
+      paymentUrl: finik.paymentUrl,
+      amount,
+      plan,
+      planTitle: getPlanTitle(plan)
+    });
+  } catch (error) {
+    if (dbReady) {
+      await pool.query(`delete from payments where payment_id = $1 and status = 'pending'`, [paymentId]);
+    } else {
+      memState.paymentsById.delete(paymentId);
+    }
+    return res.status(502).json({ message: "Failed to create Finik payment", error: error.message });
+  }
+});
+
+app.get("/billing/payment-status/:paymentId", auth, async (req, res) => {
+  const paymentId = String(req.params.paymentId || "");
+  if (!paymentId) {
+    return res.status(400).json({ message: "Missing paymentId" });
+  }
+
+  try {
+    if (dbReady) {
+      const result = await pool.query(
+        `select payment_id, user_id, plan, amount, status
+         from payments
+         where payment_id = $1`,
+        [paymentId]
+      );
+      const row = result.rows[0];
+      if (!row) {
+        return res.status(404).json({ message: "Payment not found" });
+      }
+      if (Number(row.user_id) !== Number(req.user.userId)) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      let profile = null;
+      if (row.status === "succeeded") {
+        const userResult = await pool.query(
+          `select id, email, nickname, subscription_type
+           from users where id = $1`,
+          [row.user_id]
+        );
+        const userRow = userResult.rows[0];
+        if (userRow) {
+          profile = {
+            id: userRow.id,
+            email: userRow.email,
+            nickname: userRow.nickname,
+            subscriptionType: userRow.subscription_type
+          };
+        }
+      }
+
       return res.json({
-        profile: {
+        paymentId: row.payment_id,
+        plan: row.plan,
+        amount: Number(row.amount),
+        status: row.status,
+        profile
+      });
+    }
+
+    const payment = memState.paymentsById.get(paymentId);
+    if (!payment) {
+      return res.status(404).json({ message: "Payment not found" });
+    }
+    if (Number(payment.userId) !== Number(req.user.userId)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    let profile = null;
+    if (payment.status === "succeeded") {
+      const user = getAuthUserForRefresh(payment.userId);
+      if (user) {
+        profile = {
           id: user.id,
           email: user.email,
           nickname: user.nickname,
           subscriptionType: user.subscriptionType
-        }
-      });
+        };
+      }
     }
 
-    if (req.user.userId === demoUser.id) {
-      demoUser.subscriptionType = nextSubscription;
-      return res.json({
-        profile: {
-          id: demoUser.id,
-          email: demoUser.email,
-          nickname: demoUser.nickname,
-          subscriptionType: demoUser.subscriptionType
-        }
-      });
+    return res.json({
+      paymentId: payment.paymentId,
+      plan: payment.plan,
+      amount: payment.amount,
+      status: payment.status,
+      profile
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to load payment status", error: error.message });
+  }
+});
+
+app.post("/billing/webhook/finik", async (req, res) => {
+  const verification = await verifyFinikWebhook(req, req.body);
+  if (!verification.ok) {
+    return res.status(401).json({ message: verification.reason || "Invalid webhook signature" });
+  }
+
+  const paymentId = extractPaymentIdFromWebhook(req.body);
+  const finikStatus = String(req.body?.status || "").toUpperCase();
+  const transactionId = req.body?.transactionId || req.body?.id || null;
+  const receiptNumber = req.body?.receiptNumber || null;
+
+  if (!paymentId) {
+    return res.status(400).json({ message: "Missing paymentId in webhook payload" });
+  }
+
+  const nextStatus =
+    finikStatus === "SUCCEEDED" ? "succeeded" : finikStatus === "FAILED" ? "failed" : "pending";
+
+  try {
+    if (dbReady) {
+      const existing = await pool.query(
+        `select payment_id, user_id, plan, status
+         from payments
+         where payment_id = $1`,
+        [paymentId]
+      );
+      const row = existing.rows[0];
+      if (!row) {
+        return res.status(404).json({ message: "Payment not found" });
+      }
+      if (row.status === "succeeded") {
+        return res.json({ ok: true, duplicate: true });
+      }
+
+      await pool.query(
+        `update payments
+         set status = $2,
+             finik_transaction_id = coalesce($3, finik_transaction_id),
+             finik_receipt_number = coalesce($4, finik_receipt_number),
+             updated_at = now()
+         where payment_id = $1`,
+        [paymentId, nextStatus, transactionId, receiptNumber]
+      );
+
+      if (nextStatus === "succeeded") {
+        await activateSubscriptionForUser(row.user_id, row.plan);
+      }
+
+      return res.json({ ok: true });
     }
 
-    return res.status(404).json({ message: "User not found" });
+    const payment = memState.paymentsById.get(paymentId);
+    if (!payment) {
+      return res.status(404).json({ message: "Payment not found" });
+    }
+    if (payment.status === "succeeded") {
+      return res.json({ ok: true, duplicate: true });
+    }
+
+    payment.status = nextStatus;
+    payment.finikTransactionId = transactionId;
+    memState.paymentsById.set(paymentId, payment);
+
+    if (nextStatus === "succeeded") {
+      await activateSubscriptionForUser(payment.userId, payment.plan);
+    }
+
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(500).json({ message: "Webhook processing failed", error: error.message });
+  }
+});
+
+app.post("/billing/activate-subscription", auth, async (req, res) => {
+  if (process.env.BILLING_STUB !== "true") {
+    return res.status(410).json({ message: "Use Finik payment flow instead of manual activation" });
+  }
+
+  const parsed = activateSubscriptionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
+  }
+
+  if (req.user?.role === "admin") {
+    return res.status(403).json({ message: "Admin subscription cannot be changed" });
+  }
+
+  try {
+    const profile = await activateSubscriptionForUser(req.user.userId, parsed.data.plan);
+    if (!profile) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    return res.json({ profile });
   } catch (error) {
     return res.status(500).json({ message: "Failed to activate subscription", error: error.message });
   }
@@ -1837,6 +2093,11 @@ async function start() {
         await ensureSupportReadsTable();
       } catch (e) {
         console.error("Таблица support_reads — пропуск (проверьте миграцию):", e.message);
+      }
+      try {
+        await ensurePaymentsTable();
+      } catch (e) {
+        console.error("Таблица payments — пропуск (проверьте миграцию):", e.message);
       }
       await seedDemoData();
       dbReady = true;

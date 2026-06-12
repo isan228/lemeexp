@@ -5,7 +5,8 @@ import AdminPage from "./pages/AdminPage.jsx";
 import HomePage from "./pages/HomePage.jsx";
 import LandingPage from "./pages/LandingPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
-import PaymentStubPage from "./pages/PaymentStubPage.jsx";
+import PaymentPage from "./pages/PaymentStubPage.jsx";
+import PaymentSuccessPage from "./pages/PaymentSuccessPage.jsx";
 import ProfilePage from "./pages/ProfilePage.jsx";
 import RegisterPage from "./pages/RegisterPage.jsx";
 import SupportPage from "./pages/SupportPage.jsx";
@@ -18,7 +19,8 @@ export default function App() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
-      <Route path="/payment" element={<PaymentStubPage />} />
+      <Route path="/payment" element={<PaymentPage />} />
+      <Route path="/payment/success" element={<PaymentSuccessPage />} />
       <Route element={<RequireAuth />}>
         <Route path="/learning" element={<StudentLayout />}>
           <Route index element={<Navigate to="home" replace />} />

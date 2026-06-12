@@ -13,6 +13,8 @@ deploy.local.json
 .env.*
 !.env.example
 backend/.env
+backend/finik_private.pem
+backend/finik_public.pem
 frontend/.env
 frontend/.env.production
 

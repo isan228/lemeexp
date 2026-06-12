@@ -105,3 +105,20 @@ create table if not exists support_reads (
   last_read_at timestamptz not null default now(),
   primary key (user_id, reader_role)
 );
+
+create table if not exists payments (
+  id bigserial primary key,
+  payment_id uuid not null unique,
+  user_id bigint not null references users(id) on delete cascade,
+  plan text not null,
+  amount numeric(12, 2) not null,
+  status text not null default 'pending',
+  finik_transaction_id text,
+  finik_receipt_number text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_payments_user on payments(user_id);
+create index if not exists idx_payments_status on payments(status);
+create index if not exists idx_payments_finik_tx on payments(finik_transaction_id);

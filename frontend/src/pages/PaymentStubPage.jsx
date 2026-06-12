@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 
 const planTitles = {
@@ -8,40 +8,46 @@ const planTitles = {
   mentor: "Ментор"
 };
 
-export default function PaymentStubPage() {
+const planAmounts = {
+  basic: "990 сом",
+  pro: "1990 сом",
+  mentor: "3490 сом"
+};
+
+export default function PaymentPage() {
   const [searchParams] = useSearchParams();
   const location = useLocation();
-  const navigate = useNavigate();
-  const { apiRequest, updateProfile } = useAuth();
+  const { apiRequest } = useAuth();
   const planId = searchParams.get("plan") || "";
   const planTitle = planTitles[planId] || "Не выбрано";
+  const planAmount = planAmounts[planId] || "";
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
 
-  async function onConfirmPayment() {
+  async function onPayWithFinik() {
     if (!planTitles[planId]) {
       setError("Выберите подписку перед оплатой.");
       return;
     }
+
     setError("");
     setPending(true);
     try {
-      const res = await apiRequest("/billing/activate-subscription", {
+      const res = await apiRequest("/billing/create-payment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ plan: planId })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.message || "Не удалось подтвердить оплату");
+        throw new Error(data.message || "Не удалось создать платёж");
       }
-      if (data.profile) {
-        updateProfile(data.profile);
+      if (!data.paymentUrl) {
+        throw new Error("Finik не вернул ссылку на оплату");
       }
-      navigate("/learning/home", { replace: true });
+      window.location.href = data.paymentUrl;
     } catch (err) {
       setError(err.message || "Ошибка оплаты");
-    } finally {
       setPending(false);
     }
   }
@@ -59,27 +65,22 @@ export default function PaymentStubPage() {
           <h1>Оплата подписки</h1>
         </div>
         <p className="muted">
-          Вы выбрали подписку: <strong>{planTitle}</strong>.
+          Вы выбрали подписку: <strong>{planTitle}</strong>
+          {planAmount ? (
+            <>
+              {" "}
+              — <strong>{planAmount}</strong>
+            </>
+          ) : null}
+          .
         </p>
-        <p className="muted">Здесь позже будет подключена реальная оплата. Пока это временная заглушка.</p>
+        <p className="muted">Оплата через Finik QR — любым банковским приложением Кыргызстана.</p>
         <div className="payment-methods">
           <div className="payment-method active">
             <span className="payment-method-icon" aria-hidden>
-              💳
+              📱
             </span>
-            <span>Банковская карта (скоро)</span>
-          </div>
-          <div className="payment-method">
-            <span className="payment-method-icon" aria-hidden>
-              🟨
-            </span>
-            <span>Kaspi Pay (скоро)</span>
-          </div>
-          <div className="payment-method">
-            <span className="payment-method-icon" aria-hidden>
-              🧾
-            </span>
-            <span>Счет для юр. лица (скоро)</span>
+            <span>Finik QR</span>
           </div>
         </div>
         {location.state?.form?.fullName && (
@@ -90,8 +91,8 @@ export default function PaymentStubPage() {
           <Link to="/" className="btn-secondary">
             На главную
           </Link>
-          <button type="button" className="btn-primary inline" onClick={onConfirmPayment} disabled={pending}>
-            {pending ? "Проверяем платеж..." : "Оплатил"}
+          <button type="button" className="btn-primary inline" onClick={onPayWithFinik} disabled={pending}>
+            {pending ? "Создаём платёж..." : "Оплатить через Finik"}
           </button>
         </div>
       </div>
