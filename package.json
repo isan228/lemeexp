@@ -1,0 +1,8 @@
+{
+  "name": "lemeexp",
+  "private": true,
+  "scripts": {
+    "push": "node scripts/deploy.mjs",
+    "deploy": "node scripts/deploy.mjs --deploy-only"
+  }
+}

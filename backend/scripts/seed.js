@@ -83,6 +83,11 @@ async function run() {
 }
 
 run().catch((error) => {
+  if (error.message.includes('relation "users" does not exist')) {
+    console.error("Seed failed: table users does not exist. Run migration first:");
+    console.error("  npm run db:migrate");
+    process.exit(1);
+  }
   console.error("Seed failed:", error.message);
   process.exit(1);
 });

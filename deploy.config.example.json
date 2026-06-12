@@ -1,0 +1,7 @@
+{
+  "host": "YOUR_SERVER_IP",
+  "user": "root",
+  "path": "/var/www/lemeexp",
+  "branch": "main",
+  "pm2Name": "lemeexp-api"
+}
