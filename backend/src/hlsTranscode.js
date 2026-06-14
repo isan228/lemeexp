@@ -21,9 +21,9 @@ export async function isHlsReady(videoId) {
   }
 }
 
-function runFfmpeg(args) {
+function runFfmpeg(args, cwd) {
   return new Promise((resolve, reject) => {
-    const proc = spawn("ffmpeg", args, { stdio: ["ignore", "pipe", "pipe"] });
+    const proc = spawn("ffmpeg", args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
     let stderr = "";
     proc.stderr.on("data", (chunk) => {
       stderr += String(chunk);
@@ -52,7 +52,8 @@ export async function packageVideoToHls(videoId, inputMp4Path) {
   const keyInfoPath = path.join(outDir, "keyinfo.txt");
   const key = crypto.randomBytes(16);
   await writeFile(keyPath, key);
-  await writeFile(keyInfoPath, `${keyPath}\nenc.key\n`);
+  // ffmpeg keyinfo: 1) URI в плейлисте, 2) путь к файлу ключа на диске
+  await writeFile(keyInfoPath, `enc.key\n${keyPath}\n`);
 
   const segmentPattern = path.join(outDir, "seg_%03d.ts");
   const playlistPath = path.join(outDir, "index.m3u8");
@@ -77,34 +78,37 @@ export async function packageVideoToHls(videoId, inputMp4Path) {
   ];
 
   try {
-    await runFfmpeg(args);
+    await runFfmpeg(args, outDir);
   } catch (copyError) {
-    await runFfmpeg([
-      "-y",
-      "-i",
-      inputMp4Path,
-      "-c:v",
-      "libx264",
-      "-preset",
-      "veryfast",
-      "-crf",
-      "23",
-      "-c:a",
-      "aac",
-      "-b:a",
-      "128k",
-      "-movflags",
-      "+faststart",
-      "-hls_time",
-      "6",
-      "-hls_playlist_type",
-      "vod",
-      "-hls_segment_filename",
-      segmentPattern,
-      "-hls_key_info_file",
-      keyInfoPath,
-      playlistPath
-    ]).catch(() => {
+    await runFfmpeg(
+      [
+        "-y",
+        "-i",
+        inputMp4Path,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "23",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-movflags",
+        "+faststart",
+        "-hls_time",
+        "6",
+        "-hls_playlist_type",
+        "vod",
+        "-hls_segment_filename",
+        segmentPattern,
+        "-hls_key_info_file",
+        keyInfoPath,
+        playlistPath
+      ],
+      outDir
+    ).catch(() => {
       throw copyError;
     });
   }
