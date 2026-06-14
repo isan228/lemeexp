@@ -4,6 +4,8 @@
   --med-fg-soft: #517fbe;
   --med-muted: #6699cf;
   --med-muted-light: #73b2de;
+  --med-text: #1e3a5f;
+  --med-text-secondary: #5b7a9d;
   --med-bg: #f7fbff;
   --med-bg-warm: #ffffff;
   --med-surface: #ffffff;
@@ -44,9 +46,10 @@
 body {
   margin: 0;
   font-family: var(--med-font);
-  color: var(--med-fg);
+  color: var(--med-text);
   background: var(--med-bg);
   -webkit-font-smoothing: antialiased;
+  line-height: 1.55;
 }
 
 #root {

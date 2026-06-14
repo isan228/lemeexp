@@ -1,40 +1,91 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
+import PageHeader from "../components/PageHeader.jsx";
+import { countCatalogStats, findContinueLesson } from "../utils/continueLesson.js";
 
 export default function HomePage() {
-  const { progress } = useAuth();
-  const lastVideoId = progress.lastVideoId;
+  const { progress, chapters, profile, catalogLoading } = useAuth();
+  const continueLesson = findContinueLesson(chapters, progress.lastVideoId);
+  const stats = countCatalogStats(chapters);
+  const pct = Math.min(100, Math.max(0, Number(progress.percentage) || 0));
+  const name = profile?.nickname || profile?.email?.split("@")[0] || "студент";
 
   return (
     <section className="lessons-flow lessons-flow-padded">
-      <header className="student-page-head">
-        <p className="student-page-kicker">Личный кабинет</p>
-        <h1>Главная</h1>
-        <p className="subtitle student-page-intro">Быстрый доступ к материалам и прогрессу.</p>
-        <div className="home-study-row">
+      <PageHeader
+        kicker="Личный кабинет"
+        title={`Здравствуйте, ${name}`}
+        intro="Продолжайте обучение с того места, где остановились."
+        actions={
           <Link to="/learning/lessons" className="btn-primary btn-study">
-            Учиться
+            К урокам
           </Link>
-        </div>
-      </header>
-      <div className="card-grid">
-        <article className="card">
+        }
+      />
+
+      {continueLesson ? (
+        <article className="home-continue card">
+          <div className="home-continue-body">
+            <p className="home-continue-label">Продолжить просмотр</p>
+            <h2>{continueLesson.video.title}</h2>
+            <p className="muted small">
+              {continueLesson.subject.title} · {continueLesson.chapter.title}
+            </p>
+          </div>
+          <Link to={continueLesson.href} className="btn-primary">
+            Продолжить
+          </Link>
+        </article>
+      ) : null}
+
+      <div className="home-stats">
+        <article className="home-stat card">
+          <div className="home-progress-ring" style={{ "--pct": pct }} aria-hidden="true">
+            <span>{pct}%</span>
+          </div>
+          <div>
+            <h3>Прогресс</h3>
+            <p className="muted small">
+              {progress.completedCount ?? 0} из {progress.totalVideos ?? 0} уроков
+            </p>
+          </div>
+        </article>
+        <article className="home-stat card">
+          <div className="home-stat-icon home-stat-icon-catalog" aria-hidden="true" />
+          <div>
+            <h3>Каталог</h3>
+            <p className="muted small">
+              {catalogLoading
+                ? "Загрузка…"
+                : `${stats.subjects} предм. · ${stats.chapters} глав · ${stats.videos} уроков`}
+            </p>
+          </div>
+        </article>
+        <article className="home-stat card">
+          <div className="home-stat-icon home-stat-icon-support" aria-hidden="true" />
+          <div>
+            <h3>Поддержка</h3>
+            <p className="muted small">Вопросы по урокам и технические проблемы</p>
+            <Link to="/learning/support" className="btn-link">
+              Написать →
+            </Link>
+          </div>
+        </article>
+      </div>
+
+      <div className="home-quick card-grid">
+        <article className="card home-quick-card">
           <h3>Уроки</h3>
-          <p>Сначала выберите предмет, затем главу и видео.</p>
-          <Link to="/learning/lessons" className="btn-primary inline">
-            Перейти к урокам
+          <p className="muted">Предмет → глава → видеоурок</p>
+          <Link to="/learning/lessons" className="btn-secondary inline">
+            Открыть каталог
           </Link>
         </article>
-        <article className="card">
-          <h3>Прогресс</h3>
-          <p>{progress.percentage ?? 0}% просмотрено</p>
-          <p>{progress.completedCount ?? 0} из {progress.totalVideos ?? 0} уроков</p>
-        </article>
-        <article className="card">
-          <h3>Продолжить</h3>
-          <p>{lastVideoId ? `Последнее видео #${lastVideoId}` : "Пока нет истории просмотра"}</p>
-          <Link to="/learning/lessons" className="btn-link">
-            Открыть каталог →
+        <article className="card home-quick-card">
+          <h3>Профиль</h3>
+          <p className="muted">Тариф и данные аккаунта</p>
+          <Link to="/learning/profile" className="btn-secondary inline">
+            Настройки
           </Link>
         </article>
       </div>

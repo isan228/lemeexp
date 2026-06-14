@@ -17,32 +17,32 @@ function scrollToSection(id) {
 
 const trialSeeds = [
   {
-    title: "Сид: Биохимия — «Белки»",
+    title: "Биохимия — «Белки»",
     tag: "45 мин",
-    bullets: ["Ввод в аминокислоты", "Структура белка", "Демо-плеер как в курсе"],
-    note: "Доступ без оплаты 48 часов"
+    bullets: ["Ввод в аминокислоты", "Структура белка", "Тот же плеер, что в курсе"],
+    note: "Бесплатный доступ 48 часов"
   },
   {
-    title: "Сид: Иммунология — «TLR»",
+    title: "Иммунология — «TLR»",
     tag: "32 мин",
     bullets: ["Распознавание ПАМП", "Сигнальные пути", "Конспект внутри урока"],
-    note: "Доступ без оплаты 48 часов"
+    note: "Бесплатный доступ 48 часов"
   },
   {
-    title: "Сид: Фармакология — «Агонисты»",
+    title: "Фармакология — «Агонисты»",
     tag: "28 мин",
     bullets: ["Рецепторы и лиганды", "Примеры препаратов", "Мини-тест после видео"],
-    note: "Доступ без оплаты 48 часов"
+    note: "Бесплатный доступ 48 часов"
   }
 ];
 
 const advantages = [
-  { icon: "🔐", title: "Защищённый поток", text: "Доступ к видео по короткоживущему токену, привязка к устройству и сессии." },
-  { icon: "📚", title: "Предмет → глава → видео", text: "Понятная структура каталога: не заблудитесь в материалах." },
-  { icon: "📈", title: "Прогресс обучения", text: "Сохраняем позицию просмотра и общий прогресс по курсу." },
-  { icon: "🎬", title: "HLS и MP4", text: "Адаптивное воспроизведение в браузере без лишних плагинов." },
-  { icon: "👤", title: "Личный кабинет", text: "Профиль, поддержка и быстрый переход к последним урокам." },
-  { icon: "🛡️", title: "Готовность к DRM", text: "Архитектура позволяет позже подключить Widevine / FairPlay." }
+  { letter: "З", title: "Защищённый поток", text: "Шифрованный HLS, короткие токены и привязка к устройству — без прямых ссылок на файл." },
+  { letter: "К", title: "Понятный каталог", text: "Предмет → глава → видео: быстро найти нужную тему и продолжить с места остановки." },
+  { letter: "П", title: "Прогресс обучения", text: "Сохраняем позицию просмотра и показываем, сколько уроков уже пройдено." },
+  { letter: "В", title: "В браузере", text: "Смотрите с компьютера, планшета или телефона — без установки приложений." },
+  { letter: "Л", title: "Личный кабинет", text: "Профиль, поддержка по урокам и быстрый возврат к последнему видео." },
+  { letter: "О", title: "Онлайн-поддержка", text: "Задайте вопрос по материалу — ответ придёт в личный кабинет." }
 ];
 
 const reviews = [
@@ -181,29 +181,40 @@ export default function LandingPage() {
           <p className="landing-kicker">Медицинское онлайн-образование</p>
           <h1 id="hero-title">Let me explain — видеокурсы для врачей и студентов медицинских вузов</h1>
           <p className="lead landing-lead-wide">
-            Предметы, главы и защищённые уроки в одном спокойном интерфейсе. Три бесплатных пробных сида — оцените
-            качество записи и навигацию, затем оформите полный доступ.
+            Предметы, главы и защищённые уроки в одном спокойном интерфейсе. Три бесплатных пробника — оцените
+            качество и навигацию, затем оформите полный доступ.
           </p>
+          <div className="landing-hero-stats">
+            <span className="landing-hero-stat">
+              <strong>3</strong> пробных урока
+            </span>
+            <span className="landing-hero-stat">
+              <strong>HLS</strong> шифрование
+            </span>
+            <span className="landing-hero-stat">
+              <strong>24/7</strong> доступ в кабинете
+            </span>
+          </div>
           <div className="landing-hero-cta">
             <button type="button" className="btn-primary" onClick={() => scrollToSection("trial")}>
               Смотреть пробники
             </button>
             <Link to="/login" className="btn-secondary">
-              Уже есть аккаунт
+              Войти
             </Link>
             {!token && (
-              <Link to="/register" className="btn-primary inline">
-                Купить
+              <Link to="/register" className="btn-link landing-hero-buy-link">
+                Купить доступ →
               </Link>
             )}
           </div>
         </section>
 
         <section id="trial" className="landing-section">
-          <h2 className="landing-section-title">Три пробных сида</h2>
+          <h2 className="landing-section-title">Три пробных урока</h2>
           <p className="landing-section-intro">
-            Короткие демо-уроки с тем же плеером и логикой доступа, что и в платной подписке. Регистрация не обязательна для
-            просмотра описания — чтобы открыть видео, перейдите в кабинет после регистрации или войдите демо-пользователем.
+            Короткие демо с тем же плеером и защитой, что и в платной подписке. Зарегистрируйтесь или войдите, чтобы
+            открыть видео в личном кабинете.
           </p>
           <div className="landing-seed-grid">
             {trialSeeds.map((seed) => (
@@ -227,8 +238,8 @@ export default function LandingPage() {
           <div className="landing-advantages-grid">
             {advantages.map((a) => (
               <article key={a.title} className="landing-adv-card card">
-                <div className="landing-adv-icon" aria-hidden>
-                  {a.icon}
+                <div className="landing-adv-icon" aria-hidden="true">
+                  {a.letter}
                 </div>
                 <h3>{a.title}</h3>
                 <p className="muted">{a.text}</p>
@@ -269,6 +280,21 @@ export default function LandingPage() {
           </div>
         </section>
 
+        {!token ? (
+          <section className="landing-cta-banner" aria-labelledby="landing-cta-title">
+            <h2 id="landing-cta-title">Готовы начать подготовку?</h2>
+            <p>Выберите тариф, зарегистрируйтесь и получите доступ ко всем урокам платформы.</p>
+            <div className="landing-cta-actions">
+              <Link to="/register" className="btn-primary inline">
+                Выбрать тариф
+              </Link>
+              <Link to="/login" className="btn-secondary inline">
+                Уже есть аккаунт
+              </Link>
+            </div>
+          </section>
+        ) : null}
+
       </main>
 
       <footer className="landing-footer-pro">
@@ -286,7 +312,7 @@ export default function LandingPage() {
             <h3 className="landing-footer-heading">Контакты</h3>
             <ul className="landing-footer-contacts">
               <li>
-                <a href="mailto:support@examvideo.example">support@examvideo.example</a>
+                <a href="mailto:support@lemexplain.com">support@lemexplain.com</a>
               </li>
               <li>
                 <a href="tel:+78001234567">8 (800) 123-45-67</a> <span className="muted small">(бесплатно по РФ)</span>

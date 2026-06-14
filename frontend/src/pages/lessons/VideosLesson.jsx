@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
+import PageHeader from "../../components/PageHeader.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { getVideoWatchedSeconds, isLessonVideoCompleted } from "../../utils/videoProgress.js";
 import { isPlayableStream, isProcessingStream } from "../../utils/streamPath.js";
@@ -19,7 +20,10 @@ export default function VideosLesson() {
   if (catalogLoading) {
     return (
       <section className="lessons-flow lessons-flow-padded">
-        <p className="muted">Загрузка каталога…</p>
+        <div className="loading-block">
+          <div className="loading-spinner" aria-hidden="true" />
+          <p className="muted">Загрузка каталога…</p>
+        </div>
       </section>
     );
   }
@@ -60,18 +64,14 @@ export default function VideosLesson() {
 
   return (
     <section className="lessons-flow lessons-flow-padded">
-      <div className="breadcrumb">
+      <nav className="breadcrumb" aria-label="Навигация">
         <Link to="/learning/lessons">Предметы</Link>
         <span className="bc-sep">/</span>
         <Link to={`/learning/lessons/${subject.id}`}>{subject.title}</Link>
         <span className="bc-sep">/</span>
-        <span>{chapter.title}</span>
-      </div>
-      <header className="student-page-head">
-        <p className="student-page-kicker">Видео</p>
-        <h1>{chapter.title}</h1>
-        <p className="subtitle student-page-intro">Выберите урок и нажмите «Смотреть».</p>
-      </header>
+        <span className="bc-current">{chapter.title}</span>
+      </nav>
+      <PageHeader kicker="Видео" title={chapter.title} intro="Выберите урок и нажмите «Смотреть»." />
 
       <ul className="video-rows">
         {videos.map((v) => {
