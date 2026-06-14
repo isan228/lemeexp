@@ -3,6 +3,8 @@ import { createContext, useCallback, useContext, useMemo, useRef, useState } fro
 import { apiBase } from "../config.js";
 import { getDeviceId } from "../utils/deviceId.js";
 
+const AuthContext = createContext(null);
+
 const LS_TOKEN = "drm_token";
 const LS_REFRESH = "drm_refresh";
 const LS_PROFILE = "drm_profile";
