@@ -1,13 +1,19 @@
 import Hls from "hls.js";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiBase } from "../config.js";
 import { isLessonVideoCompleted } from "../utils/videoProgress.js";
+
+function hasUploadedStream(streamPath) {
+  return Boolean(streamPath?.startsWith("upload:") || streamPath?.startsWith("/uploads/"));
+}
 
 export default function LessonPlayer({ video, apiRequest, onSavePosition, initialPlaybackSeconds = 0 }) {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
   const intervalRef = useRef(null);
   const onSavePositionRef = useRef(onSavePosition);
+  const [playError, setPlayError] = useState("");
+
   useEffect(() => {
     onSavePositionRef.current = onSavePosition;
   }, [onSavePosition]);
@@ -31,8 +37,17 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
   );
 
   useEffect(() => {
+    setPlayError("");
+  }, [videoId, streamPath]);
+
+  useEffect(() => {
     const el = videoRef.current;
     if (videoId == null || !el) return;
+
+    if (!streamPath?.trim()) {
+      setPlayError("Видеофайл ещё не загружен. Попробуйте позже или обновите страницу.");
+      return;
+    }
 
     const onPageHide = () => {
       const elNow = videoRef.current;
@@ -56,17 +71,22 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
     el.load();
 
     let cancelled = false;
+    let removeVideoError = null;
     const elBound = el;
-    // После apiRequest(access-token) в LS уже есть deviceId (см. x-device-id в AuthContext).
     const deviceId = localStorage.getItem("deviceId") || "unknown-device";
 
     (async () => {
       const accessRes = await apiRequest(`/videos/${videoId}/access-token`, { method: "POST" });
-      if (cancelled || !accessRes.ok || !elBound.isConnected) return;
+      if (cancelled || !elBound.isConnected) return;
+      if (!accessRes.ok) {
+        const err = await accessRes.json().catch(() => ({}));
+        setPlayError(err.message || `Не удалось получить доступ к видео (${accessRes.status})`);
+        return;
+      }
       const accessData = await accessRes.json();
 
       let src;
-      if (streamPath?.startsWith("upload:") || streamPath?.startsWith("/uploads/")) {
+      if (hasUploadedStream(streamPath)) {
         src = `${apiBase}/media/${videoId}?token=${encodeURIComponent(accessData.token)}&did=${encodeURIComponent(deviceId)}`;
       } else {
         src = `${apiBase}/hls/${videoId}/manifest.m3u8?token=${encodeURIComponent(accessData.token)}&did=${encodeURIComponent(deviceId)}`;
@@ -98,6 +118,19 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
         node.addEventListener("canplay", applyInitialSeek, { once: true });
       }
 
+      const onVideoError = () => {
+        const code = node.error?.code;
+        if (code === 4) {
+          setPlayError(
+            "Браузер не может воспроизвести этот файл. Загрузите MP4 (H.264 + AAC) в админке."
+          );
+        } else {
+          setPlayError("Не удалось загрузить видео. Обновите страницу или попробуйте позже.");
+        }
+      };
+      node.addEventListener("error", onVideoError);
+      removeVideoError = () => node.removeEventListener("error", onVideoError);
+
       if (isMp4) {
         node.src = src;
       } else if (Hls.isSupported()) {
@@ -117,12 +150,19 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
           if (!data.fatal) return;
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
             hls.startLoad();
-          } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-            hls.recoverMediaError();
+            return;
           }
+          if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            hls.recoverMediaError();
+            return;
+          }
+          setPlayError("Не удалось загрузить поток HLS.");
         });
       } else if (node.canPlayType("application/vnd.apple.mpegurl")) {
         node.src = src;
+      } else {
+        setPlayError("Ваш браузер не поддерживает воспроизведение этого формата.");
+        return;
       }
 
       intervalRef.current = setInterval(() => {
@@ -134,6 +174,7 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
 
     return () => {
       cancelled = true;
+      removeVideoError?.();
       window.removeEventListener("pagehide", onPageHide);
       const ct = Math.floor(elBound.currentTime || 0);
       if (videoId != null && ct > 0) {
@@ -171,6 +212,11 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
   return (
     <section className="card player-card">
       <h3>Сейчас: {video.title}</h3>
+      {playError ? (
+        <p className="player-error" role="alert">
+          {playError}
+        </p>
+      ) : null}
       <video
         key={video.id}
         ref={videoRef}

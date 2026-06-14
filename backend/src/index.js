@@ -239,6 +239,13 @@ function getIp(req) {
   return req.ip || req.socket.remoteAddress || null;
 }
 
+function normalizeIp(ip) {
+  const value = String(ip || "").trim();
+  if (!value) return "";
+  if (value.startsWith("::ffff:")) return value.slice("::ffff:".length);
+  return value;
+}
+
 function getOrigin(req) {
   return req.headers.origin || "";
 }
@@ -246,6 +253,26 @@ function getOrigin(req) {
 function uaHash(req) {
   const ua = String(req.headers["user-agent"] || "");
   return crypto.createHash("sha256").update(ua).digest("hex");
+}
+
+function setStreamCors(req, res) {
+  const origin = getOrigin(req);
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+    return;
+  }
+  const referer = String(req.headers.referer || "");
+  if (!referer) return;
+  try {
+    const refOrigin = new URL(referer).origin;
+    if (allowedOrigins.includes(refOrigin)) {
+      res.setHeader("Access-Control-Allow-Origin", refOrigin);
+      res.setHeader("Vary", "Origin");
+    }
+  } catch {
+    /* ignore bad referer */
+  }
 }
 
 function getDeviceFromRequest(req) {
@@ -284,18 +311,16 @@ function verifyVideoAccessForHls(req, res, videoId) {
     res.status(401).json({ message: "Invalid device" });
     return null;
   }
-  if (accessPayload.uah && accessPayload.uah !== uaHash(req)) {
-    res.status(401).json({ message: "Invalid user-agent" });
-    return null;
-  }
+  // User-Agent у <video> с другого домена может отличаться от fetch — не проверяем uah.
   const reqOrigin = getOrigin(req);
   // <video src="api..."> не отправляет Origin — не блокировать, если заголовка нет
   if (accessPayload.origin && reqOrigin && accessPayload.origin !== reqOrigin) {
     res.status(401).json({ message: "Invalid origin" });
     return null;
   }
-  const reqIp = getIp(req) || "";
-  if (accessPayload.ip && accessPayload.ip !== reqIp) {
+  const reqIp = normalizeIp(getIp(req));
+  const tokenIp = normalizeIp(accessPayload.ip);
+  if (tokenIp && reqIp && tokenIp !== reqIp) {
     res.status(401).json({ message: "Invalid ip" });
     return null;
   }
@@ -1928,20 +1953,19 @@ app.get("/media/:videoId", async (req, res) => {
     return res.status(401).json({ message: "Invalid access token" });
   }
 
-  // Bind token to device + UA (+ optional IP/origin) to prevent reuse elsewhere.
+  setStreamCors(req, res);
+
   const reqDevice = getDeviceFromRequest(req);
   if (accessPayload.deviceId && accessPayload.deviceId !== reqDevice) {
     return res.status(401).json({ message: "Invalid device" });
-  }
-  if (accessPayload.uah && accessPayload.uah !== uaHash(req)) {
-    return res.status(401).json({ message: "Invalid user-agent" });
   }
   const reqOrigin = getOrigin(req);
   if (accessPayload.origin && reqOrigin && accessPayload.origin !== reqOrigin) {
     return res.status(401).json({ message: "Invalid origin" });
   }
-  const reqIp = getIp(req) || "";
-  if (accessPayload.ip && accessPayload.ip !== reqIp) {
+  const reqIp = normalizeIp(getIp(req));
+  const tokenIp = normalizeIp(accessPayload.ip);
+  if (tokenIp && reqIp && tokenIp !== reqIp) {
     return res.status(401).json({ message: "Invalid ip" });
   }
 

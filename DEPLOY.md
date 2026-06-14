@@ -144,7 +144,7 @@ JWT_SECRET=длинная-случайная-строка-1
 JWT_REFRESH_SECRET=длинная-случайная-строка-2
 DATABASE_URL=postgres://drm_app:Enigma10@localhost:5432/video_platform
 REDIS_URL=redis://127.0.0.1:6379
-ALLOWED_ORIGINS=https://lemexplain.com
+ALLOWED_ORIGINS=https://lemexplain.com,https://www.lemexplain.com
 MAX_DEVICES_PER_USER=2
 HLS_KEY_SECRET=длинная-случайная-строка-3
 ADMIN_EMAIL=admin@lemexplain.com
@@ -280,7 +280,7 @@ npm run build
 
 cd /var/www/lemeexp/backend
 nano .env
-# ALLOWED_ORIGINS=https://lemexplain.com
+# ALLOWED_ORIGINS=https://lemexplain.com,https://www.lemexplain.com
 pm2 restart lemeexp-api
 ```
 

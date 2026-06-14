@@ -37,6 +37,15 @@ export default function VideoLessonPage() {
     );
   }
 
+  if (!video.streamPath?.trim()) {
+    return (
+      <section className="lessons-flow lessons-flow-padded">
+        <p>Видео для этого урока ещё не загружено.</p>
+        <Link to={`/learning/lessons/${subject.id}/chapters/${chapter.id}`}>← К списку видео</Link>
+      </section>
+    );
+  }
+
   return (
     <section className="lessons-flow lessons-flow-padded">
       <div className="breadcrumb">
