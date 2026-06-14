@@ -389,6 +389,8 @@ sudo -u postgres pg_dump video_platform > /var/backups/video_platform_$(date +%F
 | **Welcome to nginx!** по IP | `rm /etc/nginx/sites-enabled/default`, конфиг `nginx-site-ip.conf.example`, `nginx -t && systemctl reload nginx` |
 | CORS error в браузере | Совпадают ли `ALLOWED_ORIGINS` и `VITE_API_URL` при последней сборке frontend |
 | 502 Bad Gateway | `pm2 status`, логи: `pm2 logs lemeexp-api` |
+| **`ERR_MODULE_NOT_FOUND` @mancho.devs/authorizer** | `cd backend && git pull && npm ci --omit=dev && pm2 restart lemeexp-api` |
+| **`ERR_ERL_UNEXPECTED_X_FORWARDED_FOR`** | В `.env`: `TRUST_PROXY=1`, затем `pm2 restart lemeexp-api` (уже в коде по умолчанию) |
 | **`relation "users" does not exist`** при seed | Сначала `npm run db:migrate` (или `npm run db:setup`). Проверьте `DATABASE_URL` в `.env` и что БД `video_platform` существует |
 | 401 / refresh не работает | Redis запущен: `systemctl status redis-server`, проверьте `REDIS_URL` |
 | Видео не играет | Файл в `backend/uploads`, в БД есть `stream_path` |

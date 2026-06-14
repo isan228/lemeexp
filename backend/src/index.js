@@ -29,6 +29,12 @@ dotenv.config();
 
 const { Pool } = pg;
 const app = express();
+
+// Nginx проксирует запросы и передаёт X-Forwarded-For — нужно для rate-limit и req.ip
+if (process.env.TRUST_PROXY !== "false") {
+  app.set("trust proxy", Number(process.env.TRUST_PROXY) || 1);
+}
+
 const port = Number(process.env.PORT || 4000);
 const jwtSecret = process.env.JWT_SECRET || "replace-in-production";
 const jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || "replace-in-production-2";
