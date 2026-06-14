@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { getVideoWatchedSeconds, isLessonVideoCompleted } from "../../utils/videoProgress.js";
+import { isPlayableStream, isProcessingStream } from "../../utils/streamPath.js";
 
 export default function VideosLesson() {
   const { subjectId, chapterId } = useParams();
@@ -75,7 +76,8 @@ export default function VideosLesson() {
       <ul className="video-rows">
         {videos.map((v) => {
           const vId = Number(v.id);
-          const ready = Boolean(v.streamPath?.trim());
+          const ready = isPlayableStream(v.streamPath);
+          const processing = isProcessingStream(v.streamPath);
           const watchedSeconds = getVideoWatchedSeconds(watched, v.id);
           const completed = rowCompleted(v);
           const hasPartialProgress = !completed && watchedSeconds > 0;
@@ -117,7 +119,9 @@ export default function VideosLesson() {
                   <div className="video-meta">
                     <strong>{v.title}</strong>
                     <div className="muted small">{formatMinutes(v.duration || 0)}</div>
-                    <span className="status-badge">Видео загружается</span>
+                    <span className="status-badge">
+                      {processing ? "Подготовка видео…" : "Видео загружается"}
+                    </span>
                   </div>
                 </div>
               )}
@@ -128,7 +132,7 @@ export default function VideosLesson() {
                   </Link>
                 ) : (
                   <span className="btn-secondary inline" style={{ opacity: 0.7, cursor: "default" }}>
-                    Скоро
+                    {processing ? "Готовится" : "Скоро"}
                   </span>
                 )}
                 <Link

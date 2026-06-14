@@ -2,12 +2,9 @@ import Hls from "hls.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiBase } from "../config.js";
 import { getDeviceId } from "../utils/deviceId.js";
-import { mapVideoElementError, probeMediaStream } from "../utils/mediaProbe.js";
+import { mapVideoElementError } from "../utils/mediaProbe.js";
+import { isPlayableStream, isProcessingStream } from "../utils/streamPath.js";
 import { isLessonVideoCompleted } from "../utils/videoProgress.js";
-
-function hasUploadedStream(streamPath) {
-  return Boolean(streamPath?.startsWith("upload:") || streamPath?.startsWith("/uploads/"));
-}
 
 export default function LessonPlayer({ video, apiRequest, onSavePosition, initialPlaybackSeconds = 0 }) {
   const videoRef = useRef(null);
@@ -50,6 +47,14 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
       setPlayError("Видеофайл ещё не загружен. Попробуйте позже или обновите страницу.");
       return;
     }
+    if (isProcessingStream(streamPath)) {
+      setPlayError("Видео готовится к просмотру. Подождите 1–2 минуты и обновите страницу.");
+      return;
+    }
+    if (!isPlayableStream(streamPath)) {
+      setPlayError("Формат урока не поддерживается.");
+      return;
+    }
 
     const onPageHide = () => {
       const elNow = videoRef.current;
@@ -86,26 +91,9 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
         return;
       }
       const accessData = await accessRes.json();
-
-      let src;
-      if (hasUploadedStream(streamPath)) {
-        src = `${apiBase}/media/${videoId}?token=${encodeURIComponent(accessData.token)}&did=${encodeURIComponent(deviceId)}`;
-      } else {
-        src = `${apiBase}/hls/${videoId}/manifest.m3u8?token=${encodeURIComponent(accessData.token)}&did=${encodeURIComponent(deviceId)}`;
-      }
-
-      const isMp4 = src.includes("/media/") || src.endsWith(".mp4");
+      const src = `${apiBase}/hls/${videoId}/manifest.m3u8?token=${encodeURIComponent(accessData.token)}&did=${encodeURIComponent(deviceId)}`;
 
       if (cancelled || !elBound.isConnected) return;
-
-      if (isMp4) {
-        const probe = await probeMediaStream(src);
-        if (cancelled || !elBound.isConnected) return;
-        if (probe.ok === false) {
-          setPlayError(probe.message);
-          return;
-        }
-      }
 
       const node = elBound;
 
@@ -136,9 +124,7 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
       node.addEventListener("error", onVideoError);
       removeVideoError = () => node.removeEventListener("error", onVideoError);
 
-      if (isMp4) {
-        node.src = src;
-      } else if (Hls.isSupported()) {
+      if (Hls.isSupported()) {
         const hls = new Hls({
           enableWorker: false,
           lowLatencyMode: false
@@ -161,7 +147,7 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
             hls.recoverMediaError();
             return;
           }
-          setPlayError("Не удалось загрузить поток HLS.");
+          setPlayError("Не удалось загрузить защищённый поток.");
         });
       } else if (node.canPlayType("application/vnd.apple.mpegurl")) {
         node.src = src;
@@ -222,15 +208,19 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
           {playError}
         </p>
       ) : null}
-      <video
-        key={video.id}
-        ref={videoRef}
-        className="lesson-video"
-        controls
-        playsInline
-        onPause={onPauseSave}
-        onEnded={onEndedSave}
-      />
+      <div className="lesson-video-wrap" onContextMenu={(e) => e.preventDefault()}>
+        <video
+          key={video.id}
+          ref={videoRef}
+          className="lesson-video"
+          controls
+          controlsList="nodownload noplaybackrate noremoteplayback"
+          disablePictureInPicture
+          playsInline
+          onPause={onPauseSave}
+          onEnded={onEndedSave}
+        />
+      </div>
     </section>
   );
 }

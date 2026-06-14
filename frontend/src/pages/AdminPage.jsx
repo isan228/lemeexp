@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
+import { isPlayableStream, isProcessingStream } from "../utils/streamPath.js";
 import "./AdminPage.css";
 
 function swapInList(ids, id, dir) {
@@ -348,6 +349,32 @@ export default function AdminPage() {
     showToast(`Урок «${title}» создан — загрузите mp4`);
   }
 
+  async function pollHlsReady(videoId) {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      const res = await apiRequest(`/admin/videos/${videoId}/hls-status`);
+      if (!res.ok) continue;
+      const data = await res.json().catch(() => ({}));
+      if (data.ready) {
+        await loadAdminCatalog();
+        showToast("Защищённый поток готов к просмотру");
+        return;
+      }
+      if (!data.processing && !data.ready) break;
+    }
+    showToast("Конвертация ещё идёт — обновите каталог через минуту", "error");
+  }
+
+  async function packageExistingVideo(videoId) {
+    const res = await apiRequest(`/admin/videos/${videoId}/package-hls`, { method: "POST" });
+    if (!res.ok) {
+      showToast("Не удалось запустить подготовку видео", "error");
+      return;
+    }
+    showToast("Подготовка защищённого потока…");
+    void pollHlsReady(videoId);
+  }
+
   async function uploadVideoFile(videoId, file) {
     const form = new FormData();
     form.append("file", file);
@@ -358,7 +385,8 @@ export default function AdminPage() {
       return;
     }
     await loadAdminCatalog();
-    showToast("Видео загружено");
+    showToast("Видео загружено, идёт защита и конвертация…");
+    void pollHlsReady(videoId);
   }
 
   function resetNewsForm() {
@@ -846,8 +874,12 @@ export default function AdminPage() {
                               <strong>{v.title}</strong>
                               <div className="adm-lesson-meta">
                                 {formatLessonDuration(v.duration)}
-                                {v.streamPath ? (
-                                  <span className="adm-badge ok"> Видео загружено</span>
+                                {isPlayableStream(v.streamPath) ? (
+                                  <span className="adm-badge ok"> Готово (защищённый HLS)</span>
+                                ) : isProcessingStream(v.streamPath) ? (
+                                  <span className="adm-badge pending"> Конвертация…</span>
+                                ) : v.streamPath ? (
+                                  <span className="adm-badge pending"> Нужна подготовка</span>
                                 ) : (
                                   <span className="adm-badge pending"> Нужен файл</span>
                                 )}
@@ -858,8 +890,8 @@ export default function AdminPage() {
                                 <button type="button" aria-label="Выше" onClick={() => { const ids = selectedSubtopicObj?.videos?.map((x) => x.id) || []; void reorderVideos(selectedSubtopic, swapInList(ids, v.id, -1)); }}>▲</button>
                                 <button type="button" aria-label="Ниже" onClick={() => { const ids = selectedSubtopicObj?.videos?.map((x) => x.id) || []; void reorderVideos(selectedSubtopic, swapInList(ids, v.id, 1)); }}>▼</button>
                               </div>
-                              <label className={`adm-upload${v.streamPath ? " done" : ""}`}>
-                                {v.streamPath ? "Заменить" : "Загрузить mp4"}
+                              <label className={`adm-upload${isPlayableStream(v.streamPath) ? " done" : ""}`}>
+                                {isPlayableStream(v.streamPath) ? "Заменить" : "Загрузить mp4"}
                                 <input
                                   type="file"
                                   accept="video/*"
@@ -871,6 +903,15 @@ export default function AdminPage() {
                                   }}
                                 />
                               </label>
+                              {v.streamPath && !isPlayableStream(v.streamPath) ? (
+                                <button
+                                  type="button"
+                                  className="btn-secondary inline"
+                                  onClick={() => void packageExistingVideo(v.id)}
+                                >
+                                  Подготовить поток
+                                </button>
+                              ) : null}
                             </div>
                           </li>
                         ))}

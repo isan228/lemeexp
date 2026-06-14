@@ -19,8 +19,16 @@ import {
   PLAN_TO_SUBSCRIPTION,
   verifyFinikWebhook
 } from "./finik.js";
+import {
+  buildAuthenticatedManifest,
+  getHlsDir,
+  hlsRoot,
+  isHlsReady,
+  packageVideoToHls,
+  safeSegmentName
+} from "./hlsTranscode.js";
 import { createReadStream, mkdirSync } from "node:fs";
-import { stat } from "node:fs/promises";
+import { access, readFile, stat, writeFile } from "node:fs/promises";
 import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -134,6 +142,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadsDir = path.join(__dirname, "..", "uploads");
 mkdirSync(uploadsDir, { recursive: true });
+mkdirSync(hlsRoot, { recursive: true });
+
+const hlsPackaging = new Map();
 
 app.use(
   helmet({
@@ -1361,7 +1372,47 @@ app.post("/admin/videos/:videoId/upload", auth, requireAdmin, upload.single("fil
     [videoId, streamPath]
   );
   if (!updated.rows[0]) return res.status(404).json({ message: "Video not found" });
-  res.json(updated.rows[0]);
+
+  const inputPath = path.join(uploadsDir, req.file.filename);
+  void queueHlsPackaging(videoId, inputPath, req.file.filename);
+
+  res.json({
+    ...updated.rows[0],
+    hlsProcessing: true
+  });
+});
+
+app.get("/admin/videos/:videoId/hls-status", auth, requireAdmin, async (req, res) => {
+  const videoId = Number(req.params.videoId);
+  if (!dbReady) return res.status(503).json({ message: "DB required for admin" });
+  const row = await pool.query(`select stream_path from videos where id = $1`, [videoId]);
+  if (!row.rows[0]) return res.status(404).json({ message: "Video not found" });
+  const streamPath = row.rows[0].stream_path || "";
+  res.json({
+    streamPath,
+    ready: isProtectedHlsStreamPath(streamPath) && (await isHlsReady(videoId)),
+    processing: hlsPackaging.has(videoId) || streamPath.startsWith("upload:")
+  });
+});
+
+app.post("/admin/videos/:videoId/package-hls", auth, requireAdmin, async (req, res) => {
+  const videoId = Number(req.params.videoId);
+  if (!dbReady) return res.status(503).json({ message: "DB required for admin" });
+  const row = await pool.query(`select stream_path from videos where id = $1`, [videoId]);
+  if (!row.rows[0]) return res.status(404).json({ message: "Video not found" });
+  const streamPath = row.rows[0].stream_path || "";
+  const inputPath = await resolveSourceMp4ForVideo(videoId, streamPath);
+  if (!inputPath) {
+    return res.status(400).json({ message: "No source MP4 for this lesson" });
+  }
+  try {
+    await access(inputPath);
+  } catch {
+    return res.status(404).json({ message: "Source file missing on server" });
+  }
+  const sourceFilename = path.basename(inputPath);
+  await queueHlsPackaging(videoId, inputPath, sourceFilename);
+  res.json({ ok: true, message: "HLS packaging started" });
 });
 
 app.get("/admin/users", auth, requireAdmin, async (_req, res) => {
@@ -1916,91 +1967,78 @@ function getUploadFilenameFromStreamPath(streamPath) {
   return null;
 }
 
-function mediaContentType(filename) {
-  const ext = path.extname(filename).toLowerCase();
-  if (ext === ".mp4" || ext === ".m4v") return "video/mp4";
-  if (ext === ".webm") return "video/webm";
-  return "video/mp4";
+function isProtectedHlsStreamPath(streamPath) {
+  return Boolean(streamPath?.startsWith("hls:"));
 }
 
-// Protected MP4 streaming (MVP): signed URL only, supports Range.
-app.get("/media/:videoId", async (req, res) => {
-  const videoId = Number(req.params.videoId);
-  const accessToken = String(req.query.token || "");
-  if (!accessToken) return res.status(401).json({ message: "Missing video token" });
+function isLegacyDemoStreamPath(streamPath) {
+  return Boolean(streamPath?.startsWith("hls/"));
+}
 
-  let accessPayload;
-  try {
-    accessPayload = jwt.verify(accessToken, jwtSecret);
-    if (accessPayload.type !== "video-access" || Number(accessPayload.videoId) !== videoId) {
-      return res.status(401).json({ message: "Invalid access token" });
+async function queueHlsPackaging(videoId, inputPath, sourceFilename) {
+  if (hlsPackaging.has(videoId)) return hlsPackaging.get(videoId);
+  const job = (async () => {
+    try {
+      await packageVideoToHls(videoId, inputPath);
+      const outDir = getHlsDir(videoId);
+      if (sourceFilename) {
+        await writeFile(path.join(outDir, "source.txt"), sourceFilename, "utf8");
+      }
+      if (dbReady) {
+        await pool.query(`update videos set stream_path = $2 where id = $1`, [videoId, `hls:${videoId}`]);
+      }
+      console.log(`[hls] Video ${videoId} ready (AES-128)`);
+    } catch (error) {
+      console.error(`[hls] Video ${videoId} packaging failed:`, error.message);
+    } finally {
+      hlsPackaging.delete(videoId);
     }
-  } catch {
-    return res.status(401).json({ message: "Invalid access token" });
+  })();
+  hlsPackaging.set(videoId, job);
+  return job;
+}
+
+async function resolveSourceMp4ForVideo(videoId, streamPath) {
+  const fromUpload = getUploadFilenameFromStreamPath(streamPath);
+  if (fromUpload) return path.join(uploadsDir, fromUpload);
+  if (isProtectedHlsStreamPath(streamPath)) {
+    try {
+      const name = (await readFile(path.join(getHlsDir(videoId), "source.txt"), "utf8")).trim();
+      if (name) return path.join(uploadsDir, name);
+    } catch {
+      /* no source metadata */
+    }
   }
+  return null;
+}
 
-  setStreamCors(req, res);
-
-  const reqDevice = getDeviceFromRequest(req);
-  if (accessPayload.deviceId && accessPayload.deviceId !== reqDevice) {
-    return res.status(401).json({ message: "Invalid device" });
-  }
-  const reqOrigin = getOrigin(req);
-  if (accessPayload.origin && reqOrigin && accessPayload.origin !== reqOrigin) {
-    return res.status(401).json({ message: "Invalid origin" });
-  }
-
-  if (!dbReady) return res.status(503).json({ message: "DB required for media" });
-
-  const result = await pool.query(`select stream_path from videos where id = $1`, [videoId]);
-  const streamPath = result.rows[0]?.stream_path || "";
-  const filename = getUploadFilenameFromStreamPath(streamPath);
-  if (!filename) return res.status(404).json({ message: "No uploaded media for this video" });
-
-  const filePath = path.join(uploadsDir, filename);
-  let fileStat;
-  try {
-    fileStat = await stat(filePath);
-  } catch {
-    return res.status(404).json({ message: "File not found" });
-  }
-
-  res.setHeader("Content-Type", mediaContentType(filename));
-  res.setHeader("Cache-Control", "private, no-store");
-  res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
-  res.setHeader("Accept-Ranges", "bytes");
-  res.setHeader("Access-Control-Expose-Headers", "Content-Type, Content-Length, Accept-Ranges, Content-Range");
-
-  const range = req.headers.range;
-  if (!range) {
-    res.setHeader("Content-Length", fileStat.size);
-    return createReadStream(filePath).pipe(res);
-  }
-
-  const match = /^bytes=(\d+)-(\d*)$/.exec(range);
-  if (!match) return res.status(416).send();
-
-  const start = Number(match[1]);
-  const end = match[2]
-    ? Number(match[2])
-    : Math.min(start + 1024 * 1024 - 1, fileStat.size - 1);
-  if (Number.isNaN(start) || Number.isNaN(end) || start >= fileStat.size) {
-    return res.status(416).send();
-  }
-
-  res.status(206);
-  res.setHeader("Content-Range", `bytes ${start}-${end}/${fileStat.size}`);
-  res.setHeader("Content-Length", end - start + 1);
-  return createReadStream(filePath, { start, end }).pipe(res);
+// Прямая выдача MP4 отключена — только зашифрованный HLS.
+app.get("/media/:videoId", (_req, res) => {
+  res.status(403).json({ message: "Direct download disabled. Use HLS stream." });
 });
-app.get("/hls/:videoId/manifest.m3u8", (req, res) => {
+
+app.get("/hls/:videoId/manifest.m3u8", async (req, res) => {
   const videoId = Number(req.params.videoId);
   if (!verifyVideoAccessForHls(req, res, videoId)) return;
 
   const accessToken = String(req.query.token || "");
+  const deviceId = getDeviceFromRequest(req);
+
+  if (await isHlsReady(videoId)) {
+    try {
+      setStreamCors(req, res);
+      const body = await buildAuthenticatedManifest(videoId, req, accessToken, deviceId);
+      res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+      res.setHeader("Cache-Control", "private, no-store");
+      return res.send(body);
+    } catch (error) {
+      return res.status(500).json({ message: "Failed to load HLS manifest", error: error.message });
+    }
+  }
+
   const query = new URLSearchParams({
     token: accessToken,
-    did: getDeviceFromRequest(req)
+    did: deviceId
   }).toString();
   const host = `${req.protocol}://${req.get("host")}`;
   const segment0 = `${host}/hls/${videoId}/segment_000.ts?${query}`;
@@ -2017,9 +2055,32 @@ app.get("/hls/:videoId/manifest.m3u8", (req, res) => {
     "#EXT-X-ENDLIST"
   ].join("\n");
 
+  setStreamCors(req, res);
   res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
   res.setHeader("Cache-Control", "private, max-age=30");
   res.send(body);
+});
+
+app.get("/hls/:videoId/segments/:segmentName", async (req, res) => {
+  const videoId = Number(req.params.videoId);
+  if (!verifyVideoAccessForHls(req, res, videoId)) return;
+
+  const segmentName = safeSegmentName(req.params.segmentName);
+  if (!segmentName) return res.status(400).json({ message: "Invalid segment" });
+
+  const filePath = path.join(getHlsDir(videoId), segmentName);
+  let fileStat;
+  try {
+    fileStat = await stat(filePath);
+  } catch {
+    return res.status(404).json({ message: "Segment not found" });
+  }
+
+  setStreamCors(req, res);
+  res.setHeader("Content-Type", "video/mp2t");
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("Content-Length", fileStat.size);
+  return createReadStream(filePath).pipe(res);
 });
 
 app.get("/hls/:videoId/segment_000.ts", (req, res) => {
@@ -2034,25 +2095,52 @@ app.get("/hls/:videoId/segment_001.ts", (req, res) => {
   res.redirect(302, `${demoHlsRemoteBase}/fileSequence1.ts`);
 });
 
-app.get("/hls/:videoId/key", (req, res) => {
+app.get("/hls/:videoId/key", async (req, res) => {
   const videoId = Number(req.params.videoId);
-  const token = String(req.query.token || "");
-  if (!token) return res.status(401).json({ message: "Missing key token" });
+  if (!verifyVideoAccessForHls(req, res, videoId)) return;
 
+  const keyPath = path.join(getHlsDir(videoId), "enc.key");
   try {
-    const payload = jwt.verify(token, hlsKeySecret);
-    if (payload.type !== "hls-key" || Number(payload.videoId) !== videoId) {
+    const key = await readFile(keyPath);
+    setStreamCors(req, res);
+    res.setHeader("Content-Type", "application/octet-stream");
+    res.setHeader("Cache-Control", "no-store");
+    res.send(key);
+  } catch {
+    const token = String(req.query.token || "");
+    if (!token) return res.status(401).json({ message: "Missing key token" });
+
+    try {
+      const payload = jwt.verify(token, hlsKeySecret);
+      if (payload.type !== "hls-key" || Number(payload.videoId) !== videoId) {
+        return res.status(401).json({ message: "Invalid key token" });
+      }
+    } catch {
       return res.status(401).json({ message: "Invalid key token" });
     }
-  } catch {
-    return res.status(401).json({ message: "Invalid key token" });
-  }
 
-  const key = Buffer.from("00112233445566778899aabbccddeeff", "hex");
-  res.setHeader("Content-Type", "application/octet-stream");
-  res.setHeader("Cache-Control", "no-store");
-  res.send(key);
+    const key = Buffer.from("00112233445566778899aabbccddeeff", "hex");
+    res.setHeader("Content-Type", "application/octet-stream");
+    res.setHeader("Cache-Control", "no-store");
+    res.send(key);
+  }
 });
+
+async function migrateUploadVideosToHls() {
+  if (!pool) return;
+  const result = await pool.query(`select id, stream_path from videos where stream_path like 'upload:%'`);
+  for (const row of result.rows) {
+    const filename = getUploadFilenameFromStreamPath(row.stream_path);
+    if (!filename) continue;
+    const inputPath = path.join(uploadsDir, filename);
+    try {
+      await access(inputPath);
+    } catch {
+      continue;
+    }
+    void queueHlsPackaging(row.id, inputPath, filename);
+  }
+}
 
 function formatRedisConnectError(err) {
   if (!err) return "unknown";
@@ -2114,6 +2202,7 @@ async function start() {
       }
       await seedDemoData();
       dbReady = true;
+      await migrateUploadVideosToHls();
       console.log("PostgreSQL connected");
     } catch (error) {
       dbReady = false;

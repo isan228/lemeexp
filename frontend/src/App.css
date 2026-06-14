@@ -78,6 +78,10 @@ button {
   font-size: 0.95rem;
 }
 
+.lesson-video-wrap {
+  position: relative;
+}
+
 .lesson-video {
   width: 100%;
   min-height: 360px;
