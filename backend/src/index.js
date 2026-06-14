@@ -239,20 +239,8 @@ function getIp(req) {
   return req.ip || req.socket.remoteAddress || null;
 }
 
-function normalizeIp(ip) {
-  const value = String(ip || "").trim();
-  if (!value) return "";
-  if (value.startsWith("::ffff:")) return value.slice("::ffff:".length);
-  return value;
-}
-
 function getOrigin(req) {
   return req.headers.origin || "";
-}
-
-function uaHash(req) {
-  const ua = String(req.headers["user-agent"] || "");
-  return crypto.createHash("sha256").update(ua).digest("hex");
 }
 
 function setStreamCors(req, res) {
@@ -316,12 +304,6 @@ function verifyVideoAccessForHls(req, res, videoId) {
   // <video src="api..."> не отправляет Origin — не блокировать, если заголовка нет
   if (accessPayload.origin && reqOrigin && accessPayload.origin !== reqOrigin) {
     res.status(401).json({ message: "Invalid origin" });
-    return null;
-  }
-  const reqIp = normalizeIp(getIp(req));
-  const tokenIp = normalizeIp(accessPayload.ip);
-  if (tokenIp && reqIp && tokenIp !== reqIp) {
-    res.status(401).json({ message: "Invalid ip" });
     return null;
   }
 
@@ -1909,7 +1891,6 @@ app.post("/videos/:videoId/position", auth, async (req, res) => {
 app.post("/videos/:videoId/access-token", auth, (req, res) => {
   const videoId = Number(req.params.videoId);
   const deviceId = getDeviceFromRequest(req);
-  const ip = getIp(req);
   const origin = getOrigin(req);
   const originOk = origin && allowedOrigins.includes(origin);
 
@@ -1919,8 +1900,6 @@ app.post("/videos/:videoId/access-token", auth, (req, res) => {
       videoId,
       type: "video-access",
       deviceId,
-      ip: ip || "",
-      uah: uaHash(req),
       origin: originOk ? origin : ""
     },
     jwtSecret,
@@ -1935,6 +1914,13 @@ function getUploadFilenameFromStreamPath(streamPath) {
   if (streamPath.startsWith("upload:")) return streamPath.slice("upload:".length);
   if (streamPath.startsWith("/uploads/")) return streamPath.slice("/uploads/".length);
   return null;
+}
+
+function mediaContentType(filename) {
+  const ext = path.extname(filename).toLowerCase();
+  if (ext === ".mp4" || ext === ".m4v") return "video/mp4";
+  if (ext === ".webm") return "video/webm";
+  return "video/mp4";
 }
 
 // Protected MP4 streaming (MVP): signed URL only, supports Range.
@@ -1963,11 +1949,6 @@ app.get("/media/:videoId", async (req, res) => {
   if (accessPayload.origin && reqOrigin && accessPayload.origin !== reqOrigin) {
     return res.status(401).json({ message: "Invalid origin" });
   }
-  const reqIp = normalizeIp(getIp(req));
-  const tokenIp = normalizeIp(accessPayload.ip);
-  if (tokenIp && reqIp && tokenIp !== reqIp) {
-    return res.status(401).json({ message: "Invalid ip" });
-  }
 
   if (!dbReady) return res.status(503).json({ message: "DB required for media" });
 
@@ -1984,10 +1965,11 @@ app.get("/media/:videoId", async (req, res) => {
     return res.status(404).json({ message: "File not found" });
   }
 
-  res.setHeader("Content-Type", "video/mp4");
+  res.setHeader("Content-Type", mediaContentType(filename));
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
   res.setHeader("Accept-Ranges", "bytes");
+  res.setHeader("Access-Control-Expose-Headers", "Content-Type, Content-Length, Accept-Ranges, Content-Range");
 
   const range = req.headers.range;
   if (!range) {

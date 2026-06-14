@@ -1,6 +1,8 @@
 import Hls from "hls.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiBase } from "../config.js";
+import { getDeviceId } from "../utils/deviceId.js";
+import { mapVideoElementError, probeMediaStream } from "../utils/mediaProbe.js";
 import { isLessonVideoCompleted } from "../utils/videoProgress.js";
 
 function hasUploadedStream(streamPath) {
@@ -73,7 +75,7 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
     let cancelled = false;
     let removeVideoError = null;
     const elBound = el;
-    const deviceId = localStorage.getItem("deviceId") || "unknown-device";
+    const deviceId = getDeviceId();
 
     (async () => {
       const accessRes = await apiRequest(`/videos/${videoId}/access-token`, { method: "POST" });
@@ -92,10 +94,20 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
         src = `${apiBase}/hls/${videoId}/manifest.m3u8?token=${encodeURIComponent(accessData.token)}&did=${encodeURIComponent(deviceId)}`;
       }
 
+      const isMp4 = src.includes("/media/") || src.endsWith(".mp4");
+
       if (cancelled || !elBound.isConnected) return;
 
+      if (isMp4) {
+        const probe = await probeMediaStream(src);
+        if (cancelled || !elBound.isConnected) return;
+        if (probe.ok === false) {
+          setPlayError(probe.message);
+          return;
+        }
+      }
+
       const node = elBound;
-      const isMp4 = src.includes("/media/") || src.endsWith(".mp4");
 
       let applyInitialSeek = null;
       if (startAt > 0) {
@@ -119,14 +131,7 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
       }
 
       const onVideoError = () => {
-        const code = node.error?.code;
-        if (code === 4) {
-          setPlayError(
-            "Браузер не может воспроизвести этот файл. Загрузите MP4 (H.264 + AAC) в админке."
-          );
-        } else {
-          setPlayError("Не удалось загрузить видео. Обновите страницу или попробуйте позже.");
-        }
+        setPlayError(mapVideoElementError(node.error?.code));
       };
       node.addEventListener("error", onVideoError);
       removeVideoError = () => node.removeEventListener("error", onVideoError);

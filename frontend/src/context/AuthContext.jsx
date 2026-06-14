@@ -1,8 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 import { apiBase } from "../config.js";
-
-const AuthContext = createContext(null);
+import { getDeviceId } from "../utils/deviceId.js";
 
 const LS_TOKEN = "drm_token";
 const LS_REFRESH = "drm_refresh";
@@ -26,16 +25,6 @@ function readInitialSession() {
   return { token, refresh, profile };
 }
 
-function getDeviceId() {
-  let id = localStorage.getItem("deviceId");
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem("deviceId", id);
-  }
-  return id;
-}
-
-/** В JWT для видео попадает тот же deviceId, что и в ?did= у HLS — нужен заголовок на всех API-запросах. */
 function deviceIdHeaders() {
   if (typeof window === "undefined") return {};
   const id = getDeviceId();
