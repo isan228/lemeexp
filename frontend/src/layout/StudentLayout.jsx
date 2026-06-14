@@ -3,15 +3,22 @@ import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 
 export default function StudentLayout() {
-  const { logout, profile, loadCatalog, token, chapters, apiRequest } = useAuth();
+  const { logout, profile, loadCatalog, token, apiRequest } = useAuth();
   const navigate = useNavigate();
   const [supportUnread, setSupportUnread] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     if (!token) return;
-    if (chapters.length === 0) void loadCatalog();
-  }, [token, chapters.length, loadCatalog]);
+    void loadCatalog();
+  }, [token, loadCatalog]);
+
+  useEffect(() => {
+    if (!token) return;
+    const refresh = () => void loadCatalog();
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [token, loadCatalog]);
 
   useEffect(() => {
     if (!token) return;

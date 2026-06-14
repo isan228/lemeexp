@@ -75,42 +75,62 @@ export default function VideosLesson() {
       <ul className="video-rows">
         {videos.map((v) => {
           const vId = Number(v.id);
+          const ready = Boolean(v.streamPath?.trim());
           const watchedSeconds = getVideoWatchedSeconds(watched, v.id);
           const completed = rowCompleted(v);
           const hasPartialProgress = !completed && watchedSeconds > 0;
-          const isNext = vId === nextVideoId && !completed;
+          const isNext = ready && vId === nextVideoId && !completed;
           const watchHref = hasPartialProgress
             ? `/learning/lessons/${subject.id}/chapters/${chapter.id}/videos/${v.id}?resume=1`
             : `/learning/lessons/${subject.id}/chapters/${chapter.id}/videos/${v.id}`;
           return (
-            <li key={v.id} className="card video-row video-row-youtube">
-              <Link to={watchHref} className="video-row-link">
-                <div className="video-thumb" aria-hidden="true">
-                  <img
-                    src={`https://picsum.photos/seed/drm-lesson-${v.id}/640/360`}
-                    alt={v.title}
-                    loading="lazy"
-                    className="video-thumb-img"
-                  />
-                  <span className="video-thumb-play">▶</span>
-                  <span className="video-thumb-duration">{formatClock(v.duration || 0)}</span>
-                </div>
-                <div className="video-meta">
-                  <strong>{v.title}</strong>
-                  <div className="muted small">{formatMinutes(v.duration || 0)}</div>
-                  <div className="video-statuses">
-                    {completed ? <span className="status-badge status-done">Просмотрено</span> : null}
-                    {hasPartialProgress ? (
-                      <span className="status-badge status-stopped">Остановились: {formatClock(watchedSeconds)}</span>
-                    ) : null}
-                    {isNext ? <span className="status-badge status-next">Следующее</span> : null}
+            <li key={v.id} className={`card video-row video-row-youtube${ready ? "" : " video-row-pending"}`}>
+              {ready ? (
+                <Link to={watchHref} className="video-row-link">
+                  <div className="video-thumb" aria-hidden="true">
+                    <img
+                      src={`https://picsum.photos/seed/drm-lesson-${v.id}/640/360`}
+                      alt={v.title}
+                      loading="lazy"
+                      className="video-thumb-img"
+                    />
+                    <span className="video-thumb-play">▶</span>
+                    <span className="video-thumb-duration">{formatClock(v.duration || 0)}</span>
+                  </div>
+                  <div className="video-meta">
+                    <strong>{v.title}</strong>
+                    <div className="muted small">{formatMinutes(v.duration || 0)}</div>
+                    <div className="video-statuses">
+                      {completed ? <span className="status-badge status-done">Просмотрено</span> : null}
+                      {hasPartialProgress ? (
+                        <span className="status-badge status-stopped">Остановились: {formatClock(watchedSeconds)}</span>
+                      ) : null}
+                      {isNext ? <span className="status-badge status-next">Следующее</span> : null}
+                    </div>
+                  </div>
+                </Link>
+              ) : (
+                <div className="video-row-link video-row-link-disabled">
+                  <div className="video-thumb" aria-hidden="true">
+                    <span className="video-thumb-play">⏳</span>
+                  </div>
+                  <div className="video-meta">
+                    <strong>{v.title}</strong>
+                    <div className="muted small">{formatMinutes(v.duration || 0)}</div>
+                    <span className="status-badge">Видео загружается</span>
                   </div>
                 </div>
-              </Link>
+              )}
               <div className="video-row-actions">
-                <Link to={watchHref} className="btn-primary inline">
-                  {hasPartialProgress ? "Продолжить" : "Смотреть"}
-                </Link>
+                {ready ? (
+                  <Link to={watchHref} className="btn-primary inline">
+                    {hasPartialProgress ? "Продолжить" : "Смотреть"}
+                  </Link>
+                ) : (
+                  <span className="btn-secondary inline" style={{ opacity: 0.7, cursor: "default" }}>
+                    Скоро
+                  </span>
+                )}
                 <Link
                   to={`/learning/support?videoId=${v.id}&videoTitle=${encodeURIComponent(v.title || "")}`}
                   className="btn-secondary inline"

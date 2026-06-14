@@ -289,7 +289,8 @@ function verifyVideoAccessForHls(req, res, videoId) {
     return null;
   }
   const reqOrigin = getOrigin(req);
-  if (accessPayload.origin && accessPayload.origin !== reqOrigin) {
+  // <video src="api..."> не отправляет Origin — не блокировать, если заголовка нет
+  if (accessPayload.origin && reqOrigin && accessPayload.origin !== reqOrigin) {
     res.status(401).json({ message: "Invalid origin" });
     return null;
   }
@@ -1936,7 +1937,7 @@ app.get("/media/:videoId", async (req, res) => {
     return res.status(401).json({ message: "Invalid user-agent" });
   }
   const reqOrigin = getOrigin(req);
-  if (accessPayload.origin && accessPayload.origin !== reqOrigin) {
+  if (accessPayload.origin && reqOrigin && accessPayload.origin !== reqOrigin) {
     return res.status(401).json({ message: "Invalid origin" });
   }
   const reqIp = getIp(req) || "";
