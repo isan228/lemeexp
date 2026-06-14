@@ -14,13 +14,19 @@ function swapInList(ids, id, dir) {
 }
 
 const ADMIN_TABS = [
-  { id: "subjects", label: "Предметы" },
-  { id: "chapters", label: "Главы" },
-  { id: "videos", label: "Видео" },
+  { id: "content", label: "Курсы и уроки" },
   { id: "users", label: "Пользователи" },
   { id: "news", label: "Новости" },
   { id: "support", label: "Чат" }
 ];
+
+function formatLessonDuration(seconds) {
+  const total = Number(seconds || 0);
+  if (total <= 0) return "—";
+  const min = Math.floor(total / 60);
+  const sec = total % 60;
+  return sec ? `${min} мин ${sec} сек` : `${min} мин`;
+}
 
 export default function AdminPage() {
   const navigate = useNavigate();
@@ -29,7 +35,7 @@ export default function AdminPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
-  const [tab, setTab] = useState("subjects");
+  const [tab, setTab] = useState("content");
 
   const [adminCatalog, setAdminCatalog] = useState([]);
   const [selectedCourse, setSelectedCourse] = useState(null);
@@ -37,8 +43,9 @@ export default function AdminPage() {
   const [newCourseTitle, setNewCourseTitle] = useState("");
   const [newSubtopicTitle, setNewSubtopicTitle] = useState("");
   const [newVideoTitle, setNewVideoTitle] = useState("");
-  const [newVideoDuration, setNewVideoDuration] = useState(0);
+  const [newVideoDurationMin, setNewVideoDurationMin] = useState("");
   const [catalogError, setCatalogError] = useState("");
+  const [catalogNotice, setCatalogNotice] = useState("");
 
   const [users, setUsers] = useState([]);
   const [usersError, setUsersError] = useState("");
@@ -77,6 +84,18 @@ export default function AdminPage() {
     }
     return null;
   }, [adminCatalog, selectedSubtopic]);
+
+  const contentPath = useMemo(() => {
+    const parts = [];
+    if (selectedCourseObj) parts.push(selectedCourseObj.title);
+    if (selectedSubtopicObj) parts.push(selectedSubtopicObj.title);
+    return parts;
+  }, [selectedCourseObj, selectedSubtopicObj]);
+
+  function showCatalogNotice(text) {
+    setCatalogNotice(text);
+    setTimeout(() => setCatalogNotice(""), 4000);
+  }
 
   const supportUsersOrdered = useMemo(() => {
     return users
@@ -220,6 +239,7 @@ export default function AdminPage() {
   async function createCourse() {
     const title = newCourseTitle.trim();
     if (!title) return;
+    setCatalogError("");
     await apiRequest("/admin/courses", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -227,11 +247,13 @@ export default function AdminPage() {
     });
     setNewCourseTitle("");
     await loadAdminCatalog();
+    showCatalogNotice(`Предмет «${title}» добавлен`);
   }
 
   async function createSubtopic() {
     const title = newSubtopicTitle.trim();
     if (!title || !selectedCourse) return;
+    setCatalogError("");
     await apiRequest("/admin/subtopics", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -239,24 +261,29 @@ export default function AdminPage() {
     });
     setNewSubtopicTitle("");
     await loadAdminCatalog();
+    showCatalogNotice(`Глава «${title}» добавлена`);
   }
 
   async function createVideo() {
     const title = newVideoTitle.trim();
     if (!title || !selectedSubtopic) return;
+    const minutes = Number(newVideoDurationMin);
+    const durationSec = Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes * 60) : 0;
+    setCatalogError("");
     await apiRequest("/admin/videos", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         subtopicId: selectedSubtopic,
         title,
-        duration: Number(newVideoDuration || 0),
+        duration: durationSec,
         streamPath: ""
       })
     });
     setNewVideoTitle("");
-    setNewVideoDuration(0);
+    setNewVideoDurationMin("");
     await loadAdminCatalog();
+    showCatalogNotice(`Урок «${title}» добавлен — загрузите видеофайл`);
   }
 
   async function uploadVideoFile(videoId, file) {
@@ -268,6 +295,7 @@ export default function AdminPage() {
       return;
     }
     await loadAdminCatalog();
+    showCatalogNotice("Видеофайл загружен");
   }
 
   function resetNewsForm() {
@@ -505,257 +533,292 @@ export default function AdminPage() {
         ))}
       </nav>
 
-      {catalogError && tab !== "users" && tab !== "news" && <div className="admin-banner">{catalogError}</div>}
+      {catalogError && tab === "content" && <div className="admin-banner">{catalogError}</div>}
+      {catalogNotice && tab === "content" && <div className="admin-notice">{catalogNotice}</div>}
       {usersError && tab === "users" && <div className="admin-banner">{usersError}</div>}
       {newsError && tab === "news" && <div className="admin-banner">{newsError}</div>}
       {chatError && tab === "support" && <div className="admin-banner">{chatError}</div>}
 
-      {tab === "subjects" && (
-        <div className="admin-tab-panel">
-          <section className="card admin-panel-card">
-            <h2>Предметы</h2>
-            <p className="muted small">Создание и порядок курсов (предметов).</p>
-            <div className="admin-inline-form">
-              <input value={newCourseTitle} onChange={(e) => setNewCourseTitle(e.target.value)} placeholder="Название предмета" />
-              <button type="button" className="btn-primary" onClick={() => void createCourse()}>
-                Добавить предмет
-              </button>
-            </div>
-            <ul className="admin-select-list">
-              {adminCatalog.map((course) => (
-                <li key={course.id}>
-                  <button
-                    type="button"
-                    className={selectedCourse === course.id ? "pick-row active" : "pick-row"}
-                    onClick={() => {
-                      setSelectedCourse(course.id);
-                      setSelectedSubtopic(course.subtopics?.[0]?.id ?? null);
-                    }}
-                  >
-                    {course.title}
-                  </button>
-                  <div className="reorder">
-                    <button type="button" aria-label="Выше" onClick={() => void reorderCourses(swapInList(adminCatalog.map((c) => c.id), course.id, -1))}>
-                      ↑
-                    </button>
-                    <button type="button" aria-label="Ниже" onClick={() => void reorderCourses(swapInList(adminCatalog.map((c) => c.id), course.id, 1))}>
-                      ↓
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
+      {tab === "content" && (
+        <div className="admin-content-page">
+          <section className="admin-guide card">
+            <h2>Как добавить урок</h2>
+            <ol className="admin-guide-steps">
+              <li className={selectedCourse ? "done" : "active"}>
+                <strong>Шаг 1.</strong> Создайте или выберите <em>предмет</em> (например, «Биохимия»).
+              </li>
+              <li className={selectedCourse && !selectedSubtopic ? "active" : selectedSubtopic ? "done" : ""}>
+                <strong>Шаг 2.</strong> В этом предмете добавьте <em>главу</em> (раздел курса).
+              </li>
+              <li className={selectedSubtopic ? "active" : ""}>
+                <strong>Шаг 3.</strong> В главе создайте <em>урок</em> и загрузите видеофайл (mp4).
+              </li>
+            </ol>
+            {contentPath.length > 0 && (
+              <p className="admin-breadcrumb" aria-label="Текущий путь">
+                {contentPath.map((part, i) => (
+                  <span key={part}>
+                    {i > 0 ? " → " : ""}
+                    {part}
+                  </span>
+                ))}
+              </p>
+            )}
           </section>
-        </div>
-      )}
 
-      {tab === "chapters" && (
-        <div className="admin-tab-panel">
-          <section className="card admin-panel-card">
-            <h2>Главы</h2>
-            <p className="muted small">Выберите предмет, затем добавляйте или упорядочивайте главы.</p>
-            <label className="admin-field-label">
-              Предмет
-              <select
-                className="admin-select"
-                value={selectedCourse ?? ""}
-                onChange={(e) => {
-                  const v = e.target.value ? Number(e.target.value) : null;
-                  setSelectedCourse(v);
-                  const c = adminCatalog.find((x) => x.id === v);
-                  setSelectedSubtopic(c?.subtopics?.[0]?.id ?? null);
+          <div className="admin-workspace admin-content-grid">
+            <section className="admin-column card">
+              <div className="admin-column-head">
+                <span className="admin-step-badge">1</span>
+                <div>
+                  <h2>Предметы</h2>
+                  <p className="muted small">Верхний уровень каталога — дисциплина или курс.</p>
+                </div>
+              </div>
+              <form
+                className="admin-add-form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void createCourse();
                 }}
               >
-                {adminCatalog.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="admin-inline-form">
-              <input
-                value={newSubtopicTitle}
-                onChange={(e) => setNewSubtopicTitle(e.target.value)}
-                placeholder="Название главы"
-                disabled={!selectedCourse}
-              />
-              <button type="button" className="btn-primary" disabled={!selectedCourse} onClick={() => void createSubtopic()}>
-                Добавить главу
-              </button>
-            </div>
-            <ul className="admin-select-list">
-              {(selectedCourseObj?.subtopics || []).map((st) => (
-                <li key={st.id}>
-                  <button type="button" className={selectedSubtopic === st.id ? "pick-row active" : "pick-row"} onClick={() => setSelectedSubtopic(st.id)}>
-                    {st.title}
-                  </button>
-                  <div className="reorder">
-                    <button
-                      type="button"
-                      aria-label="Выше"
-                      onClick={() => {
-                        const ids = selectedCourseObj?.subtopics?.map((s) => s.id) || [];
-                        void reorderSubtopics(selectedCourse, swapInList(ids, st.id, -1));
-                      }}
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Ниже"
-                      onClick={() => {
-                        const ids = selectedCourseObj?.subtopics?.map((s) => s.id) || [];
-                        void reorderSubtopics(selectedCourse, swapInList(ids, st.id, 1));
-                      }}
-                    >
-                      ↓
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
-        </div>
-      )}
-
-      {tab === "videos" && (
-        <div className="admin-workspace">
-          <section className="admin-column card">
-            <h2>Предмет</h2>
-            <ul className="admin-select-list">
-              {adminCatalog.map((course) => (
-                <li key={course.id}>
-                  <button
-                    type="button"
-                    className={selectedCourse === course.id ? "pick-row active" : "pick-row"}
-                    onClick={() => {
-                      setSelectedCourse(course.id);
-                      setSelectedSubtopic(course.subtopics?.[0]?.id ?? null);
-                    }}
-                  >
-                    {course.title}
-                  </button>
-                  <div className="reorder">
-                    <button type="button" aria-label="Выше" onClick={() => void reorderCourses(swapInList(adminCatalog.map((c) => c.id), course.id, -1))}>
-                      ↑
-                    </button>
-                    <button type="button" aria-label="Ниже" onClick={() => void reorderCourses(swapInList(adminCatalog.map((c) => c.id), course.id, 1))}>
-                      ↓
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          <section className="admin-column card">
-            <h2>Глава</h2>
-            <ul className="admin-select-list">
-              {(selectedCourseObj?.subtopics || []).map((st) => (
-                <li key={st.id}>
-                  <button type="button" className={selectedSubtopic === st.id ? "pick-row active" : "pick-row"} onClick={() => setSelectedSubtopic(st.id)}>
-                    {st.title}
-                  </button>
-                  <div className="reorder">
-                    <button
-                      type="button"
-                      aria-label="Выше"
-                      onClick={() => {
-                        const ids = selectedCourseObj?.subtopics?.map((s) => s.id) || [];
-                        void reorderSubtopics(selectedCourse, swapInList(ids, st.id, -1));
-                      }}
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Ниже"
-                      onClick={() => {
-                        const ids = selectedCourseObj?.subtopics?.map((s) => s.id) || [];
-                        void reorderSubtopics(selectedCourse, swapInList(ids, st.id, 1));
-                      }}
-                    >
-                      ↓
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          <section className="admin-column card admin-column-wide">
-            <h2>Видео</h2>
-            <p className="muted small">Внутри выбранной главы — загрузка mp4 для стриминга</p>
-            <div className="admin-inline-form admin-inline-form-wrap">
-              <input
-                value={newVideoTitle}
-                onChange={(e) => setNewVideoTitle(e.target.value)}
-                placeholder="Название видео"
-                disabled={!selectedSubtopic}
-              />
-              <input
-                type="number"
-                min={0}
-                value={newVideoDuration}
-                onChange={(e) => setNewVideoDuration(Number(e.target.value))}
-                placeholder="Длительность, сек"
-                disabled={!selectedSubtopic}
-              />
-              <button type="button" className="btn-primary" disabled={!selectedSubtopic} onClick={() => void createVideo()}>
-                Добавить видео
-              </button>
-            </div>
-
-            <ul className="admin-video-list">
-              {(selectedSubtopicObj?.videos || []).map((v) => (
-                <li key={v.id} className="admin-video-item card">
-                  <div>
-                    <div className="video-title-line">
-                      <strong>#{v.id}</strong> {v.title}
-                    </div>
-                    <div className="muted small">Файл: {v.streamPath || "—"}</div>
-                  </div>
-                  <div className="admin-video-actions">
-                    <div className="reorder">
+                <label>
+                  Название предмета
+                  <input
+                    value={newCourseTitle}
+                    onChange={(e) => setNewCourseTitle(e.target.value)}
+                    placeholder="Например: Биохимия"
+                  />
+                </label>
+                <button type="submit" className="btn-primary" disabled={!newCourseTitle.trim()}>
+                  + Добавить предмет
+                </button>
+              </form>
+              {adminCatalog.length === 0 ? (
+                <p className="admin-empty">Предметов пока нет. Добавьте первый выше.</p>
+              ) : (
+                <ul className="admin-select-list">
+                  {adminCatalog.map((course) => (
+                    <li key={course.id}>
                       <button
                         type="button"
-                        aria-label="Выше"
+                        className={selectedCourse === course.id ? "pick-row active" : "pick-row"}
                         onClick={() => {
-                          const ids = selectedSubtopicObj?.videos?.map((x) => x.id) || [];
-                          void reorderVideos(selectedSubtopic, swapInList(ids, v.id, -1));
+                          setSelectedCourse(course.id);
+                          setSelectedSubtopic(course.subtopics?.[0]?.id ?? null);
                         }}
                       >
-                        ↑
+                        <span className="pick-row-title">{course.title}</span>
+                        <span className="muted small">
+                          {course.subtopics?.length || 0}{" "}
+                          {(course.subtopics?.length || 0) === 1 ? "глава" : "глав"}
+                        </span>
                       </button>
+                      <div className="reorder">
+                        <button
+                          type="button"
+                          aria-label="Выше"
+                          onClick={() => void reorderCourses(swapInList(adminCatalog.map((c) => c.id), course.id, -1))}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Ниже"
+                          onClick={() => void reorderCourses(swapInList(adminCatalog.map((c) => c.id), course.id, 1))}
+                        >
+                          ↓
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <section className={`admin-column card${!selectedCourse ? " admin-column-disabled" : ""}`}>
+              <div className="admin-column-head">
+                <span className="admin-step-badge">2</span>
+                <div>
+                  <h2>Главы</h2>
+                  <p className="muted small">
+                    {selectedCourseObj
+                      ? `Разделы предмета «${selectedCourseObj.title}»`
+                      : "Сначала выберите предмет слева"}
+                  </p>
+                </div>
+              </div>
+              <form
+                className="admin-add-form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void createSubtopic();
+                }}
+              >
+                <label>
+                  Название главы
+                  <input
+                    value={newSubtopicTitle}
+                    onChange={(e) => setNewSubtopicTitle(e.target.value)}
+                    placeholder="Например: Белки и ферменты"
+                    disabled={!selectedCourse}
+                  />
+                </label>
+                <button type="submit" className="btn-primary" disabled={!selectedCourse || !newSubtopicTitle.trim()}>
+                  + Добавить главу
+                </button>
+              </form>
+              {!selectedCourse ? (
+                <p className="admin-empty">Выберите предмет, чтобы управлять главами.</p>
+              ) : (selectedCourseObj?.subtopics || []).length === 0 ? (
+                <p className="admin-empty">В этом предмете ещё нет глав. Добавьте первую.</p>
+              ) : (
+                <ul className="admin-select-list">
+                  {(selectedCourseObj?.subtopics || []).map((st) => (
+                    <li key={st.id}>
                       <button
                         type="button"
-                        aria-label="Ниже"
-                        onClick={() => {
-                          const ids = selectedSubtopicObj?.videos?.map((x) => x.id) || [];
-                          void reorderVideos(selectedSubtopic, swapInList(ids, v.id, 1));
-                        }}
+                        className={selectedSubtopic === st.id ? "pick-row active" : "pick-row"}
+                        onClick={() => setSelectedSubtopic(st.id)}
                       >
-                        ↓
+                        <span className="pick-row-title">{st.title}</span>
+                        <span className="muted small">
+                          {st.videos?.length || 0}{" "}
+                          {(st.videos?.length || 0) === 1 ? "урок" : "уроков"}
+                        </span>
                       </button>
-                    </div>
-                    <label className="upload-label">
-                      Загрузить
-                      <input
-                        type="file"
-                        accept="video/*"
-                        className="sr-only"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) void uploadVideoFile(v.id, file);
-                        }}
-                      />
-                    </label>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
+                      <div className="reorder">
+                        <button
+                          type="button"
+                          aria-label="Выше"
+                          onClick={() => {
+                            const ids = selectedCourseObj?.subtopics?.map((s) => s.id) || [];
+                            void reorderSubtopics(selectedCourse, swapInList(ids, st.id, -1));
+                          }}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Ниже"
+                          onClick={() => {
+                            const ids = selectedCourseObj?.subtopics?.map((s) => s.id) || [];
+                            void reorderSubtopics(selectedCourse, swapInList(ids, st.id, 1));
+                          }}
+                        >
+                          ↓
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <section className={`admin-column card admin-column-wide${!selectedSubtopic ? " admin-column-disabled" : ""}`}>
+              <div className="admin-column-head">
+                <span className="admin-step-badge">3</span>
+                <div>
+                  <h2>Уроки</h2>
+                  <p className="muted small">
+                    {selectedSubtopicObj
+                      ? `Видеоуроки в главе «${selectedSubtopicObj.title}»`
+                      : "Сначала выберите главу"}
+                  </p>
+                </div>
+              </div>
+              <form
+                className="admin-add-form admin-add-form-lesson"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void createVideo();
+                }}
+              >
+                <label>
+                  Название урока
+                  <input
+                    value={newVideoTitle}
+                    onChange={(e) => setNewVideoTitle(e.target.value)}
+                    placeholder="Например: Введение в белки"
+                    disabled={!selectedSubtopic}
+                  />
+                </label>
+                <label>
+                  Длительность (мин)
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={newVideoDurationMin}
+                    onChange={(e) => setNewVideoDurationMin(e.target.value)}
+                    placeholder="15"
+                    disabled={!selectedSubtopic}
+                  />
+                </label>
+                <button type="submit" className="btn-primary" disabled={!selectedSubtopic || !newVideoTitle.trim()}>
+                  + Добавить урок
+                </button>
+              </form>
+              {!selectedSubtopic ? (
+                <p className="admin-empty">Выберите главу, чтобы добавлять уроки.</p>
+              ) : (selectedSubtopicObj?.videos || []).length === 0 ? (
+                <p className="admin-empty">В этой главе пока нет уроков. Создайте урок и загрузите mp4.</p>
+              ) : (
+                <ul className="admin-video-list">
+                  {(selectedSubtopicObj?.videos || []).map((v) => (
+                    <li key={v.id} className="admin-video-item card">
+                      <div>
+                        <div className="video-title-line">
+                          <strong>{v.title}</strong>
+                        </div>
+                        <div className="muted small">
+                          {formatLessonDuration(v.duration)}
+                          {v.streamPath ? " · видео загружено" : " · нужно загрузить файл"}
+                        </div>
+                      </div>
+                      <div className="admin-video-actions">
+                        <div className="reorder">
+                          <button
+                            type="button"
+                            aria-label="Выше"
+                            onClick={() => {
+                              const ids = selectedSubtopicObj?.videos?.map((x) => x.id) || [];
+                              void reorderVideos(selectedSubtopic, swapInList(ids, v.id, -1));
+                            }}
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Ниже"
+                            onClick={() => {
+                              const ids = selectedSubtopicObj?.videos?.map((x) => x.id) || [];
+                              void reorderVideos(selectedSubtopic, swapInList(ids, v.id, 1));
+                            }}
+                          >
+                            ↓
+                          </button>
+                        </div>
+                        <label className={`upload-label${v.streamPath ? " upload-label-done" : ""}`}>
+                          {v.streamPath ? "Заменить видео" : "Загрузить mp4"}
+                          <input
+                            type="file"
+                            accept="video/*"
+                            className="sr-only"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) void uploadVideoFile(v.id, file);
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
         </div>
       )}
 
