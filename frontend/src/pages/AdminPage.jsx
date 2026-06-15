@@ -880,11 +880,30 @@ export default function AdminPage() {
   }
 
   async function uploadVideoFile(videoId, file) {
+    const maxBytes = 2 * 1024 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      setCatalogError("Файл больше 2 ГБ — уменьшите размер или сожмите видео.");
+      showToast("Файл слишком большой", "error");
+      return;
+    }
+
     const form = new FormData();
     form.append("file", file);
-    const res = await apiRequest(`/admin/videos/${videoId}/upload`, { method: "POST", body: form });
-    if (!res.ok) {
-      setCatalogError("Загрузка файла не удалась");
+    try {
+      const res = await apiRequest(`/admin/videos/${videoId}/upload`, { method: "POST", body: form });
+      if (!res.ok) {
+        const msg =
+          res.status === 413
+            ? "Файл слишком большой для сервера. На VPS в nginx для api.lemexplain.com задайте client_max_body_size 2G (в блоке HTTPS)."
+            : "Загрузка файла не удалась";
+        setCatalogError(msg);
+        showToast(res.status === 413 ? "Файл слишком большой (413)" : "Ошибка загрузки видео", "error");
+        return;
+      }
+    } catch {
+      setCatalogError(
+        "Загрузка не удалась. Частая причина — лимит nginx (413): в конфиге api.lemexplain.com нужен client_max_body_size 2G на порту 443."
+      );
       showToast("Ошибка загрузки видео", "error");
       return;
     }

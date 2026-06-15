@@ -243,7 +243,7 @@ server {
     listen [::]:80;
     server_name api.lemexplain.com;
 
-    client_max_body_size 512M;
+    client_max_body_size 2G;
 
     location / {
         proxy_pass http://127.0.0.1:4000;
@@ -288,6 +288,23 @@ pm2 restart lemeexp-api
 
 ```bash
 certbot --nginx -d lemexplain.com -d www.lemexplain.com -d api.lemexplain.com
+```
+
+После certbot откройте конфиг и **в HTTPS-блоке** `api.lemexplain.com` (listen 443) добавьте те же лимиты, что для HTTP:
+
+```nginx
+client_max_body_size 2G;
+proxy_read_timeout 600s;
+proxy_send_timeout 600s;
+proxy_request_buffering off;
+```
+
+Без `client_max_body_size` на порту 443 загрузка mp4 в админке падает с **413**; браузер дополнительно пишет про CORS, потому что ответ 413 от nginx не содержит CORS-заголовки.
+
+```bash
+grep -n client_max_body_size /etc/nginx/sites-enabled/lemeexp
+sudo nano /etc/nginx/sites-available/lemeexp
+sudo nginx -t && sudo systemctl reload nginx
 ```
 
 ### Проверки

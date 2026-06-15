@@ -2847,6 +2847,15 @@ app.get("/hls/:videoId/key", async (req, res) => {
   }
 });
 
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    const message =
+      err.code === "LIMIT_FILE_SIZE" ? "File too large (max 1 GB)" : err.message;
+    return res.status(413).json({ message });
+  }
+  return next(err);
+});
+
 async function migrateUploadVideosToHls() {
   if (!pool) return;
   const result = await pool.query(`select id, stream_path from videos where stream_path like 'upload:%'`);
