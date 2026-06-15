@@ -543,6 +543,64 @@
   gap: 6px;
 }
 
+.adm-list-item.is-editing {
+  flex-direction: column;
+}
+
+.adm-list-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.adm-list-edit {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--adm-primary);
+  border-radius: 8px;
+  background: var(--adm-primary-soft);
+}
+
+.adm-list-edit input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--adm-border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  background: #fff;
+}
+
+.adm-list-edit-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.adm-lesson.is-editing {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.adm-lesson-edit {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--adm-primary);
+  border-radius: 8px;
+  background: var(--adm-primary-soft);
+}
+
+.adm-lesson-edit .adm-form-row {
+  margin-bottom: 0;
+}
+
 .adm-list-btn {
   flex: 1;
   display: flex;

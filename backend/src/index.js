@@ -187,16 +187,34 @@ const progressSchema = z.object({
 });
 
 const courseSchema = z.object({ title: z.string().min(1) });
+const courseUpdateSchema = z.object({ title: z.string().min(1) });
 const subtopicSchema = z.object({
   courseId: z.coerce.number().int(),
   title: z.string().min(1)
 });
+const subtopicUpdateSchema = z
+  .object({
+    title: z.string().min(1).optional(),
+    courseId: z.coerce.number().int().optional()
+  })
+  .refine((data) => data.title !== undefined || data.courseId !== undefined, {
+    message: "No fields to update"
+  });
 const videoSchema = z.object({
   subtopicId: z.coerce.number().int(),
   title: z.string().min(1),
   duration: z.coerce.number().int().min(0).optional().default(0),
   streamPath: z.string().optional().default("")
 });
+const videoUpdateSchema = z
+  .object({
+    title: z.string().min(1).optional(),
+    duration: z.coerce.number().int().min(0).optional(),
+    subtopicId: z.coerce.number().int().optional()
+  })
+  .refine((data) => data.title !== undefined || data.duration !== undefined || data.subtopicId !== undefined, {
+    message: "No fields to update"
+  });
 const reorderSchema = z.object({
   courses: z.array(z.coerce.number().int()).optional(),
   subtopics: z
@@ -1277,6 +1295,27 @@ app.post("/admin/courses", auth, requireAdmin, async (req, res) => {
   res.status(201).json(created.rows[0]);
 });
 
+app.patch("/admin/courses/:courseId", auth, requireAdmin, async (req, res) => {
+  const courseId = Number(req.params.courseId);
+  if (!Number.isFinite(courseId)) return res.status(400).json({ message: "Invalid id" });
+  const parsed = courseUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
+  }
+  if (!dbReady) return res.status(503).json({ message: "DB required for admin" });
+
+  try {
+    const updated = await pool.query(
+      `update courses set title = $2 where id = $1 returning id, title, "order"`,
+      [courseId, parsed.data.title]
+    );
+    if (!updated.rows[0]) return res.status(404).json({ message: "Course not found" });
+    return res.json(updated.rows[0]);
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to update course", error: error.message });
+  }
+});
+
 app.post("/admin/subtopics", auth, requireAdmin, async (req, res) => {
   const parsed = subtopicSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -1295,6 +1334,40 @@ app.post("/admin/subtopics", auth, requireAdmin, async (req, res) => {
     [parsed.data.courseId, parsed.data.title, nextOrder]
   );
   res.status(201).json(created.rows[0]);
+});
+
+app.patch("/admin/subtopics/:subtopicId", auth, requireAdmin, async (req, res) => {
+  const subtopicId = Number(req.params.subtopicId);
+  if (!Number.isFinite(subtopicId)) return res.status(400).json({ message: "Invalid id" });
+  const parsed = subtopicUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
+  }
+  if (!dbReady) return res.status(503).json({ message: "DB required for admin" });
+
+  try {
+    const fields = [];
+    const values = [];
+    let p = 1;
+    if (parsed.data.title !== undefined) {
+      fields.push(`title = $${p++}`);
+      values.push(parsed.data.title);
+    }
+    if (parsed.data.courseId !== undefined) {
+      fields.push(`course_id = $${p++}`);
+      values.push(parsed.data.courseId);
+    }
+    values.push(subtopicId);
+    const updated = await pool.query(
+      `update subtopics set ${fields.join(", ")} where id = $${p}
+       returning id, course_id, title, "order"`,
+      values
+    );
+    if (!updated.rows[0]) return res.status(404).json({ message: "Subtopic not found" });
+    return res.json(updated.rows[0]);
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to update subtopic", error: error.message });
+  }
 });
 
 app.post("/admin/videos", auth, requireAdmin, async (req, res) => {
@@ -1316,6 +1389,51 @@ app.post("/admin/videos", auth, requireAdmin, async (req, res) => {
     [parsed.data.subtopicId, parsed.data.title, parsed.data.duration, parsed.data.streamPath, nextOrder]
   );
   res.status(201).json(created.rows[0]);
+});
+
+app.patch("/admin/videos/:videoId", auth, requireAdmin, async (req, res) => {
+  const videoId = Number(req.params.videoId);
+  if (!Number.isFinite(videoId)) return res.status(400).json({ message: "Invalid id" });
+  const parsed = videoUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
+  }
+  if (!dbReady) return res.status(503).json({ message: "DB required for admin" });
+
+  try {
+    const fields = [];
+    const values = [];
+    let p = 1;
+    if (parsed.data.title !== undefined) {
+      fields.push(`title = $${p++}`);
+      values.push(parsed.data.title);
+    }
+    if (parsed.data.duration !== undefined) {
+      fields.push(`duration = $${p++}`);
+      values.push(parsed.data.duration);
+    }
+    if (parsed.data.subtopicId !== undefined) {
+      fields.push(`subtopic_id = $${p++}`);
+      values.push(parsed.data.subtopicId);
+    }
+    values.push(videoId);
+    const updated = await pool.query(
+      `update videos set ${fields.join(", ")} where id = $${p}
+       returning id, subtopic_id, title, duration, stream_path, "order"`,
+      values
+    );
+    if (!updated.rows[0]) return res.status(404).json({ message: "Video not found" });
+    return res.json({
+      id: updated.rows[0].id,
+      subtopicId: updated.rows[0].subtopic_id,
+      title: updated.rows[0].title,
+      duration: updated.rows[0].duration,
+      streamPath: updated.rows[0].stream_path,
+      order: updated.rows[0].order
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to update video", error: error.message });
+  }
 });
 
 app.post("/admin/reorder", auth, requireAdmin, async (req, res) => {

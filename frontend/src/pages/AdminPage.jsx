@@ -63,6 +63,14 @@ export default function AdminPage() {
   const [newVideoTitle, setNewVideoTitle] = useState("");
   const [newVideoDurationMin, setNewVideoDurationMin] = useState("");
   const [catalogError, setCatalogError] = useState("");
+  const [catalogSaving, setCatalogSaving] = useState(false);
+  const [editingCourseId, setEditingCourseId] = useState(null);
+  const [editCourseTitle, setEditCourseTitle] = useState("");
+  const [editingSubtopicId, setEditingSubtopicId] = useState(null);
+  const [editSubtopicTitle, setEditSubtopicTitle] = useState("");
+  const [editingVideoId, setEditingVideoId] = useState(null);
+  const [editVideoTitle, setEditVideoTitle] = useState("");
+  const [editVideoDurationMin, setEditVideoDurationMin] = useState("");
 
   const [users, setUsers] = useState([]);
   const [usersError, setUsersError] = useState("");
@@ -392,6 +400,116 @@ export default function AdminPage() {
     }
     await loadAdminCatalog();
     showToast("Предмет удалён");
+  }
+
+  function cancelCatalogEdit() {
+    setEditingCourseId(null);
+    setEditCourseTitle("");
+    setEditingSubtopicId(null);
+    setEditSubtopicTitle("");
+    setEditingVideoId(null);
+    setEditVideoTitle("");
+    setEditVideoDurationMin("");
+  }
+
+  function startEditCourse(course) {
+    cancelCatalogEdit();
+    setEditingCourseId(course.id);
+    setEditCourseTitle(course.title);
+  }
+
+  function startEditSubtopic(subtopic) {
+    cancelCatalogEdit();
+    setEditingSubtopicId(subtopic.id);
+    setEditSubtopicTitle(subtopic.title);
+  }
+
+  function startEditVideo(video) {
+    cancelCatalogEdit();
+    setEditingVideoId(video.id);
+    setEditVideoTitle(video.title);
+    const minutes = Number(video.duration || 0) > 0 ? String(Math.round(Number(video.duration) / 60)) : "";
+    setEditVideoDurationMin(minutes);
+  }
+
+  async function saveCourseEdit() {
+    const title = editCourseTitle.trim();
+    if (!title || !editingCourseId) return;
+    setCatalogSaving(true);
+    setCatalogError("");
+    try {
+      const res = await apiRequest(`/admin/courses/${editingCourseId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Не удалось сохранить");
+      }
+      cancelCatalogEdit();
+      await loadAdminCatalog();
+      showToast("Предмет обновлён");
+    } catch (err) {
+      setCatalogError(err.message || "Ошибка сохранения");
+      showToast(err.message || "Не удалось сохранить", "error");
+    } finally {
+      setCatalogSaving(false);
+    }
+  }
+
+  async function saveSubtopicEdit() {
+    const title = editSubtopicTitle.trim();
+    if (!title || !editingSubtopicId) return;
+    setCatalogSaving(true);
+    setCatalogError("");
+    try {
+      const res = await apiRequest(`/admin/subtopics/${editingSubtopicId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Не удалось сохранить");
+      }
+      cancelCatalogEdit();
+      await loadAdminCatalog();
+      showToast("Глава обновлена");
+    } catch (err) {
+      setCatalogError(err.message || "Ошибка сохранения");
+      showToast(err.message || "Не удалось сохранить", "error");
+    } finally {
+      setCatalogSaving(false);
+    }
+  }
+
+  async function saveVideoEdit() {
+    const title = editVideoTitle.trim();
+    if (!title || !editingVideoId) return;
+    const minutes = Number(editVideoDurationMin);
+    const durationSec = Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes * 60) : 0;
+    setCatalogSaving(true);
+    setCatalogError("");
+    try {
+      const res = await apiRequest(`/admin/videos/${editingVideoId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, duration: durationSec })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Не удалось сохранить");
+      }
+      cancelCatalogEdit();
+      await loadAdminCatalog();
+      showToast("Урок обновлён");
+    } catch (err) {
+      setCatalogError(err.message || "Ошибка сохранения");
+      showToast(err.message || "Не удалось сохранить", "error");
+    } finally {
+      setCatalogSaving(false);
+    }
   }
 
   async function pollHlsReady(videoId) {
@@ -773,33 +891,70 @@ export default function AdminPage() {
                     ) : (
                       <ul className="adm-list">
                         {adminCatalog.map((course) => (
-                          <li key={course.id} className="adm-list-item">
-                            <button
-                              type="button"
-                              className={selectedCourse === course.id ? "adm-list-btn active" : "adm-list-btn"}
-                              onClick={() => {
-                                setSelectedCourse(course.id);
-                                setSelectedSubtopic(course.subtopics?.[0]?.id ?? null);
-                              }}
-                            >
-                              <strong>{course.title}</strong>
-                              <span>
-                                {course.subtopics?.length || 0}{" "}
-                                {(course.subtopics?.length || 0) === 1 ? "глава" : "глав"}
-                              </span>
-                            </button>
-                            <div className="adm-reorder">
-                              <button type="button" aria-label="Выше" onClick={() => void reorderCourses(swapInList(adminCatalog.map((c) => c.id), course.id, -1))}>▲</button>
-                              <button type="button" aria-label="Ниже" onClick={() => void reorderCourses(swapInList(adminCatalog.map((c) => c.id), course.id, 1))}>▼</button>
-                              <button
-                                type="button"
-                                className="adm-btn adm-btn-ghost adm-btn-sm"
-                                aria-label={`Удалить ${course.title}`}
-                                onClick={() => void deleteCourse(course.id, course.title)}
+                          <li key={course.id} className={`adm-list-item${editingCourseId === course.id ? " is-editing" : ""}`}>
+                            {editingCourseId === course.id ? (
+                              <form
+                                className="adm-list-edit"
+                                onSubmit={(e) => {
+                                  e.preventDefault();
+                                  void saveCourseEdit();
+                                }}
                               >
-                                ✕
-                              </button>
-                            </div>
+                                <input
+                                  value={editCourseTitle}
+                                  onChange={(e) => setEditCourseTitle(e.target.value)}
+                                  aria-label="Название предмета"
+                                  disabled={catalogSaving}
+                                  autoFocus
+                                />
+                                <div className="adm-list-edit-actions">
+                                  <button type="submit" className="adm-btn adm-btn-primary adm-btn-sm" disabled={catalogSaving || !editCourseTitle.trim()}>
+                                    {catalogSaving ? "…" : "Сохранить"}
+                                  </button>
+                                  <button type="button" className="adm-btn adm-btn-ghost adm-btn-sm" onClick={cancelCatalogEdit} disabled={catalogSaving}>
+                                    Отмена
+                                  </button>
+                                </div>
+                              </form>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  className={selectedCourse === course.id ? "adm-list-btn active" : "adm-list-btn"}
+                                  onClick={() => {
+                                    setSelectedCourse(course.id);
+                                    setSelectedSubtopic(course.subtopics?.[0]?.id ?? null);
+                                  }}
+                                >
+                                  <strong>{course.title}</strong>
+                                  <span>
+                                    {course.subtopics?.length || 0}{" "}
+                                    {(course.subtopics?.length || 0) === 1 ? "глава" : "глав"}
+                                  </span>
+                                </button>
+                                <div className="adm-list-actions">
+                                  <button
+                                    type="button"
+                                    className="adm-btn adm-btn-secondary adm-btn-sm"
+                                    onClick={() => startEditCourse(course)}
+                                  >
+                                    Изменить
+                                  </button>
+                                  <div className="adm-reorder">
+                                    <button type="button" aria-label="Выше" onClick={() => void reorderCourses(swapInList(adminCatalog.map((c) => c.id), course.id, -1))}>▲</button>
+                                    <button type="button" aria-label="Ниже" onClick={() => void reorderCourses(swapInList(adminCatalog.map((c) => c.id), course.id, 1))}>▼</button>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="adm-btn adm-btn-ghost adm-btn-sm"
+                                    aria-label={`Удалить ${course.title}`}
+                                    onClick={() => void deleteCourse(course.id, course.title)}
+                                  >
+                                    Удалить
+                                  </button>
+                                </div>
+                              </>
+                            )}
                           </li>
                         ))}
                       </ul>
@@ -847,30 +1002,67 @@ export default function AdminPage() {
                     ) : (
                       <ul className="adm-list">
                         {(selectedCourseObj?.subtopics || []).map((st) => (
-                          <li key={st.id} className="adm-list-item">
-                            <button
-                              type="button"
-                              className={selectedSubtopic === st.id ? "adm-list-btn active" : "adm-list-btn"}
-                              onClick={() => setSelectedSubtopic(st.id)}
-                            >
-                              <strong>{st.title}</strong>
-                              <span>
-                                {st.videos?.length || 0}{" "}
-                                {(st.videos?.length || 0) === 1 ? "урок" : "уроков"}
-                              </span>
-                            </button>
-                            <div className="adm-reorder">
-                              <button type="button" aria-label="Выше" onClick={() => { const ids = selectedCourseObj?.subtopics?.map((s) => s.id) || []; void reorderSubtopics(selectedCourse, swapInList(ids, st.id, -1)); }}>▲</button>
-                              <button type="button" aria-label="Ниже" onClick={() => { const ids = selectedCourseObj?.subtopics?.map((s) => s.id) || []; void reorderSubtopics(selectedCourse, swapInList(ids, st.id, 1)); }}>▼</button>
-                              <button
-                                type="button"
-                                className="adm-btn adm-btn-ghost adm-btn-sm"
-                                aria-label={`Удалить ${st.title}`}
-                                onClick={() => void deleteSubtopic(st.id, st.title)}
+                          <li key={st.id} className={`adm-list-item${editingSubtopicId === st.id ? " is-editing" : ""}`}>
+                            {editingSubtopicId === st.id ? (
+                              <form
+                                className="adm-list-edit"
+                                onSubmit={(e) => {
+                                  e.preventDefault();
+                                  void saveSubtopicEdit();
+                                }}
                               >
-                                ✕
-                              </button>
-                            </div>
+                                <input
+                                  value={editSubtopicTitle}
+                                  onChange={(e) => setEditSubtopicTitle(e.target.value)}
+                                  aria-label="Название главы"
+                                  disabled={catalogSaving}
+                                  autoFocus
+                                />
+                                <div className="adm-list-edit-actions">
+                                  <button type="submit" className="adm-btn adm-btn-primary adm-btn-sm" disabled={catalogSaving || !editSubtopicTitle.trim()}>
+                                    {catalogSaving ? "…" : "Сохранить"}
+                                  </button>
+                                  <button type="button" className="adm-btn adm-btn-ghost adm-btn-sm" onClick={cancelCatalogEdit} disabled={catalogSaving}>
+                                    Отмена
+                                  </button>
+                                </div>
+                              </form>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  className={selectedSubtopic === st.id ? "adm-list-btn active" : "adm-list-btn"}
+                                  onClick={() => setSelectedSubtopic(st.id)}
+                                >
+                                  <strong>{st.title}</strong>
+                                  <span>
+                                    {st.videos?.length || 0}{" "}
+                                    {(st.videos?.length || 0) === 1 ? "урок" : "уроков"}
+                                  </span>
+                                </button>
+                                <div className="adm-list-actions">
+                                  <button
+                                    type="button"
+                                    className="adm-btn adm-btn-secondary adm-btn-sm"
+                                    onClick={() => startEditSubtopic(st)}
+                                  >
+                                    Изменить
+                                  </button>
+                                  <div className="adm-reorder">
+                                    <button type="button" aria-label="Выше" onClick={() => { const ids = selectedCourseObj?.subtopics?.map((s) => s.id) || []; void reorderSubtopics(selectedCourse, swapInList(ids, st.id, -1)); }}>▲</button>
+                                    <button type="button" aria-label="Ниже" onClick={() => { const ids = selectedCourseObj?.subtopics?.map((s) => s.id) || []; void reorderSubtopics(selectedCourse, swapInList(ids, st.id, 1)); }}>▼</button>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="adm-btn adm-btn-ghost adm-btn-sm"
+                                    aria-label={`Удалить ${st.title}`}
+                                    onClick={() => void deleteSubtopic(st.id, st.title)}
+                                  >
+                                    Удалить
+                                  </button>
+                                </div>
+                              </>
+                            )}
                           </li>
                         ))}
                       </ul>
@@ -930,58 +1122,109 @@ export default function AdminPage() {
                     ) : (
                       <ul className="adm-lesson-list">
                         {(selectedSubtopicObj?.videos || []).map((v) => (
-                          <li key={v.id} className="adm-lesson">
-                            <div>
-                              <strong>{v.title}</strong>
-                              <div className="adm-lesson-meta">
-                                {formatLessonDuration(v.duration)}
-                                {isPlayableStream(v.streamPath) ? (
-                                  <span className="adm-badge ok"> Готово (защищённый HLS)</span>
-                                ) : isProcessingStream(v.streamPath) ? (
-                                  <span className="adm-badge pending"> Конвертация…</span>
-                                ) : v.streamPath ? (
-                                  <span className="adm-badge pending"> Нужна подготовка</span>
-                                ) : (
-                                  <span className="adm-badge pending"> Нужен файл</span>
-                                )}
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                              <div className="adm-reorder">
-                                <button type="button" aria-label="Выше" onClick={() => { const ids = selectedSubtopicObj?.videos?.map((x) => x.id) || []; void reorderVideos(selectedSubtopic, swapInList(ids, v.id, -1)); }}>▲</button>
-                                <button type="button" aria-label="Ниже" onClick={() => { const ids = selectedSubtopicObj?.videos?.map((x) => x.id) || []; void reorderVideos(selectedSubtopic, swapInList(ids, v.id, 1)); }}>▼</button>
-                              </div>
-                              <label className={`adm-upload${isPlayableStream(v.streamPath) ? " done" : ""}`}>
-                                {isPlayableStream(v.streamPath) ? "Заменить" : "Загрузить mp4"}
-                                <input
-                                  type="file"
-                                  accept="video/*"
-                                  className="sr-only"
-                                  onChange={(e) => {
-                                    const file = e.target.files?.[0];
-                                    if (file) void uploadVideoFile(v.id, file);
-                                    e.target.value = "";
-                                  }}
-                                />
-                              </label>
-                              {v.streamPath && !isPlayableStream(v.streamPath) ? (
-                                <button
-                                  type="button"
-                                  className="btn-secondary inline"
-                                  onClick={() => void packageExistingVideo(v.id)}
-                                >
-                                  Подготовить поток
-                                </button>
-                              ) : null}
-                              <button
-                                type="button"
-                                className="adm-btn adm-btn-ghost adm-btn-sm"
-                                aria-label={`Удалить ${v.title}`}
-                                onClick={() => void deleteVideo(v.id, v.title)}
+                          <li key={v.id} className={`adm-lesson${editingVideoId === v.id ? " is-editing" : ""}`}>
+                            {editingVideoId === v.id ? (
+                              <form
+                                className="adm-lesson-edit"
+                                onSubmit={(e) => {
+                                  e.preventDefault();
+                                  void saveVideoEdit();
+                                }}
                               >
-                                Удалить
-                              </button>
-                            </div>
+                                <div className="adm-form-row">
+                                  <div className="adm-field">
+                                    <label htmlFor={`edit-lesson-${v.id}`}>Название</label>
+                                    <input
+                                      id={`edit-lesson-${v.id}`}
+                                      value={editVideoTitle}
+                                      onChange={(e) => setEditVideoTitle(e.target.value)}
+                                      disabled={catalogSaving}
+                                      autoFocus
+                                    />
+                                  </div>
+                                  <div className="adm-field">
+                                    <label htmlFor={`edit-min-${v.id}`}>Мин</label>
+                                    <input
+                                      id={`edit-min-${v.id}`}
+                                      type="number"
+                                      min={1}
+                                      value={editVideoDurationMin}
+                                      onChange={(e) => setEditVideoDurationMin(e.target.value)}
+                                      disabled={catalogSaving}
+                                    />
+                                  </div>
+                                </div>
+                                <div className="adm-list-edit-actions">
+                                  <button type="submit" className="adm-btn adm-btn-primary adm-btn-sm" disabled={catalogSaving || !editVideoTitle.trim()}>
+                                    {catalogSaving ? "…" : "Сохранить"}
+                                  </button>
+                                  <button type="button" className="adm-btn adm-btn-ghost adm-btn-sm" onClick={cancelCatalogEdit} disabled={catalogSaving}>
+                                    Отмена
+                                  </button>
+                                </div>
+                              </form>
+                            ) : (
+                              <>
+                                <div>
+                                  <strong>{v.title}</strong>
+                                  <div className="adm-lesson-meta">
+                                    {formatLessonDuration(v.duration)}
+                                    {isPlayableStream(v.streamPath) ? (
+                                      <span className="adm-badge ok"> Готово (защищённый HLS)</span>
+                                    ) : isProcessingStream(v.streamPath) ? (
+                                      <span className="adm-badge pending"> Конвертация…</span>
+                                    ) : v.streamPath ? (
+                                      <span className="adm-badge pending"> Нужна подготовка</span>
+                                    ) : (
+                                      <span className="adm-badge pending"> Нужен файл</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                  <button
+                                    type="button"
+                                    className="adm-btn adm-btn-secondary adm-btn-sm"
+                                    onClick={() => startEditVideo(v)}
+                                  >
+                                    Изменить
+                                  </button>
+                                  <div className="adm-reorder">
+                                    <button type="button" aria-label="Выше" onClick={() => { const ids = selectedSubtopicObj?.videos?.map((x) => x.id) || []; void reorderVideos(selectedSubtopic, swapInList(ids, v.id, -1)); }}>▲</button>
+                                    <button type="button" aria-label="Ниже" onClick={() => { const ids = selectedSubtopicObj?.videos?.map((x) => x.id) || []; void reorderVideos(selectedSubtopic, swapInList(ids, v.id, 1)); }}>▼</button>
+                                  </div>
+                                  <label className={`adm-upload${isPlayableStream(v.streamPath) ? " done" : ""}`}>
+                                    {isPlayableStream(v.streamPath) ? "Заменить" : "Загрузить mp4"}
+                                    <input
+                                      type="file"
+                                      accept="video/*"
+                                      className="sr-only"
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) void uploadVideoFile(v.id, file);
+                                        e.target.value = "";
+                                      }}
+                                    />
+                                  </label>
+                                  {v.streamPath && !isPlayableStream(v.streamPath) ? (
+                                    <button
+                                      type="button"
+                                      className="btn-secondary inline"
+                                      onClick={() => void packageExistingVideo(v.id)}
+                                    >
+                                      Подготовить поток
+                                    </button>
+                                  ) : null}
+                                  <button
+                                    type="button"
+                                    className="adm-btn adm-btn-ghost adm-btn-sm"
+                                    aria-label={`Удалить ${v.title}`}
+                                    onClick={() => void deleteVideo(v.id, v.title)}
+                                  >
+                                    Удалить
+                                  </button>
+                                </div>
+                              </>
+                            )}
                           </li>
                         ))}
                       </ul>
