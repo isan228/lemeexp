@@ -5,8 +5,8 @@ const PLAN_LABELS = {
   free: "Бесплатный",
   basic: "Базовый",
   pro: "Продвинутый",
+  premium: "Подписка",
   mentor: "Ментор",
-  premium: "Премиум",
   admin: "Администратор"
 };
 

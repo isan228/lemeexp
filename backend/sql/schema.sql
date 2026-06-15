@@ -122,3 +122,28 @@ create table if not exists payments (
 create index if not exists idx_payments_user on payments(user_id);
 create index if not exists idx_payments_status on payments(status);
 create index if not exists idx_payments_finik_tx on payments(finik_transaction_id);
+
+create table if not exists promo_codes (
+  id bigserial primary key,
+  code text not null unique,
+  discount_type text not null check (discount_type in ('full', 'percent', 'fixed')),
+  discount_value numeric(12, 2) not null default 0,
+  max_uses int,
+  uses_count int not null default 0,
+  expires_at timestamptz,
+  created_by bigint references users(id) on delete set null,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists promo_redemptions (
+  id bigserial primary key,
+  promo_code_id bigint not null references promo_codes(id) on delete cascade,
+  user_id bigint not null references users(id) on delete cascade,
+  payment_id uuid references payments(payment_id) on delete set null,
+  redeemed_at timestamptz not null default now(),
+  unique (promo_code_id, user_id)
+);
+
+alter table payments add column if not exists promo_code text;

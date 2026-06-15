@@ -1,49 +1,85 @@
 import { useState } from "react";
-import { Link, useLocation, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import SiteBrand from "../components/SiteBrand.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
+import { SUBSCRIPTION_PLAN } from "../config/billing.js";
 import { routes } from "../config/site.js";
-
-const planTitles = {
-  basic: "Базовая",
-  pro: "Продвинутая",
-  mentor: "Ментор"
-};
-
-const planAmounts = {
-  basic: "990 сом",
-  pro: "1990 сом",
-  mentor: "3490 сом"
-};
 
 export default function PaymentPage() {
   const [searchParams] = useSearchParams();
   const location = useLocation();
-  const { apiRequest } = useAuth();
-  const planId = searchParams.get("plan") || "";
-  const planTitle = planTitles[planId] || "Не выбрано";
-  const planAmount = planAmounts[planId] || "";
+  const navigate = useNavigate();
+  const { apiRequest, updateProfile } = useAuth();
+  const planId = searchParams.get("plan") || SUBSCRIPTION_PLAN.id;
+  const isValidPlan = planId === SUBSCRIPTION_PLAN.id;
   const [pending, setPending] = useState(false);
+  const [promoPending, setPromoPending] = useState(false);
   const [error, setError] = useState("");
+  const [promoInput, setPromoInput] = useState("");
+  const [appliedPromo, setAppliedPromo] = useState(null);
 
-  async function onPayWithFinik() {
-    if (!planTitles[planId]) {
-      setError("Выберите подписку перед оплатой.");
+  const baseAmount = SUBSCRIPTION_PLAN.amount;
+  const finalAmount = appliedPromo ? appliedPromo.finalAmount : baseAmount;
+
+  async function onApplyPromo() {
+    const code = promoInput.trim();
+    if (!code) return;
+    setError("");
+    setPromoPending(true);
+    try {
+      const res = await apiRequest("/billing/validate-promo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ promoCode: code })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.message || "Промокод недействителен");
+      }
+      setAppliedPromo(data);
+      setPromoInput(data.code);
+    } catch (err) {
+      setAppliedPromo(null);
+      setError(err.message || "Промокод недействителен");
+    } finally {
+      setPromoPending(false);
+    }
+  }
+
+  function clearPromo() {
+    setAppliedPromo(null);
+    setPromoInput("");
+    setError("");
+  }
+
+  async function onPay() {
+    if (!isValidPlan) {
+      setError("Некорректный тариф.");
       return;
     }
 
     setError("");
     setPending(true);
     try {
+      const payload = { plan: SUBSCRIPTION_PLAN.id };
+      if (appliedPromo?.code) payload.promoCode = appliedPromo.code;
+
       const res = await apiRequest("/billing/create-payment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan: planId })
+        body: JSON.stringify(payload)
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data.message || "Не удалось создать платёж");
       }
+
+      if (data.free) {
+        if (data.profile) updateProfile(data.profile);
+        navigate(routes.paymentSuccess(data.paymentId), { replace: true });
+        return;
+      }
+
       if (!data.paymentUrl) {
         throw new Error("Finik не вернул ссылку на оплату");
       }
@@ -66,29 +102,58 @@ export default function PaymentPage() {
         <div className="flow-hero">
           <p className="landing-kicker">Шаг оплаты</p>
           <div className="flow-steps" aria-label="Этапы оформления">
-            <span className="flow-step">1. Подписка</span>
-            <span className="flow-step">2. Анкета</span>
-            <span className="flow-step active">3. Оплата</span>
+            <span className="flow-step">1. Анкета</span>
+            <span className="flow-step active">2. Оплата</span>
           </div>
           <h1>Оплата подписки</h1>
         </div>
         <p className="muted">
-          Вы выбрали подписку: <strong>{planTitle}</strong>
-          {planAmount ? (
+          {SUBSCRIPTION_PLAN.name} —{" "}
+          <strong>{finalAmount <= 0 ? "бесплатно" : `${finalAmount} сом`}</strong>
+          {appliedPromo?.discount > 0 ? (
             <>
               {" "}
-              — <strong>{planAmount}</strong>
+              <span className="small">(скидка {appliedPromo.discount} сом)</span>
             </>
           ) : null}
-          .
         </p>
-        <p className="muted">Оплата через Finik QR — любым банковским приложением Кыргызстана.</p>
+        <p className="muted">
+          {finalAmount <= 0
+            ? "Промокод покрывает стоимость — оплата через Finik не нужна."
+            : "Оплата через Finik QR — любым банковским приложением Кыргызстана."}
+        </p>
+
+        <div className="adm-form" style={{ marginTop: 16, marginBottom: 16 }}>
+          <div className="adm-field">
+            <label htmlFor="promo-code">Промокод</label>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <input
+                id="promo-code"
+                value={promoInput}
+                onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                placeholder="Например: WELCOME"
+                disabled={promoPending || pending}
+                style={{ flex: "1 1 160px" }}
+              />
+              {appliedPromo ? (
+                <button type="button" className="btn-secondary inline" onClick={clearPromo} disabled={pending}>
+                  Сбросить
+                </button>
+              ) : (
+                <button type="button" className="btn-secondary inline" onClick={() => void onApplyPromo()} disabled={promoPending || pending || !promoInput.trim()}>
+                  {promoPending ? "Проверка…" : "Применить"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
         <div className="payment-methods">
           <div className="payment-method active">
             <span className="payment-method-icon" aria-hidden>
               📱
             </span>
-            <span>Finik QR</span>
+            <span>{finalAmount <= 0 ? "Промокод" : "Finik QR"}</span>
           </div>
         </div>
         {location.state?.form?.fullName && (
@@ -96,20 +161,16 @@ export default function PaymentPage() {
         )}
         {error && <p className="form-error">{error}</p>}
         <div className="payment-stub-actions">
-          {!planTitles[planId] ? (
+          {!isValidPlan ? (
             <Link to={routes.register} className="btn-secondary">
-              Выбрать тариф
+              К регистрации
             </Link>
-          ) : (
-            <Link to={routes.register} className="btn-secondary">
-              Изменить тариф
-            </Link>
-          )}
+          ) : null}
           <Link to={routes.login} className="btn-link">
             Войти
           </Link>
-          <button type="button" className="btn-primary inline" onClick={onPayWithFinik} disabled={pending}>
-            {pending ? "Создаём платёж..." : "Оплатить через Finik"}
+          <button type="button" className="btn-primary inline" onClick={() => void onPay()} disabled={pending || !isValidPlan}>
+            {pending ? "Обработка…" : finalAmount <= 0 ? "Активировать доступ" : "Оплатить через Finik"}
           </button>
         </div>
       </div>

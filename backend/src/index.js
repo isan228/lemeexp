@@ -12,13 +12,16 @@ import { z } from "zod";
 import {
   createFinikPayment,
   extractPaymentIdFromWebhook,
+  getDefaultPlanId,
   getFrontendBaseUrl,
   getPlanAmount,
   getPlanTitle,
   isFinikConfigured,
+  DEFAULT_PLAN_ID,
   PLAN_TO_SUBSCRIPTION,
   verifyFinikWebhook
 } from "./finik.js";
+import { computeFinalAmount, formatPromoRow, normalizePromoCode } from "./promo.js";
 import {
   buildAuthenticatedManifest,
   getHlsDir,
@@ -79,11 +82,16 @@ const memState = {
   /** @type {Array<{ id: number; userId: number; senderRole: "admin" | "student"; text: string; createdAt: string }>} */
   supportMessages: [],
   /** @type {Map<string, string>} key: `${userId}:${role}` => ISO timestamp */
-  supportLastRead: new Map()
+  supportLastRead: new Map(),
+  /** @type {Array<{ id: number; code: string; discountType: string; discountValue: number; maxUses: number | null; usesCount: number; expiresAt: string | null; active: boolean; createdAt: string; updatedAt: string }>} */
+  promoCodes: [],
+  /** @type {Array<{ promoCodeId: number; userId: number; paymentId: string | null; redeemedAt: string }>} */
+  promoRedemptions: []
 };
 
 let memNewsNextId = 1;
 let memSupportMessageNextId = 1;
+let memPromoNextId = 1;
 
 let memNextUserId = 10_000;
 const memRegisteredUsersByEmail = new Map();
@@ -174,7 +182,31 @@ const registerSchema = z.object({
 });
 
 const activateSubscriptionSchema = z.object({
-  plan: z.enum(["basic", "pro", "mentor"])
+  plan: z.literal("standard").optional().default("standard")
+});
+
+const createPaymentSchema = z.object({
+  plan: z.literal("standard").optional().default("standard"),
+  promoCode: z.string().max(64).optional()
+});
+
+const validatePromoSchema = z.object({
+  promoCode: z.string().min(1).max(64)
+});
+
+const promoCreateSchema = z.object({
+  code: z.string().min(3).max(32),
+  discountType: z.enum(["full", "percent", "fixed"]),
+  discountValue: z.coerce.number().min(0).optional().default(0),
+  maxUses: z.coerce.number().int().positive().optional().nullable(),
+  expiresAt: z.string().datetime().optional().nullable(),
+  active: z.boolean().optional().default(true)
+});
+
+const promoUpdateSchema = z.object({
+  active: z.boolean().optional(),
+  maxUses: z.coerce.number().int().positive().optional().nullable(),
+  expiresAt: z.string().datetime().nullable().optional()
 });
 
 const refreshSchema = z.object({
@@ -567,15 +599,47 @@ async function ensurePaymentsTable() {
       status text not null default 'pending',
       finik_transaction_id text,
       finik_receipt_number text,
+      promo_code text,
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     )
   `);
+  await pool.query(`alter table payments add column if not exists promo_code text`);
   await pool.query(`create index if not exists idx_payments_user on payments(user_id)`);
   await pool.query(`create index if not exists idx_payments_status on payments(status)`);
   await pool.query(
     `create index if not exists idx_payments_finik_tx on payments(finik_transaction_id)`
   );
+}
+
+async function ensurePromoCodesTable() {
+  if (!pool) return;
+  await pool.query(`
+    create table if not exists promo_codes (
+      id bigserial primary key,
+      code text not null unique,
+      discount_type text not null check (discount_type in ('full', 'percent', 'fixed')),
+      discount_value numeric(12, 2) not null default 0,
+      max_uses int,
+      uses_count int not null default 0,
+      expires_at timestamptz,
+      created_by bigint references users(id) on delete set null,
+      active boolean not null default true,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    )
+  `);
+  await pool.query(`
+    create table if not exists promo_redemptions (
+      id bigserial primary key,
+      promo_code_id bigint not null references promo_codes(id) on delete cascade,
+      user_id bigint not null references users(id) on delete cascade,
+      payment_id uuid references payments(payment_id) on delete set null,
+      redeemed_at timestamptz not null default now(),
+      unique (promo_code_id, user_id)
+    )
+  `);
+  await pool.query(`create index if not exists idx_promo_codes_active on promo_codes(active)`);
 }
 
 async function ensureSupportMessagesTable() {
@@ -1025,8 +1089,152 @@ async function activateSubscriptionForUser(userId, plan) {
   return null;
 }
 
+async function findPromoByCode(code) {
+  const normalized = normalizePromoCode(code);
+  if (!normalized) return null;
+  if (dbReady) {
+    const r = await pool.query(`select * from promo_codes where code = $1 limit 1`, [normalized]);
+    return r.rows[0] || null;
+  }
+  const found = memState.promoCodes.find((p) => p.code === normalized);
+  if (!found) return null;
+  return {
+    id: found.id,
+    code: found.code,
+    discount_type: found.discountType,
+    discount_value: found.discountValue,
+    max_uses: found.maxUses,
+    uses_count: found.usesCount,
+    expires_at: found.expiresAt,
+    active: found.active
+  };
+}
+
+async function hasUserRedeemedPromo(promoId, userId) {
+  if (dbReady) {
+    const r = await pool.query(
+      `select 1 from promo_redemptions where promo_code_id = $1 and user_id = $2 limit 1`,
+      [promoId, userId]
+    );
+    return Boolean(r.rows[0]);
+  }
+  return memState.promoRedemptions.some((r) => r.promoCodeId === promoId && Number(r.userId) === Number(userId));
+}
+
+async function validatePromoForUser(code, userId, baseAmount) {
+  const promo = await findPromoByCode(code);
+  if (!promo) return { ok: false, message: "Промокод не найден" };
+  if (!promo.active) return { ok: false, message: "Промокод деактивирован" };
+  if (promo.expires_at && new Date(promo.expires_at) < new Date()) {
+    return { ok: false, message: "Промокод истёк" };
+  }
+  if (promo.max_uses != null && Number(promo.uses_count) >= Number(promo.max_uses)) {
+    return { ok: false, message: "Промокод исчерпан" };
+  }
+  if (await hasUserRedeemedPromo(promo.id, userId)) {
+    return { ok: false, message: "Вы уже использовали этот промокод" };
+  }
+  const finalAmount = computeFinalAmount(baseAmount, promo);
+  const discount = Math.max(0, Math.round((Number(baseAmount) - finalAmount) * 100) / 100);
+  return {
+    ok: true,
+    promo,
+    code: promo.code,
+    finalAmount,
+    discount,
+    free: finalAmount <= 0
+  };
+}
+
+async function redeemPromoCode(promoId, userId, paymentId) {
+  if (dbReady) {
+    await pool.query(`update promo_codes set uses_count = uses_count + 1, updated_at = now() where id = $1`, [
+      promoId
+    ]);
+    await pool.query(
+      `insert into promo_redemptions (promo_code_id, user_id, payment_id) values ($1, $2, $3)
+       on conflict (promo_code_id, user_id) do nothing`,
+      [promoId, userId, paymentId]
+    );
+    return;
+  }
+  const promo = memState.promoCodes.find((p) => p.id === promoId);
+  if (promo) promo.usesCount += 1;
+  if (!memState.promoRedemptions.some((r) => r.promoCodeId === promoId && Number(r.userId) === Number(userId))) {
+    memState.promoRedemptions.push({
+      promoCodeId: promoId,
+      userId,
+      paymentId,
+      redeemedAt: new Date().toISOString()
+    });
+  }
+}
+
+async function completeFreeSubscriptionPayment({ paymentId, userId, plan, promo, promoCodeLabel }) {
+  if (dbReady) {
+    await pool.query(
+      `insert into payments (payment_id, user_id, plan, amount, status, promo_code)
+       values ($1, $2, $3, 0, 'succeeded', $4)`,
+      [paymentId, userId, plan, promoCodeLabel || null]
+    );
+    if (promo) await redeemPromoCode(promo.id, userId, paymentId);
+  } else {
+    memState.paymentsById.set(paymentId, {
+      paymentId,
+      userId,
+      plan,
+      amount: 0,
+      status: "succeeded",
+      promoCode: promoCodeLabel || null
+    });
+    if (promo) await redeemPromoCode(promo.id, userId, paymentId);
+  }
+  return activateSubscriptionForUser(userId, plan);
+}
+
+async function applyPromoAfterPaymentSuccess(paymentId, userId, promoCodeLabel) {
+  if (!promoCodeLabel) return;
+  const promo = await findPromoByCode(promoCodeLabel);
+  if (!promo) return;
+  if (await hasUserRedeemedPromo(promo.id, userId)) return;
+  await redeemPromoCode(promo.id, userId, paymentId);
+}
+
+app.get("/billing/plan", (_req, res) => {
+  const plan = getDefaultPlanId();
+  res.json({
+    id: plan,
+    title: getPlanTitle(plan),
+    amount: getPlanAmount(plan)
+  });
+});
+
+app.post("/billing/validate-promo", auth, async (req, res) => {
+  const parsed = validatePromoSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
+  }
+  if (req.user?.role === "admin") {
+    return res.status(403).json({ message: "Admin subscription cannot be changed" });
+  }
+
+  const plan = getDefaultPlanId();
+  const baseAmount = getPlanAmount(plan);
+  const result = await validatePromoForUser(parsed.data.promoCode, req.user.userId, baseAmount);
+  if (!result.ok) {
+    return res.status(400).json({ message: result.message });
+  }
+  return res.json({
+    code: result.code,
+    baseAmount,
+    finalAmount: result.finalAmount,
+    discount: result.discount,
+    free: result.free
+  });
+});
+
 app.post("/billing/create-payment", auth, async (req, res) => {
-  const parsed = activateSubscriptionSchema.safeParse(req.body);
+  const parsed = createPaymentSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
   }
@@ -1035,39 +1243,80 @@ app.post("/billing/create-payment", auth, async (req, res) => {
     return res.status(403).json({ message: "Admin subscription cannot be changed" });
   }
 
+  const plan = parsed.data.plan || getDefaultPlanId();
+  const baseAmount = getPlanAmount(plan);
+  if (!baseAmount || baseAmount < 0) {
+    return res.status(400).json({ message: "Invalid plan amount" });
+  }
+
+  let finalAmount = baseAmount;
+  let promo = null;
+  let promoCodeLabel = null;
+  if (parsed.data.promoCode?.trim()) {
+    const promoResult = await validatePromoForUser(parsed.data.promoCode, req.user.userId, baseAmount);
+    if (!promoResult.ok) {
+      return res.status(400).json({ message: promoResult.message });
+    }
+    finalAmount = promoResult.finalAmount;
+    promo = promoResult.promo;
+    promoCodeLabel = promoResult.code;
+  }
+
+  const paymentId = crypto.randomUUID();
+
+  if (finalAmount <= 0) {
+    try {
+      const profile = await completeFreeSubscriptionPayment({
+        paymentId,
+        userId: req.user.userId,
+        plan,
+        promo,
+        promoCodeLabel
+      });
+      if (!profile) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      return res.json({
+        paymentId,
+        free: true,
+        amount: 0,
+        plan,
+        planTitle: getPlanTitle(plan),
+        promoCode: promoCodeLabel,
+        profile
+      });
+    } catch (error) {
+      return res.status(500).json({ message: "Failed to activate subscription", error: error.message });
+    }
+  }
+
   if (!isFinikConfigured()) {
     return res.status(503).json({ message: "Finik payment is not configured on the server" });
   }
 
-  const plan = parsed.data.plan;
-  const amount = getPlanAmount(plan);
-  if (!amount || amount <= 0) {
-    return res.status(400).json({ message: "Invalid plan amount" });
-  }
-
-  const paymentId = crypto.randomUUID();
   const redirectUrl = `${getFrontendBaseUrl().replace(/\/$/, "")}/payment/success?paymentId=${paymentId}`;
 
   try {
     if (dbReady) {
       await pool.query(
-        `insert into payments (payment_id, user_id, plan, amount, status)
-         values ($1, $2, $3, $4, 'pending')`,
-        [paymentId, req.user.userId, plan, amount]
+        `insert into payments (payment_id, user_id, plan, amount, status, promo_code)
+         values ($1, $2, $3, $4, 'pending', $5)`,
+        [paymentId, req.user.userId, plan, finalAmount, promoCodeLabel]
       );
     } else {
       memState.paymentsById.set(paymentId, {
         paymentId,
         userId: req.user.userId,
         plan,
-        amount,
-        status: "pending"
+        amount: finalAmount,
+        status: "pending",
+        promoCode: promoCodeLabel
       });
     }
 
     const finik = await createFinikPayment({
       paymentId,
-      amount,
+      amount: finalAmount,
       plan,
       redirectUrl
     });
@@ -1075,9 +1324,12 @@ app.post("/billing/create-payment", auth, async (req, res) => {
     return res.json({
       paymentId,
       paymentUrl: finik.paymentUrl,
-      amount,
+      amount: finalAmount,
+      baseAmount,
+      discount: Math.max(0, Math.round((baseAmount - finalAmount) * 100) / 100),
       plan,
-      planTitle: getPlanTitle(plan)
+      planTitle: getPlanTitle(plan),
+      promoCode: promoCodeLabel
     });
   } catch (error) {
     if (dbReady) {
@@ -1192,7 +1444,7 @@ app.post("/billing/webhook/finik", async (req, res) => {
   try {
     if (dbReady) {
       const existing = await pool.query(
-        `select payment_id, user_id, plan, status
+        `select payment_id, user_id, plan, status, promo_code
          from payments
          where payment_id = $1`,
         [paymentId]
@@ -1217,6 +1469,7 @@ app.post("/billing/webhook/finik", async (req, res) => {
 
       if (nextStatus === "succeeded") {
         await activateSubscriptionForUser(row.user_id, row.plan);
+        await applyPromoAfterPaymentSuccess(paymentId, row.user_id, row.promo_code);
       }
 
       return res.json({ ok: true });
@@ -1236,6 +1489,7 @@ app.post("/billing/webhook/finik", async (req, res) => {
 
     if (nextStatus === "succeeded") {
       await activateSubscriptionForUser(payment.userId, payment.plan);
+      await applyPromoAfterPaymentSuccess(paymentId, payment.userId, payment.promoCode);
     }
 
     return res.json({ ok: true });
@@ -1665,6 +1919,174 @@ app.get("/admin/users", auth, requireAdmin, async (_req, res) => {
     res.json(r.rows);
   } catch (error) {
     res.status(500).json({ message: "Failed to list users", error: error.message });
+  }
+});
+
+app.get("/admin/promo-codes", auth, requireAdmin, async (_req, res) => {
+  try {
+    if (!dbReady) {
+      const sorted = [...memState.promoCodes].sort((a, b) => b.id - a.id);
+      return res.json(sorted);
+    }
+    const r = await pool.query(
+      `select id, code, discount_type, discount_value, max_uses, uses_count, expires_at, active, created_at, updated_at
+       from promo_codes order by id desc`
+    );
+    res.json(r.rows.map(formatPromoRow));
+  } catch (error) {
+    res.status(500).json({ message: "Failed to list promo codes", error: error.message });
+  }
+});
+
+app.post("/admin/promo-codes", auth, requireAdmin, async (req, res) => {
+  const parsed = promoCreateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
+  }
+
+  const code = normalizePromoCode(parsed.data.code);
+  if (!/^[A-Z0-9_-]{3,32}$/.test(code)) {
+    return res.status(400).json({ message: "Код: 3–32 символа, латиница, цифры, _ или -" });
+  }
+
+  const discountValue =
+    parsed.data.discountType === "full" ? 100 : Number(parsed.data.discountValue || 0);
+  if (parsed.data.discountType === "percent" && discountValue > 100) {
+    return res.status(400).json({ message: "Процент скидки не может быть больше 100" });
+  }
+
+  const now = new Date().toISOString();
+
+  try {
+    if (!dbReady) {
+      if (memState.promoCodes.some((p) => p.code === code)) {
+        return res.status(409).json({ message: "Промокод уже существует" });
+      }
+      const row = {
+        id: memPromoNextId++,
+        code,
+        discountType: parsed.data.discountType,
+        discountValue,
+        maxUses: parsed.data.maxUses ?? null,
+        usesCount: 0,
+        expiresAt: parsed.data.expiresAt ?? null,
+        active: parsed.data.active,
+        createdAt: now,
+        updatedAt: now
+      };
+      memState.promoCodes.push(row);
+      return res.status(201).json(row);
+    }
+
+    const created = await pool.query(
+      `insert into promo_codes (code, discount_type, discount_value, max_uses, expires_at, created_by, active, updated_at)
+       values ($1, $2, $3, $4, $5, $6, $7, now())
+       returning id, code, discount_type, discount_value, max_uses, uses_count, expires_at, active, created_at, updated_at`,
+      [
+        code,
+        parsed.data.discountType,
+        discountValue,
+        parsed.data.maxUses ?? null,
+        parsed.data.expiresAt ?? null,
+        req.user.userId,
+        parsed.data.active
+      ]
+    );
+    res.status(201).json(formatPromoRow(created.rows[0]));
+  } catch (error) {
+    if (error.code === "23505") {
+      return res.status(409).json({ message: "Промокод уже существует" });
+    }
+    res.status(500).json({ message: "Failed to create promo code", error: error.message });
+  }
+});
+
+app.patch("/admin/promo-codes/:promoId", auth, requireAdmin, async (req, res) => {
+  const id = Number(req.params.promoId);
+  if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+  const parsed = promoUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
+  }
+
+  try {
+    if (!dbReady) {
+      const idx = memState.promoCodes.findIndex((p) => p.id === id);
+      if (idx < 0) return res.status(404).json({ message: "Not found" });
+      const cur = memState.promoCodes[idx];
+      const updated = {
+        ...cur,
+        active: parsed.data.active !== undefined ? parsed.data.active : cur.active,
+        maxUses: parsed.data.maxUses !== undefined ? parsed.data.maxUses : cur.maxUses,
+        expiresAt: parsed.data.expiresAt !== undefined ? parsed.data.expiresAt : cur.expiresAt,
+        updatedAt: new Date().toISOString()
+      };
+      memState.promoCodes[idx] = updated;
+      return res.json(updated);
+    }
+
+    const fields = [];
+    const values = [];
+    let p = 1;
+    if (parsed.data.active !== undefined) {
+      fields.push(`active = $${p++}`);
+      values.push(parsed.data.active);
+    }
+    if (parsed.data.maxUses !== undefined) {
+      fields.push(`max_uses = $${p++}`);
+      values.push(parsed.data.maxUses);
+    }
+    if (parsed.data.expiresAt !== undefined) {
+      fields.push(`expires_at = $${p++}`);
+      values.push(parsed.data.expiresAt);
+    }
+    if (!fields.length) {
+      const cur = await pool.query(
+        `select id, code, discount_type, discount_value, max_uses, uses_count, expires_at, active, created_at, updated_at
+         from promo_codes where id = $1`,
+        [id]
+      );
+      if (!cur.rows[0]) return res.status(404).json({ message: "Not found" });
+      return res.json(formatPromoRow(cur.rows[0]));
+    }
+    fields.push("updated_at = now()");
+    values.push(id);
+    const updated = await pool.query(
+      `update promo_codes set ${fields.join(", ")} where id = $${p}
+       returning id, code, discount_type, discount_value, max_uses, uses_count, expires_at, active, created_at, updated_at`,
+      values
+    );
+    if (!updated.rows[0]) return res.status(404).json({ message: "Not found" });
+    return res.json(formatPromoRow(updated.rows[0]));
+  } catch (error) {
+    res.status(500).json({ message: "Failed to update promo code", error: error.message });
+  }
+});
+
+app.delete("/admin/promo-codes/:promoId", auth, requireAdmin, async (req, res) => {
+  const id = Number(req.params.promoId);
+  if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+
+  try {
+    if (!dbReady) {
+      const idx = memState.promoCodes.findIndex((p) => p.id === id);
+      if (idx < 0) return res.status(404).json({ message: "Not found" });
+      if (memState.promoCodes[idx].usesCount > 0) {
+        return res.status(409).json({ message: "Нельзя удалить использованный промокод — деактивируйте его" });
+      }
+      memState.promoCodes.splice(idx, 1);
+      return res.status(204).send();
+    }
+
+    const row = await pool.query(`select uses_count from promo_codes where id = $1`, [id]);
+    if (!row.rows[0]) return res.status(404).json({ message: "Not found" });
+    if (Number(row.rows[0].uses_count) > 0) {
+      return res.status(409).json({ message: "Нельзя удалить использованный промокод — деактивируйте его" });
+    }
+    await pool.query(`delete from promo_codes where id = $1`, [id]);
+    return res.status(204).send();
+  } catch (error) {
+    res.status(500).json({ message: "Failed to delete promo code", error: error.message });
   }
 });
 
@@ -2405,6 +2827,11 @@ async function start() {
         await ensurePaymentsTable();
       } catch (e) {
         console.error("Таблица payments — пропуск (проверьте миграцию):", e.message);
+      }
+      try {
+        await ensurePromoCodesTable();
+      } catch (e) {
+        console.error("Таблица promo_codes — пропуск (проверьте миграцию):", e.message);
       }
       await seedDemoData();
       dbReady = true;

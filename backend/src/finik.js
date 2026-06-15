@@ -1,23 +1,21 @@
 import { readFileSync } from "node:fs";
 import { Signer } from "@mancho.devs/authorizer";
 
+const DEFAULT_PLAN_ID = "standard";
+
 const PLAN_AMOUNTS = {
-  basic: Number(process.env.FINIK_AMOUNT_BASIC || 990),
-  pro: Number(process.env.FINIK_AMOUNT_PRO || 1990),
-  mentor: Number(process.env.FINIK_AMOUNT_MENTOR || 3490)
+  standard: Number(process.env.FINIK_AMOUNT || process.env.FINIK_AMOUNT_STANDARD || 1)
 };
 
 const PLAN_TITLES = {
-  basic: "Lemexplain Basic",
-  pro: "Lemexplain Pro",
-  mentor: "Lemexplain Mentor"
+  standard: "Lemexplain"
 };
 
 export const PLAN_TO_SUBSCRIPTION = {
-  basic: "basic",
-  pro: "premium",
-  mentor: "mentor"
+  standard: "premium"
 };
+
+export { DEFAULT_PLAN_ID };
 
 const DEFAULT_FINIK_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuF/PUmhMPPidcMxhZBPb
@@ -76,7 +74,12 @@ export function isFinikConfigured() {
 }
 
 export function getPlanAmount(plan) {
-  return PLAN_AMOUNTS[plan] ?? null;
+  const key = plan || DEFAULT_PLAN_ID;
+  return PLAN_AMOUNTS[key] ?? null;
+}
+
+export function getDefaultPlanId() {
+  return DEFAULT_PLAN_ID;
 }
 
 export function getPlanTitle(plan) {

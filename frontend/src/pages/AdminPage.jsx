@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { routes } from "../config/site.js";
+import AdminSearchBox from "../components/AdminSearchBox.jsx";
+import { filterAssociative, suggestAssociative } from "../utils/adminSearch.js";
 import { isPlayableStream, isProcessingStream } from "../utils/streamPath.js";
 import "./AdminPage.css";
 
@@ -16,6 +18,7 @@ function swapInList(ids, id, dir) {
 
 const NAV_ITEMS = [
   { id: "content", label: "Курсы и уроки", icon: "📚", desc: "Предметы, главы и видеоуроки" },
+  { id: "promo", label: "Промокоды", icon: "🎟", desc: "Скидки и бесплатный доступ" },
   { id: "users", label: "Пользователи", icon: "👥", desc: "Учётные записи и тарифы" },
   { id: "news", label: "Новости", icon: "📰", desc: "Публикации на главной" },
   { id: "support", label: "Поддержка", icon: "💬", desc: "Чат с учениками" }
@@ -39,6 +42,13 @@ function formatLessonDuration(seconds) {
 
 function subscriptionTag(type) {
   return SUBSCRIPTION_TAGS[type] || { label: type, className: "adm-tag-free" };
+}
+
+function formatPromoType(type, value) {
+  if (type === "full") return "100% (бесплатно)";
+  if (type === "percent") return `${value}%`;
+  if (type === "fixed") return `${value} сом`;
+  return type;
 }
 
 export default function AdminPage() {
@@ -71,6 +81,10 @@ export default function AdminPage() {
   const [editingVideoId, setEditingVideoId] = useState(null);
   const [editVideoTitle, setEditVideoTitle] = useState("");
   const [editVideoDurationMin, setEditVideoDurationMin] = useState("");
+  const [catalogGlobalSearch, setCatalogGlobalSearch] = useState("");
+  const [courseSearch, setCourseSearch] = useState("");
+  const [subtopicSearch, setSubtopicSearch] = useState("");
+  const [lessonSearch, setLessonSearch] = useState("");
 
   const [users, setUsers] = useState([]);
   const [usersError, setUsersError] = useState("");
@@ -97,6 +111,19 @@ export default function AdminPage() {
   const [nSlug, setNSlug] = useState("");
   const [nBody, setNBody] = useState("");
   const [nPublished, setNPublished] = useState(false);
+  const [newsSearch, setNewsSearch] = useState("");
+
+  const [promoList, setPromoList] = useState([]);
+  const [promoError, setPromoError] = useState("");
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoSaving, setPromoSaving] = useState(false);
+  const [promoSearch, setPromoSearch] = useState("");
+  const [pCode, setPCode] = useState("");
+  const [pDiscountType, setPDiscountType] = useState("full");
+  const [pDiscountValue, setPDiscountValue] = useState("");
+  const [pMaxUses, setPMaxUses] = useState("");
+  const [pExpiresAt, setPExpiresAt] = useState("");
+  const [pActive, setPActive] = useState(true);
 
   const isAdmin = profile?.subscriptionType === "admin";
   const activeNav = NAV_ITEMS.find((n) => n.id === tab) || NAV_ITEMS[0];
@@ -133,35 +160,162 @@ export default function AdminPage() {
     return { subjects: adminCatalog.length, chapters, lessons };
   }, [adminCatalog]);
 
-  const filteredUsers = useMemo(() => {
-    const q = userSearch.trim().toLowerCase();
-    if (!q) return users;
-    return users.filter(
-      (u) =>
-        String(u.email).toLowerCase().includes(q) ||
-        String(u.nickname || "").toLowerCase().includes(q) ||
-        String(u.id).includes(q)
+  const catalogIndex = useMemo(() => {
+    const items = [];
+    for (const course of adminCatalog) {
+      items.push({
+        key: `course-${course.id}`,
+        type: "course",
+        label: course.title,
+        meta: "Предмет",
+        courseId: course.id
+      });
+      for (const st of course.subtopics || []) {
+        items.push({
+          key: `subtopic-${st.id}`,
+          type: "subtopic",
+          label: st.title,
+          meta: `${course.title} · глава`,
+          courseId: course.id,
+          subtopicId: st.id
+        });
+        for (const v of st.videos || []) {
+          items.push({
+            key: `video-${v.id}`,
+            type: "video",
+            label: v.title,
+            meta: `${course.title} → ${st.title}`,
+            courseId: course.id,
+            subtopicId: st.id,
+            videoId: v.id
+          });
+        }
+      }
+    }
+    return items;
+  }, [adminCatalog]);
+
+  const filteredCourses = useMemo(
+    () => filterAssociative(adminCatalog, courseSearch, (c) => [c.title]),
+    [adminCatalog, courseSearch]
+  );
+
+  const filteredSubtopics = useMemo(() => {
+    const list = selectedCourseObj?.subtopics || [];
+    return filterAssociative(list, subtopicSearch, (st) => [st.title]);
+  }, [selectedCourseObj, subtopicSearch]);
+
+  const filteredLessons = useMemo(() => {
+    const list = selectedSubtopicObj?.videos || [];
+    return filterAssociative(list, lessonSearch, (v) => [v.title]);
+  }, [selectedSubtopicObj, lessonSearch]);
+
+  const filteredNews = useMemo(
+    () => filterAssociative(newsList, newsSearch, (n) => [n.title, n.slug, n.body]),
+    [newsList, newsSearch]
+  );
+
+  const filteredPromos = useMemo(
+    () => filterAssociative(promoList, promoSearch, (p) => [p.code, p.discountType]),
+    [promoList, promoSearch]
+  );
+
+  const promoSuggestions = useMemo(
+    () =>
+      suggestAssociative(
+        promoList,
+        promoSearch,
+        (p) => p.code,
+        (p) => formatPromoType(p.discountType, p.discountValue)
+      ).map(({ item, label, meta }) => ({ key: `promo-${item.id}`, label, meta, item })),
+    [promoList, promoSearch]
+  );
+
+  const catalogGlobalSuggestions = useMemo(
+    () =>
+      suggestAssociative(
+        catalogIndex,
+        catalogGlobalSearch,
+        (x) => x.label,
+        (x) => x.meta
+      ).map(({ item, label, meta }) => ({ key: item.key, label, meta, item })),
+    [catalogIndex, catalogGlobalSearch]
+  );
+
+  const courseSuggestions = useMemo(
+    () =>
+      suggestAssociative(
+        adminCatalog,
+        courseSearch,
+        (c) => c.title,
+        (c) => `${c.subtopics?.length || 0} глав`
+      ).map(({ item, label, meta }) => ({ key: `course-${item.id}`, label, meta, item })),
+    [adminCatalog, courseSearch]
+  );
+
+  const subtopicSuggestions = useMemo(() => {
+    const list = selectedCourseObj?.subtopics || [];
+    return suggestAssociative(
+      list,
+      subtopicSearch,
+      (st) => st.title,
+      (st) => `${st.videos?.length || 0} уроков`
+    ).map(({ item, label, meta }) => ({ key: `subtopic-${item.id}`, label, meta, item }));
+  }, [selectedCourseObj, subtopicSearch]);
+
+  const lessonSuggestions = useMemo(() => {
+    const list = selectedSubtopicObj?.videos || [];
+    return suggestAssociative(list, lessonSearch, (v) => v.title, () => selectedSubtopicObj?.title || "").map(
+      ({ item, label, meta }) => ({ key: `video-${item.id}`, label, meta, item })
     );
-  }, [users, userSearch]);
+  }, [selectedSubtopicObj, lessonSearch]);
+
+  const userSuggestions = useMemo(
+    () =>
+      suggestAssociative(
+        users,
+        userSearch,
+        (u) => u.nickname || u.email,
+        (u) => `${u.email} · #${u.id}`
+      ).map(({ item, label, meta }) => ({ key: `user-${item.id}`, label, meta, item })),
+    [users, userSearch]
+  );
+
+  const chatUserSuggestions = useMemo(() => {
+    const list = users.filter((u) => u.subscriptionType !== "admin");
+    return suggestAssociative(
+      list,
+      chatSearch,
+      (u) => u.nickname || u.email,
+      (u) => u.email
+    ).map(({ item, label, meta }) => ({ key: `chat-${item.id}`, label, meta, item }));
+  }, [users, chatSearch]);
+
+  const newsSuggestions = useMemo(
+    () =>
+      suggestAssociative(
+        newsList,
+        newsSearch,
+        (n) => n.title,
+        (n) => (n.published ? "Опубликовано" : "Черновик")
+      ).map(({ item, label, meta }) => ({ key: `news-${item.id}`, label, meta, item })),
+    [newsList, newsSearch]
+  );
+
+  const filteredUsers = useMemo(
+    () => filterAssociative(users, userSearch, (u) => [u.email, u.nickname, String(u.id)]),
+    [users, userSearch]
+  );
 
   const supportUsersOrdered = useMemo(() => {
-    const q = chatSearch.trim().toLowerCase();
-    return users
-      .filter((u) => u.subscriptionType !== "admin")
-      .filter((u) => {
-        if (!q) return true;
-        return (
-          String(u.email).toLowerCase().includes(q) ||
-          String(u.nickname || "").toLowerCase().includes(q)
-        );
-      })
-      .slice()
-      .sort((a, b) => {
-        const aUnread = Number(chatUnreadByUser[Number(a.id)] || 0);
-        const bUnread = Number(chatUnreadByUser[Number(b.id)] || 0);
-        if (aUnread !== bUnread) return bUnread - aUnread;
-        return Number(a.id) - Number(b.id);
-      });
+    const nonAdmin = users.filter((u) => u.subscriptionType !== "admin");
+    const matched = filterAssociative(nonAdmin, chatSearch, (u) => [u.email, u.nickname]);
+    return matched.slice().sort((a, b) => {
+      const aUnread = Number(chatUnreadByUser[Number(a.id)] || 0);
+      const bUnread = Number(chatUnreadByUser[Number(b.id)] || 0);
+      if (aUnread !== bUnread) return bUnread - aUnread;
+      return Number(a.id) - Number(b.id);
+    });
   }, [users, chatUnreadByUser, chatSearch]);
 
   const showToast = useCallback((message, type = "success") => {
@@ -230,6 +384,23 @@ export default function AdminPage() {
     }
   }, [apiRequest]);
 
+  const loadPromoCodes = useCallback(async () => {
+    setPromoError("");
+    setPromoLoading(true);
+    try {
+      const res = await apiRequest("/admin/promo-codes");
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setPromoError(err.message || "Не удалось загрузить промокоды");
+        setPromoList([]);
+        return;
+      }
+      setPromoList(await res.json());
+    } finally {
+      setPromoLoading(false);
+    }
+  }, [apiRequest]);
+
   useEffect(() => {
     if (!hydrated || !token || !isAdmin) return;
     void loadAdminCatalog();
@@ -249,6 +420,11 @@ export default function AdminPage() {
     if (!hydrated || !token || !isAdmin || tab !== "news") return;
     void loadNews();
   }, [hydrated, token, isAdmin, tab, loadNews]);
+
+  useEffect(() => {
+    if (!hydrated || !token || !isAdmin || tab !== "promo") return;
+    void loadPromoCodes();
+  }, [hydrated, token, isAdmin, tab, loadPromoCodes]);
 
   useEffect(() => () => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -279,6 +455,120 @@ export default function AdminPage() {
   function switchTab(id) {
     setTab(id);
     setSidebarOpen(false);
+  }
+
+  function pickCatalogGlobal({ item }) {
+    setSelectedCourse(item.courseId);
+    if (item.subtopicId) setSelectedSubtopic(item.subtopicId);
+    setCatalogGlobalSearch(item.label);
+    cancelCatalogEdit();
+  }
+
+  function pickCourseSearch({ item }) {
+    setSelectedCourse(item.id);
+    setSelectedSubtopic(item.subtopics?.[0]?.id ?? null);
+    setCourseSearch(item.title);
+    cancelCatalogEdit();
+  }
+
+  function pickSubtopicSearch({ item }) {
+    setSelectedSubtopic(item.id);
+    setSubtopicSearch(item.title);
+    cancelCatalogEdit();
+  }
+
+  function pickLessonSearch({ item }) {
+    setLessonSearch(item.title);
+    cancelCatalogEdit();
+  }
+
+  function pickUserSearch({ item }) {
+    setUserSearch(item.email || item.nickname || "");
+  }
+
+  function pickChatUserSearch({ item }) {
+    setChatUserId(Number(item.id));
+    setChatSearch(item.nickname || item.email || "");
+  }
+
+  function pickNewsSearch({ item }) {
+    setNewsSearch(item.title);
+    startEditNews(item);
+  }
+
+  function pickPromoSearch({ item }) {
+    setPromoSearch(item.code);
+  }
+
+  function resetPromoForm() {
+    setPCode("");
+    setPDiscountType("full");
+    setPDiscountValue("");
+    setPMaxUses("");
+    setPExpiresAt("");
+    setPActive(true);
+  }
+
+  async function submitPromo(e) {
+    e.preventDefault();
+    const code = pCode.trim();
+    if (!code) return;
+    setPromoSaving(true);
+    setPromoError("");
+    try {
+      const payload = {
+        code,
+        discountType: pDiscountType,
+        discountValue: pDiscountType === "full" ? 100 : Number(pDiscountValue || 0),
+        maxUses: pMaxUses.trim() ? Number(pMaxUses) : null,
+        expiresAt: pExpiresAt ? new Date(pExpiresAt).toISOString() : null,
+        active: pActive
+      };
+      const res = await apiRequest("/admin/promo-codes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Не удалось создать промокод");
+      }
+      resetPromoForm();
+      await loadPromoCodes();
+      showToast(`Промокод «${code.toUpperCase()}» создан`);
+    } catch (err) {
+      setPromoError(err.message || "Ошибка");
+    } finally {
+      setPromoSaving(false);
+    }
+  }
+
+  async function togglePromoActive(promo) {
+    setPromoError("");
+    const res = await apiRequest(`/admin/promo-codes/${promo.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active: !promo.active })
+    });
+    if (!res.ok) {
+      setPromoError("Не удалось обновить промокод");
+      return;
+    }
+    await loadPromoCodes();
+    showToast(promo.active ? "Промокод деактивирован" : "Промокод активирован");
+  }
+
+  async function deletePromo(id, code) {
+    if (!window.confirm(`Удалить промокод «${code}»?`)) return;
+    setPromoError("");
+    const res = await apiRequest(`/admin/promo-codes/${id}`, { method: "DELETE" });
+    if (!res.ok && res.status !== 204) {
+      const err = await res.json().catch(() => ({}));
+      setPromoError(err.message || "Не удалось удалить");
+      return;
+    }
+    await loadPromoCodes();
+    showToast("Промокод удалён");
   }
 
   async function reorderCourses(ids) {
@@ -855,7 +1145,23 @@ export default function AdminPage() {
                   Загрузка каталога…
                 </div>
               ) : (
-                <div className="adm-grid-3">
+                <>
+                  <div className="adm-card adm-catalog-global-search" style={{ padding: 16 }}>
+                    <AdminSearchBox
+                      id="catalog-global-search"
+                      value={catalogGlobalSearch}
+                      onChange={setCatalogGlobalSearch}
+                      suggestions={catalogGlobalSuggestions}
+                      onPick={pickCatalogGlobal}
+                      placeholder="Поиск по всему каталогу: предмет, глава, урок…"
+                      ariaLabel="Поиск по каталогу"
+                      style={{ maxWidth: "100%" }}
+                    />
+                    <p style={{ margin: "8px 0 0", fontSize: 13, color: "var(--adm-text-muted)" }}>
+                      Подсказки по совпадению букв — например, «бхм» найдёт «Биохимия».
+                    </p>
+                  </div>
+                  <div className="adm-grid-3">
                   <section className="adm-panel adm-card">
                     <div className="adm-panel-head">
                       <div>
@@ -863,6 +1169,16 @@ export default function AdminPage() {
                         <p>Дисциплина или курс верхнего уровня</p>
                       </div>
                     </div>
+                    <AdminSearchBox
+                      className="adm-search-wrap--panel"
+                      id="course-search"
+                      value={courseSearch}
+                      onChange={setCourseSearch}
+                      suggestions={courseSuggestions}
+                      onPick={pickCourseSearch}
+                      placeholder="Поиск предмета…"
+                      ariaLabel="Поиск предмета"
+                    />
                     <form
                       className="adm-form"
                       onSubmit={(e) => {
@@ -888,9 +1204,11 @@ export default function AdminPage() {
                         <div className="adm-empty-icon">📚</div>
                         Добавьте первый предмет
                       </div>
+                    ) : filteredCourses.length === 0 ? (
+                      <div className="adm-empty">Ничего не найдено</div>
                     ) : (
                       <ul className="adm-list">
-                        {adminCatalog.map((course) => (
+                        {filteredCourses.map((course) => (
                           <li key={course.id} className={`adm-list-item${editingCourseId === course.id ? " is-editing" : ""}`}>
                             {editingCourseId === course.id ? (
                               <form
@@ -968,6 +1286,17 @@ export default function AdminPage() {
                         <p>{selectedCourseObj ? `В «${selectedCourseObj.title}»` : "Выберите предмет"}</p>
                       </div>
                     </div>
+                    <AdminSearchBox
+                      className="adm-search-wrap--panel"
+                      id="subtopic-search"
+                      value={subtopicSearch}
+                      onChange={setSubtopicSearch}
+                      suggestions={subtopicSuggestions}
+                      onPick={pickSubtopicSearch}
+                      placeholder="Поиск главы…"
+                      ariaLabel="Поиск главы"
+                      style={{ opacity: selectedCourse ? 1 : 0.5, pointerEvents: selectedCourse ? "auto" : "none" }}
+                    />
                     <form
                       className="adm-form"
                       onSubmit={(e) => {
@@ -999,9 +1328,11 @@ export default function AdminPage() {
                         <div className="adm-empty-icon">📑</div>
                         Добавьте первую главу
                       </div>
+                    ) : filteredSubtopics.length === 0 ? (
+                      <div className="adm-empty">Ничего не найдено</div>
                     ) : (
                       <ul className="adm-list">
-                        {(selectedCourseObj?.subtopics || []).map((st) => (
+                        {filteredSubtopics.map((st) => (
                           <li key={st.id} className={`adm-list-item${editingSubtopicId === st.id ? " is-editing" : ""}`}>
                             {editingSubtopicId === st.id ? (
                               <form
@@ -1076,6 +1407,17 @@ export default function AdminPage() {
                         <p>{selectedSubtopicObj ? `В «${selectedSubtopicObj.title}»` : "Выберите главу"}</p>
                       </div>
                     </div>
+                    <AdminSearchBox
+                      className="adm-search-wrap--panel"
+                      id="lesson-search"
+                      value={lessonSearch}
+                      onChange={setLessonSearch}
+                      suggestions={lessonSuggestions}
+                      onPick={pickLessonSearch}
+                      placeholder="Поиск урока…"
+                      ariaLabel="Поиск урока"
+                      style={{ opacity: selectedSubtopic ? 1 : 0.5, pointerEvents: selectedSubtopic ? "auto" : "none" }}
+                    />
                     <form
                       className="adm-form adm-form-row"
                       onSubmit={(e) => {
@@ -1119,9 +1461,11 @@ export default function AdminPage() {
                         <div className="adm-empty-icon">🎬</div>
                         Создайте урок и загрузите видео
                       </div>
+                    ) : filteredLessons.length === 0 ? (
+                      <div className="adm-empty">Ничего не найдено</div>
                     ) : (
                       <ul className="adm-lesson-list">
-                        {(selectedSubtopicObj?.videos || []).map((v) => (
+                        {filteredLessons.map((v) => (
                           <li key={v.id} className={`adm-lesson${editingVideoId === v.id ? " is-editing" : ""}`}>
                             {editingVideoId === v.id ? (
                               <form
@@ -1231,19 +1575,164 @@ export default function AdminPage() {
                     )}
                   </section>
                 </div>
+                </>
               )}
             </>
+          )}
+
+          {tab === "promo" && (
+            <div className="adm-news-layout">
+              <section className="adm-card" style={{ padding: 20 }}>
+                {promoError && <div className="adm-alert warn">{promoError}</div>}
+                <h2 style={{ margin: "0 0 8px", fontSize: "1rem" }}>Новый промокод</h2>
+                <p className="adm-page-desc" style={{ margin: "0 0 16px" }}>
+                  Тариф сейчас — <strong>1 сом</strong>. «100%» даёт бесплатный доступ без Finik.
+                </p>
+                <form className="adm-form" onSubmit={submitPromo}>
+                  <div className="adm-field">
+                    <label htmlFor="promo-code-new">Код</label>
+                    <input
+                      id="promo-code-new"
+                      value={pCode}
+                      onChange={(e) => setPCode(e.target.value.toUpperCase())}
+                      placeholder="WELCOME2026"
+                      required
+                      maxLength={32}
+                    />
+                  </div>
+                  <div className="adm-field">
+                    <label htmlFor="promo-type">Тип скидки</label>
+                    <select
+                      id="promo-type"
+                      value={pDiscountType}
+                      onChange={(e) => setPDiscountType(e.target.value)}
+                      style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--adm-border)" }}
+                    >
+                      <option value="full">100% — бесплатно</option>
+                      <option value="percent">Процент</option>
+                      <option value="fixed">Фиксированная сумма (сом)</option>
+                    </select>
+                  </div>
+                  {pDiscountType !== "full" ? (
+                    <div className="adm-field">
+                      <label htmlFor="promo-value">{pDiscountType === "percent" ? "Процент" : "Сумма скидки"}</label>
+                      <input
+                        id="promo-value"
+                        type="number"
+                        min={0}
+                        max={pDiscountType === "percent" ? 100 : undefined}
+                        value={pDiscountValue}
+                        onChange={(e) => setPDiscountValue(e.target.value)}
+                        required
+                      />
+                    </div>
+                  ) : null}
+                  <div className="adm-field">
+                    <label htmlFor="promo-max">Лимит активаций (необязательно)</label>
+                    <input
+                      id="promo-max"
+                      type="number"
+                      min={1}
+                      value={pMaxUses}
+                      onChange={(e) => setPMaxUses(e.target.value)}
+                      placeholder="Без лимита"
+                    />
+                  </div>
+                  <div className="adm-field">
+                    <label htmlFor="promo-expires">Действует до (необязательно)</label>
+                    <input
+                      id="promo-expires"
+                      type="datetime-local"
+                      value={pExpiresAt}
+                      onChange={(e) => setPExpiresAt(e.target.value)}
+                    />
+                  </div>
+                  <label className="adm-checkbox">
+                    <input type="checkbox" checked={pActive} onChange={(e) => setPActive(e.target.checked)} />
+                    Активен сразу после создания
+                  </label>
+                  <button type="submit" className="adm-btn adm-btn-primary" disabled={promoSaving}>
+                    {promoSaving ? "Создание…" : "Выпустить промокод"}
+                  </button>
+                </form>
+              </section>
+
+              <section className="adm-card" style={{ padding: 20 }}>
+                <h2 style={{ margin: "0 0 16px", fontSize: "1rem" }}>Все промокоды</h2>
+                <AdminSearchBox
+                  id="promo-search"
+                  value={promoSearch}
+                  onChange={setPromoSearch}
+                  suggestions={promoSuggestions}
+                  onPick={pickPromoSearch}
+                  placeholder="Поиск по коду…"
+                  ariaLabel="Поиск промокодов"
+                  style={{ marginBottom: 16 }}
+                />
+                {promoLoading ? (
+                  <div className="adm-loading-block">
+                    <span className="adm-spinner" />
+                    Загрузка…
+                  </div>
+                ) : promoList.length === 0 ? (
+                  <div className="adm-empty">Промокодов пока нет</div>
+                ) : filteredPromos.length === 0 ? (
+                  <div className="adm-empty">Ничего не найдено</div>
+                ) : (
+                  <ul className="adm-list" style={{ maxHeight: "none" }}>
+                    {filteredPromos.map((p) => (
+                      <li key={p.id} className="adm-list-item" style={{ flexDirection: "column", alignItems: "stretch" }}>
+                        <div className="adm-lesson" style={{ flexWrap: "wrap" }}>
+                          <div>
+                            <strong>{p.code}</strong>
+                            <div className="adm-lesson-meta">
+                              <span className="adm-badge ok">{formatPromoType(p.discountType, p.discountValue)}</span>
+                              {p.active ? (
+                                <span className="adm-badge ok"> Активен</span>
+                              ) : (
+                                <span className="adm-badge pending"> Выключен</span>
+                              )}
+                              {" · "}
+                              {p.usesCount}
+                              {p.maxUses != null ? ` / ${p.maxUses}` : ""} использ.
+                              {p.expiresAt ? ` · до ${new Date(p.expiresAt).toLocaleDateString("ru-RU")}` : ""}
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <button type="button" className="adm-btn adm-btn-secondary adm-btn-sm" onClick={() => void togglePromoActive(p)}>
+                              {p.active ? "Выключить" : "Включить"}
+                            </button>
+                            <button
+                              type="button"
+                              className="adm-btn adm-btn-ghost adm-btn-sm"
+                              onClick={() => void deletePromo(p.id, p.code)}
+                              disabled={p.usesCount > 0}
+                              title={p.usesCount > 0 ? "Уже использован — только выключение" : undefined}
+                            >
+                              Удалить
+                            </button>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            </div>
           )}
 
           {tab === "users" && (
             <section className="adm-card" style={{ padding: 20 }}>
               {usersError && <div className="adm-alert warn">{usersError}</div>}
-              <input
-                type="search"
-                className="adm-search"
-                placeholder="Поиск по email, нику или ID…"
+              <AdminSearchBox
+                id="user-search"
                 value={userSearch}
-                onChange={(e) => setUserSearch(e.target.value)}
+                onChange={setUserSearch}
+                suggestions={userSuggestions}
+                onPick={pickUserSearch}
+                placeholder="Поиск по email, нику или ID…"
+                ariaLabel="Поиск пользователей"
+                style={{ maxWidth: 420, marginBottom: 16 }}
               />
               {usersLoading ? (
                 <div className="adm-loading-block">
@@ -1266,7 +1755,7 @@ export default function AdminPage() {
                       {filteredUsers.length === 0 ? (
                         <tr>
                           <td colSpan={5} style={{ textAlign: "center", color: "var(--adm-text-muted)" }}>
-                            Ничего не найдено
+                            {userSearch.trim() ? "Ничего не найдено" : "Нет пользователей"}
                           </td>
                         </tr>
                       ) : (
@@ -1331,6 +1820,16 @@ export default function AdminPage() {
 
               <section className="adm-card" style={{ padding: 20 }}>
                 <h2 style={{ margin: "0 0 16px", fontSize: "1rem" }}>Все новости</h2>
+                <AdminSearchBox
+                  id="news-search"
+                  value={newsSearch}
+                  onChange={setNewsSearch}
+                  suggestions={newsSuggestions}
+                  onPick={pickNewsSearch}
+                  placeholder="Поиск по заголовку, slug или тексту…"
+                  ariaLabel="Поиск новостей"
+                  style={{ marginBottom: 16 }}
+                />
                 {newsLoading ? (
                   <div className="adm-loading-block">
                     <span className="adm-spinner" />
@@ -1338,9 +1837,11 @@ export default function AdminPage() {
                   </div>
                 ) : newsList.length === 0 ? (
                   <div className="adm-empty">Новостей пока нет</div>
+                ) : filteredNews.length === 0 ? (
+                  <div className="adm-empty">Ничего не найдено</div>
                 ) : (
                   <ul className="adm-list" style={{ maxHeight: "none" }}>
-                    {newsList.map((n) => (
+                    {filteredNews.map((n) => (
                       <li key={n.id} className="adm-list-item" style={{ flexDirection: "column", alignItems: "stretch" }}>
                         <div className="adm-lesson" style={{ flexWrap: "wrap" }}>
                           <div>
@@ -1376,17 +1877,19 @@ export default function AdminPage() {
               {chatError && <div className="adm-alert warn">{chatError}</div>}
               <div className="adm-chat-layout">
                 <aside>
-                  <input
-                    type="search"
-                    className="adm-search"
-                    style={{ maxWidth: "none", marginBottom: 12 }}
-                    placeholder="Поиск пользователя…"
+                  <AdminSearchBox
+                    id="chat-user-search"
                     value={chatSearch}
-                    onChange={(e) => setChatSearch(e.target.value)}
+                    onChange={setChatSearch}
+                    suggestions={chatUserSuggestions}
+                    onPick={pickChatUserSearch}
+                    placeholder="Поиск пользователя…"
+                    ariaLabel="Поиск пользователя в чате"
+                    style={{ marginBottom: 12 }}
                   />
                   <div className="adm-chat-users">
                     {supportUsersOrdered.length === 0 ? (
-                      <div className="adm-empty">Нет пользователей</div>
+                      <div className="adm-empty">{chatSearch.trim() ? "Ничего не найдено" : "Нет пользователей"}</div>
                     ) : (
                       supportUsersOrdered.map((u) => (
                         <button
