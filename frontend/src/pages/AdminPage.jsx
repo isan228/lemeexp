@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { routes } from "../config/site.js";
 import AdminSearchBox from "../components/AdminSearchBox.jsx";
+import { formatPlanPrice } from "../config/billing.js";
 import { filterAssociative, suggestAssociative } from "../utils/adminSearch.js";
 import { isPlayableStream, isProcessingStream } from "../utils/streamPath.js";
 import "./AdminPage.css";
@@ -18,7 +19,7 @@ function swapInList(ids, id, dir) {
 
 const NAV_ITEMS = [
   { id: "content", label: "Курсы и уроки", icon: "📚", desc: "Предметы, главы и видеоуроки" },
-  { id: "promo", label: "Промокоды", icon: "🎟", desc: "Скидки и бесплатный доступ" },
+  { id: "promo", label: "Биллинг", icon: "🎟", desc: "Цена подписки и промокоды" },
   { id: "users", label: "Пользователи", icon: "👥", desc: "Учётные записи и тарифы" },
   { id: "news", label: "Новости", icon: "📰", desc: "Публикации на главной" },
   { id: "support", label: "Поддержка", icon: "💬", desc: "Чат с учениками" }
@@ -124,6 +125,10 @@ export default function AdminPage() {
   const [pMaxUses, setPMaxUses] = useState("");
   const [pExpiresAt, setPExpiresAt] = useState("");
   const [pActive, setPActive] = useState(true);
+
+  const [subscriptionAmount, setSubscriptionAmount] = useState("");
+  const [billingSaving, setBillingSaving] = useState(false);
+  const [billingLoading, setBillingLoading] = useState(false);
 
   const isAdmin = profile?.subscriptionType === "admin";
   const activeNav = NAV_ITEMS.find((n) => n.id === tab) || NAV_ITEMS[0];
@@ -401,6 +406,22 @@ export default function AdminPage() {
     }
   }, [apiRequest]);
 
+  const loadBillingSettings = useCallback(async () => {
+    setBillingLoading(true);
+    try {
+      const res = await apiRequest("/admin/billing/settings");
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setPromoError(err.message || "Не удалось загрузить цену");
+        return;
+      }
+      const data = await res.json();
+      setSubscriptionAmount(String(data.amount ?? ""));
+    } finally {
+      setBillingLoading(false);
+    }
+  }, [apiRequest]);
+
   useEffect(() => {
     if (!hydrated || !token || !isAdmin) return;
     void loadAdminCatalog();
@@ -424,7 +445,8 @@ export default function AdminPage() {
   useEffect(() => {
     if (!hydrated || !token || !isAdmin || tab !== "promo") return;
     void loadPromoCodes();
-  }, [hydrated, token, isAdmin, tab, loadPromoCodes]);
+    void loadBillingSettings();
+  }, [hydrated, token, isAdmin, tab, loadPromoCodes, loadBillingSettings]);
 
   useEffect(() => () => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -507,6 +529,35 @@ export default function AdminPage() {
     setPMaxUses("");
     setPExpiresAt("");
     setPActive(true);
+  }
+
+  async function saveBillingSettings(e) {
+    e.preventDefault();
+    const amount = Number(subscriptionAmount);
+    if (!Number.isFinite(amount) || amount < 0) {
+      setPromoError("Укажите корректную цену (0 или больше)");
+      return;
+    }
+    setBillingSaving(true);
+    setPromoError("");
+    try {
+      const res = await apiRequest("/admin/billing/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Не удалось сохранить цену");
+      }
+      const data = await res.json();
+      setSubscriptionAmount(String(data.amount));
+      showToast(`Цена обновлена: ${formatPlanPrice(data.amount)}`);
+    } catch (err) {
+      setPromoError(err.message || "Ошибка сохранения цены");
+    } finally {
+      setBillingSaving(false);
+    }
   }
 
   async function submitPromo(e) {
@@ -1581,12 +1632,49 @@ export default function AdminPage() {
           )}
 
           {tab === "promo" && (
+            <>
+              <section className="adm-card" style={{ padding: 20, marginBottom: 16 }}>
+                {promoError && <div className="adm-alert warn">{promoError}</div>}
+                <h2 style={{ margin: "0 0 8px", fontSize: "1rem" }}>Цена подписки</h2>
+                <p className="adm-page-desc" style={{ margin: "0 0 16px" }}>
+                  Отображается на регистрации и странице оплаты. Промокоды считаются от этой суммы.
+                </p>
+                {billingLoading ? (
+                  <div className="adm-loading-block">
+                    <span className="adm-spinner" />
+                    Загрузка…
+                  </div>
+                ) : (
+                  <form className="adm-form adm-form-row" style={{ gridTemplateColumns: "1fr auto", maxWidth: 360 }} onSubmit={saveBillingSettings}>
+                    <div className="adm-field">
+                      <label htmlFor="subscription-amount">Сумма, сом</label>
+                      <input
+                        id="subscription-amount"
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={subscriptionAmount}
+                        onChange={(e) => setSubscriptionAmount(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <button type="submit" className="adm-btn adm-btn-primary" disabled={billingSaving} style={{ alignSelf: "end" }}>
+                      {billingSaving ? "Сохранение…" : "Сохранить"}
+                    </button>
+                  </form>
+                )}
+                {subscriptionAmount !== "" && !billingLoading ? (
+                  <p className="muted small" style={{ margin: "12px 0 0" }}>
+                    Сейчас на сайте: <strong>{formatPlanPrice(Number(subscriptionAmount))}</strong>
+                  </p>
+                ) : null}
+              </section>
+
             <div className="adm-news-layout">
               <section className="adm-card" style={{ padding: 20 }}>
-                {promoError && <div className="adm-alert warn">{promoError}</div>}
                 <h2 style={{ margin: "0 0 8px", fontSize: "1rem" }}>Новый промокод</h2>
                 <p className="adm-page-desc" style={{ margin: "0 0 16px" }}>
-                  Тариф сейчас — <strong>1 сом</strong>. «100%» даёт бесплатный доступ без Finik.
+                  «100%» даёт бесплатный доступ без Finik. Процент и фиксированная скидка считаются от цены выше.
                 </p>
                 <form className="adm-form" onSubmit={submitPromo}>
                   <div className="adm-field">
@@ -1719,6 +1807,7 @@ export default function AdminPage() {
                 )}
               </section>
             </div>
+            </>
           )}
 
           {tab === "users" && (

@@ -1,13 +1,23 @@
-/** Единый тариф платформы — синхронизируйте сумму с FINIK_AMOUNT на backend. */
+/** Метаданные тарифа (цена — с API `/billing/plan`). */
 export const SUBSCRIPTION_PLAN = {
   id: "standard",
   name: "Подписка Lemexplain",
-  amount: 1,
-  priceLabel: "1 сом",
-  periodLabel: "1 сом / доступ ко всем урокам",
   bullets: [
     "Все предметы, главы и видеоуроки",
     "Личный кабинет и прогресс",
     "Чат с поддержкой"
   ]
 };
+
+export function formatPlanPrice(amount) {
+  const n = Number(amount);
+  if (!Number.isFinite(n)) return "—";
+  if (n <= 0) return "бесплатно";
+  return Number.isInteger(n) ? `${n} сом` : `${n.toFixed(2)} сом`;
+}
+
+export function formatPlanPeriodLabel(amount) {
+  const n = Number(amount);
+  if (!Number.isFinite(n) || n <= 0) return "бесплатно / доступ ко всем урокам";
+  return `${formatPlanPrice(amount)} / доступ ко всем урокам`;
+}

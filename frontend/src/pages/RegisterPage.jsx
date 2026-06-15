@@ -3,11 +3,13 @@ import { Link, useNavigate } from "react-router-dom";
 import SiteBrand from "../components/SiteBrand.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { SUBSCRIPTION_PLAN } from "../config/billing.js";
+import { useBillingPlan } from "../hooks/useBillingPlan.js";
 import { routes } from "../config/site.js";
 
 export default function RegisterPage() {
   const navigate = useNavigate();
   const { register } = useAuth();
+  const { periodLabel, loading: planLoading } = useBillingPlan();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [nickname, setNickname] = useState("");
@@ -65,7 +67,7 @@ export default function RegisterPage() {
         <div className="plan-card active" style={{ marginBottom: 20, cursor: "default" }}>
           <span className="plan-badge">Подписка</span>
           <strong>{SUBSCRIPTION_PLAN.name}</strong>
-          <span className="plan-price">{SUBSCRIPTION_PLAN.periodLabel}</span>
+          <span className="plan-price">{planLoading ? "Загрузка цены…" : periodLabel}</span>
           <ul>
             {SUBSCRIPTION_PLAN.bullets.map((item) => (
               <li key={item}>{item}</li>

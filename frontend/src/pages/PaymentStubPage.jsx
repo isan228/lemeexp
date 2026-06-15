@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import SiteBrand from "../components/SiteBrand.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
-import { SUBSCRIPTION_PLAN } from "../config/billing.js";
+import { SUBSCRIPTION_PLAN, formatPlanPrice } from "../config/billing.js";
+import { useBillingPlan } from "../hooks/useBillingPlan.js";
 import { routes } from "../config/site.js";
 
 export default function PaymentPage() {
@@ -10,6 +11,7 @@ export default function PaymentPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const { apiRequest, updateProfile } = useAuth();
+  const { amount: baseAmount, loading: planLoading, priceLabel } = useBillingPlan(apiRequest);
   const planId = searchParams.get("plan") || SUBSCRIPTION_PLAN.id;
   const isValidPlan = planId === SUBSCRIPTION_PLAN.id;
   const [pending, setPending] = useState(false);
@@ -18,7 +20,6 @@ export default function PaymentPage() {
   const [promoInput, setPromoInput] = useState("");
   const [appliedPromo, setAppliedPromo] = useState(null);
 
-  const baseAmount = SUBSCRIPTION_PLAN.amount;
   const finalAmount = appliedPromo ? appliedPromo.finalAmount : baseAmount;
 
   async function onApplyPromo() {
@@ -90,6 +91,9 @@ export default function PaymentPage() {
     }
   }
 
+  const displayPrice =
+    finalAmount <= 0 ? "бесплатно" : planLoading && !appliedPromo ? "…" : formatPlanPrice(finalAmount);
+
   return (
     <div className="payment-stub-page payment-page">
       <header className="auth-flow-header">
@@ -108,12 +112,13 @@ export default function PaymentPage() {
           <h1>Оплата подписки</h1>
         </div>
         <p className="muted">
-          {SUBSCRIPTION_PLAN.name} —{" "}
-          <strong>{finalAmount <= 0 ? "бесплатно" : `${finalAmount} сом`}</strong>
+          {SUBSCRIPTION_PLAN.name} — <strong>{displayPrice}</strong>
           {appliedPromo?.discount > 0 ? (
             <>
               {" "}
-              <span className="small">(скидка {appliedPromo.discount} сом)</span>
+              <span className="small">
+                (было {priceLabel}, скидка {formatPlanPrice(appliedPromo.discount)})
+              </span>
             </>
           ) : null}
         </p>
@@ -140,7 +145,12 @@ export default function PaymentPage() {
                   Сбросить
                 </button>
               ) : (
-                <button type="button" className="btn-secondary inline" onClick={() => void onApplyPromo()} disabled={promoPending || pending || !promoInput.trim()}>
+                <button
+                  type="button"
+                  className="btn-secondary inline"
+                  onClick={() => void onApplyPromo()}
+                  disabled={promoPending || pending || !promoInput.trim()}
+                >
                   {promoPending ? "Проверка…" : "Применить"}
                 </button>
               )}
@@ -169,7 +179,12 @@ export default function PaymentPage() {
           <Link to={routes.login} className="btn-link">
             Войти
           </Link>
-          <button type="button" className="btn-primary inline" onClick={() => void onPay()} disabled={pending || !isValidPlan}>
+          <button
+            type="button"
+            className="btn-primary inline"
+            onClick={() => void onPay()}
+            disabled={pending || !isValidPlan || planLoading}
+          >
             {pending ? "Обработка…" : finalAmount <= 0 ? "Активировать доступ" : "Оплатить через Finik"}
           </button>
         </div>

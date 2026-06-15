@@ -86,7 +86,9 @@ const memState = {
   /** @type {Array<{ id: number; code: string; discountType: string; discountValue: number; maxUses: number | null; usesCount: number; expiresAt: string | null; active: boolean; createdAt: string; updatedAt: string }>} */
   promoCodes: [],
   /** @type {Array<{ promoCodeId: number; userId: number; paymentId: string | null; redeemedAt: string }>} */
-  promoRedemptions: []
+  promoRedemptions: [],
+  /** @type {Record<string, string>} */
+  settings: {}
 };
 
 let memNewsNextId = 1;
@@ -208,6 +210,12 @@ const promoUpdateSchema = z.object({
   maxUses: z.coerce.number().int().positive().optional().nullable(),
   expiresAt: z.string().datetime().nullable().optional()
 });
+
+const billingSettingsSchema = z.object({
+  amount: z.coerce.number().min(0).max(1_000_000)
+});
+
+const SUBSCRIPTION_AMOUNT_KEY = "subscription_amount";
 
 const refreshSchema = z.object({
   refreshToken: z.string().min(20)
@@ -640,6 +648,63 @@ async function ensurePromoCodesTable() {
     )
   `);
   await pool.query(`create index if not exists idx_promo_codes_active on promo_codes(active)`);
+}
+
+async function ensureAppSettingsTable() {
+  if (!pool) return;
+  await pool.query(`
+    create table if not exists app_settings (
+      key text primary key,
+      value text not null,
+      updated_at timestamptz not null default now()
+    )
+  `);
+}
+
+function getDefaultSubscriptionAmount() {
+  return getPlanAmount(getDefaultPlanId()) ?? 1;
+}
+
+async function getSubscriptionAmount() {
+  if (dbReady) {
+    const r = await pool.query(`select value from app_settings where key = $1 limit 1`, [
+      SUBSCRIPTION_AMOUNT_KEY
+    ]);
+    if (r.rows[0]) {
+      const amount = Number(r.rows[0].value);
+      if (Number.isFinite(amount) && amount >= 0) return amount;
+    }
+    return getDefaultSubscriptionAmount();
+  }
+  if (memState.settings[SUBSCRIPTION_AMOUNT_KEY] != null) {
+    const amount = Number(memState.settings[SUBSCRIPTION_AMOUNT_KEY]);
+    if (Number.isFinite(amount) && amount >= 0) return amount;
+  }
+  return getDefaultSubscriptionAmount();
+}
+
+async function setSubscriptionAmount(amount) {
+  const value = String(amount);
+  if (dbReady) {
+    await pool.query(
+      `insert into app_settings (key, value, updated_at) values ($1, $2, now())
+       on conflict (key) do update set value = excluded.value, updated_at = now()`,
+      [SUBSCRIPTION_AMOUNT_KEY, value]
+    );
+    return amount;
+  }
+  memState.settings[SUBSCRIPTION_AMOUNT_KEY] = value;
+  return amount;
+}
+
+async function getBillingPlanPayload() {
+  const id = getDefaultPlanId();
+  const amount = await getSubscriptionAmount();
+  return {
+    id,
+    title: getPlanTitle(id),
+    amount
+  };
 }
 
 async function ensureSupportMessagesTable() {
@@ -1200,13 +1265,12 @@ async function applyPromoAfterPaymentSuccess(paymentId, userId, promoCodeLabel) 
   await redeemPromoCode(promo.id, userId, paymentId);
 }
 
-app.get("/billing/plan", (_req, res) => {
-  const plan = getDefaultPlanId();
-  res.json({
-    id: plan,
-    title: getPlanTitle(plan),
-    amount: getPlanAmount(plan)
-  });
+app.get("/billing/plan", async (_req, res) => {
+  try {
+    res.json(await getBillingPlanPayload());
+  } catch (error) {
+    res.status(500).json({ message: "Failed to load plan", error: error.message });
+  }
 });
 
 app.post("/billing/validate-promo", auth, async (req, res) => {
@@ -1218,8 +1282,7 @@ app.post("/billing/validate-promo", auth, async (req, res) => {
     return res.status(403).json({ message: "Admin subscription cannot be changed" });
   }
 
-  const plan = getDefaultPlanId();
-  const baseAmount = getPlanAmount(plan);
+  const baseAmount = await getSubscriptionAmount();
   const result = await validatePromoForUser(parsed.data.promoCode, req.user.userId, baseAmount);
   if (!result.ok) {
     return res.status(400).json({ message: result.message });
@@ -1244,8 +1307,8 @@ app.post("/billing/create-payment", auth, async (req, res) => {
   }
 
   const plan = parsed.data.plan || getDefaultPlanId();
-  const baseAmount = getPlanAmount(plan);
-  if (!baseAmount || baseAmount < 0) {
+  const baseAmount = await getSubscriptionAmount();
+  if (baseAmount == null || baseAmount < 0) {
     return res.status(400).json({ message: "Invalid plan amount" });
   }
 
@@ -1919,6 +1982,36 @@ app.get("/admin/users", auth, requireAdmin, async (_req, res) => {
     res.json(r.rows);
   } catch (error) {
     res.status(500).json({ message: "Failed to list users", error: error.message });
+  }
+});
+
+app.get("/admin/billing/settings", auth, requireAdmin, async (_req, res) => {
+  try {
+    const payload = await getBillingPlanPayload();
+    let updatedAt = null;
+    if (dbReady) {
+      const r = await pool.query(`select updated_at from app_settings where key = $1 limit 1`, [
+        SUBSCRIPTION_AMOUNT_KEY
+      ]);
+      updatedAt = r.rows[0]?.updated_at ?? null;
+    }
+    res.json({ ...payload, updatedAt });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to load billing settings", error: error.message });
+  }
+});
+
+app.patch("/admin/billing/settings", auth, requireAdmin, async (req, res) => {
+  const parsed = billingSettingsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
+  }
+  try {
+    await setSubscriptionAmount(parsed.data.amount);
+    const payload = await getBillingPlanPayload();
+    res.json(payload);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to update billing settings", error: error.message });
   }
 });
 
@@ -2832,6 +2925,11 @@ async function start() {
         await ensurePromoCodesTable();
       } catch (e) {
         console.error("Таблица promo_codes — пропуск (проверьте миграцию):", e.message);
+      }
+      try {
+        await ensureAppSettingsTable();
+      } catch (e) {
+        console.error("Таблица app_settings — пропуск (проверьте миграцию):", e.message);
       }
       await seedDemoData();
       dbReady = true;
