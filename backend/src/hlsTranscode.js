@@ -48,15 +48,20 @@ export async function packageVideoToHls(videoId, inputMp4Path) {
   await rm(outDir, { recursive: true, force: true });
   await mkdir(outDir, { recursive: true });
 
-  const keyPath = path.join(outDir, "enc.key");
-  const keyInfoPath = path.join(outDir, "keyinfo.txt");
+  const keyName = "enc.key";
+  const keyInfoName = "keyinfo.txt";
+  const keyPath = path.join(outDir, keyName);
+  const keyInfoPath = path.join(outDir, keyInfoName);
   const key = crypto.randomBytes(16);
   await writeFile(keyPath, key);
-  // ffmpeg keyinfo: 1) URI в плейлисте, 2) путь к файлу ключа на диске
-  await writeFile(keyInfoPath, `enc.key\n${keyPath}\n`);
 
-  const segmentPattern = path.join(outDir, "seg_%03d.ts");
-  const playlistPath = path.join(outDir, "index.m3u8");
+  // ffmpeg: URI в плейлисте + путь к ключу относительно keyinfo (оба в outDir)
+  await writeFile(keyInfoPath, `${keyName}\n${keyName}\n`);
+  try {
+    await access(keyPath);
+  } catch {
+    throw new Error(`encryption key not written: ${keyPath}`);
+  }
 
   const args = [
     "-y",
@@ -71,10 +76,10 @@ export async function packageVideoToHls(videoId, inputMp4Path) {
     "-hls_playlist_type",
     "vod",
     "-hls_segment_filename",
-    segmentPattern,
+    "seg_%03d.ts",
     "-hls_key_info_file",
-    keyInfoPath,
-    playlistPath
+    keyInfoName,
+    "index.m3u8"
   ];
 
   try {
@@ -102,10 +107,10 @@ export async function packageVideoToHls(videoId, inputMp4Path) {
         "-hls_playlist_type",
         "vod",
         "-hls_segment_filename",
-        segmentPattern,
+        "seg_%03d.ts",
         "-hls_key_info_file",
-        keyInfoPath,
-        playlistPath
+        keyInfoName,
+        "index.m3u8"
       ],
       outDir
     ).catch(() => {
@@ -113,7 +118,7 @@ export async function packageVideoToHls(videoId, inputMp4Path) {
     });
   }
 
-  await access(playlistPath);
+  await access(path.join(outDir, "index.m3u8"));
 }
 
 export async function buildAuthenticatedManifest(videoId, req, accessToken, deviceId) {
