@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import SiteBrand from "../components/SiteBrand.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
+import { routes } from "../config/site.js";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -13,9 +15,9 @@ export default function LoginPage() {
   useEffect(() => {
     if (!hydrated || !token) return;
     if (profile?.subscriptionType === "admin") {
-      navigate("/admin", { replace: true });
+      navigate(routes.admin, { replace: true });
     } else {
-      navigate("/learning/home", { replace: true });
+      navigate(routes.learningHome, { replace: true });
     }
   }, [hydrated, token, profile, navigate]);
 
@@ -26,9 +28,9 @@ export default function LoginPage() {
     try {
       const p = await login(email, password);
       if (p?.subscriptionType === "admin") {
-        navigate("/admin", { replace: true });
+        navigate(routes.admin, { replace: true });
       } else {
-        navigate("/learning/home", { replace: true });
+        navigate(routes.learningHome, { replace: true });
       }
     } catch (err) {
       setError(err.message || "Ошибка входа");
@@ -48,17 +50,12 @@ export default function LoginPage() {
   return (
     <div className="landing landing-marketing">
       <header className="landing-header landing-header-wide">
-        <div className="landing-brand">
-          <span className="logo-mark">
-            <img src="/9ff6137d-ee1d-4cd6-a762-9795d7540eae.svg" alt="Let me explain" className="logo-mark-img" />
-          </span>
-          <span className="logo-text">Let me explain</span>
-        </div>
+        <SiteBrand />
         <div className="landing-header-actions">
-          <Link to="/register" className="btn-primary inline landing-register-btn">
+          <Link to={routes.register} className="btn-primary inline landing-register-btn">
             Купить
           </Link>
-          <Link to="/" className="nav-muted">
+          <Link to={routes.home} className="nav-muted">
             На главную
           </Link>
         </div>
@@ -82,7 +79,12 @@ export default function LoginPage() {
               <button type="submit" className="btn-primary" disabled={pending}>
                 {pending ? "Вход…" : "Войти"}
               </button>
-              <p className="hint">Нет аккаунта? Оформите доступ через кнопку "Купить".</p>
+              <p className="hint">
+                Нет аккаунта?{" "}
+                <Link to={routes.register} className="btn-link">
+                  Оформить доступ
+                </Link>
+              </p>
             </form>
           </div>
         </section>

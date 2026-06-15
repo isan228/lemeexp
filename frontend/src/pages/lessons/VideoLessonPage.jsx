@@ -1,7 +1,9 @@
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import LessonPlayer from "../../components/LessonPlayer.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { routes } from "../../config/site.js";
 import { isPlayableStream, isProcessingStream } from "../../utils/streamPath.js";
+import { getVideoWatchedSeconds } from "../../utils/videoProgress.js";
 
 export default function VideoLessonPage() {
   const { subjectId, chapterId, videoId } = useParams();
@@ -32,7 +34,7 @@ export default function VideoLessonPage() {
     return (
       <section className="lessons-flow lessons-flow-padded">
         <p>Урок не найден.</p>
-        <Link to="/learning/lessons">← К предметам</Link>
+        <Link to={routes.learningLessons}>← К предметам</Link>
       </section>
     );
   }
@@ -41,7 +43,7 @@ export default function VideoLessonPage() {
     return (
       <section className="lessons-flow lessons-flow-padded">
         <p>Видео для этого урока ещё не загружено.</p>
-        <Link to={`/learning/lessons/${subject.id}/chapters/${chapter.id}`}>← К списку видео</Link>
+        <Link to={routes.lessonChapter(subject.id, chapter.id)}>← К списку видео</Link>
       </section>
     );
   }
@@ -50,7 +52,7 @@ export default function VideoLessonPage() {
     return (
       <section className="lessons-flow lessons-flow-padded">
         <p>Видео готовится к просмотру. Подождите 1–2 минуты и обновите страницу.</p>
-        <Link to={`/learning/lessons/${subject.id}/chapters/${chapter.id}`}>← К списку видео</Link>
+        <Link to={routes.lessonChapter(subject.id, chapter.id)}>← К списку видео</Link>
       </section>
     );
   }
@@ -59,7 +61,7 @@ export default function VideoLessonPage() {
     return (
       <section className="lessons-flow lessons-flow-padded">
         <p>Этот урок пока недоступен для просмотра.</p>
-        <Link to={`/learning/lessons/${subject.id}/chapters/${chapter.id}`}>← К списку видео</Link>
+        <Link to={routes.lessonChapter(subject.id, chapter.id)}>← К списку видео</Link>
       </section>
     );
   }
@@ -67,11 +69,11 @@ export default function VideoLessonPage() {
   return (
     <section className="lessons-flow lessons-flow-padded">
       <div className="breadcrumb">
-        <Link to="/learning/lessons">Предметы</Link>
+        <Link to={routes.learningLessons}>Предметы</Link>
         <span className="bc-sep">/</span>
-        <Link to={`/learning/lessons/${subject.id}`}>{subject.title}</Link>
+        <Link to={routes.lessonSubject(subject.id)}>{subject.title}</Link>
         <span className="bc-sep">/</span>
-        <Link to={`/learning/lessons/${subject.id}/chapters/${chapter.id}`}>{chapter.title}</Link>
+        <Link to={routes.lessonChapter(subject.id, chapter.id)}>{chapter.title}</Link>
         <span className="bc-sep">/</span>
         <span>{video.title}</span>
       </div>
@@ -99,7 +101,7 @@ export default function VideoLessonPage() {
               return (
                 <li key={item.id}>
                   <Link
-                    to={`/learning/lessons/${subject.id}/chapters/${chapter.id}/videos/${item.id}`}
+                    to={routes.lessonVideo(subject.id, chapter.id, item.id)}
                     className={active ? "watch-item active" : "watch-item"}
                   >
                     <span className="watch-item-thumb" aria-hidden="true">
@@ -124,7 +126,7 @@ export default function VideoLessonPage() {
       </div>
 
       <p className="back-row">
-        <Link to={`/learning/lessons/${subject.id}/chapters/${chapter.id}`}>← К списку видео</Link>
+        <Link to={routes.lessonChapter(subject.id, chapter.id)}>← К списку видео</Link>
       </p>
     </section>
   );

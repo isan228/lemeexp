@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
+import { routes } from "../config/site.js";
+import { findVideoById } from "../utils/continueLesson.js";
 
 export default function SupportPage() {
   const [searchParams] = useSearchParams();
-  const { apiRequest, profile } = useAuth();
+  const { apiRequest, profile, chapters } = useAuth();
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
@@ -17,6 +19,13 @@ export default function SupportPage() {
     const fromMessages = messages.find((m) => Number(m.videoId || 0) > 0)?.videoTitle || "";
     return fromMessages || videoTitleFromQuery;
   }, [messages, videoTitleFromQuery]);
+  const lessonLocation = useMemo(
+    () => (videoId ? findVideoById(chapters, videoId) : null),
+    [chapters, videoId]
+  );
+  const lessonHref = lessonLocation
+    ? routes.lessonVideo(lessonLocation.subject.id, lessonLocation.chapter.id, lessonLocation.video.id)
+    : null;
 
   const loadMessages = useCallback(async () => {
     const path = videoId ? `/support/messages?videoId=${videoId}` : "/support/messages";
@@ -94,8 +103,11 @@ export default function SupportPage() {
             : "Пишите вопросы по урокам и доступу. Админ видит сообщения в своей панели."}
         </p>
         {videoId ? (
-          <p className="back-row">
-            <Link to="/learning/support">← Вернуться в общий чат</Link>
+          <p className="back-row support-back-links">
+            {lessonHref ? (
+              <Link to={lessonHref}>← Вернуться к уроку</Link>
+            ) : null}
+            <Link to={routes.learningSupport}>← Общий чат</Link>
           </p>
         ) : null}
       </header>

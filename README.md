@@ -1,29 +1,10 @@
-# Платформа видеоуроков (MVP)
+# Let me explain — платформа видеоуроков
 
-Стартовый каркас проекта под ТЗ: защищенная платформа видеоуроков с приоритетом на быстрый доступ к последнему уроку, навигацию по главам и защиту контента.
-
-## Что уже подготовлено
-
-- `frontend/`: React SPA с базовой структурой экранов:
-  - Главная
-  - Видеоуроки (главы, подглавы, поиск)
-  - Профиль
-  - Техподдержка
-- `backend/`: Express API с JWT + refresh токенами, rate limit и HLS-защитой:
-  - `POST /auth/login`
-  - `POST /auth/refresh`
-  - `POST /auth/logout`
-  - `GET /chapters`
-  - `GET /progress`
-  - `POST /videos/:videoId/position`
-  - `POST /videos/:videoId/access-token`
-  - `GET /hls/:videoId/manifest.m3u8`
-  - `GET /hls/:videoId/key`
-- `backend/sql/schema.sql`: схема PostgreSQL под пользователей, курсы, видео, прогресс, сессии и refresh токены.
+React SPA + Express API + PostgreSQL. Production: [lemexplain.com](https://lemexplain.com), API: [api.lemexplain.com](https://api.lemexplain.com).
 
 ## Быстрый запуск
 
-### 1) Backend
+### Backend
 
 ```bash
 cd backend
@@ -34,7 +15,7 @@ npm run db:seed
 npm run dev
 ```
 
-### 2) Frontend
+### Frontend
 
 ```bash
 cd frontend
@@ -42,49 +23,47 @@ npm install
 npm run dev
 ```
 
-Опционально создайте `frontend/.env`:
+Опционально `frontend/.env`:
 
 ```bash
 VITE_API_URL=http://localhost:4000
 ```
 
-## Конфигурация backend
+## Маршруты приложения
 
-Переменные в `backend/.env.example`:
+| Путь | Назначение |
+|------|------------|
+| `/` | Лендинг |
+| `/login` | Вход |
+| `/register` | Регистрация (тариф → анкета → оплата) |
+| `/payment` | Оплата через Finik |
+| `/learning/home` | Главная кабинета |
+| `/learning/lessons` | Каталог предметов |
+| `/learning/profile` | Профиль |
+| `/learning/support` | Чат с поддержкой |
+| `/admin` | Админ-панель |
 
-- `DATABASE_URL`: PostgreSQL
-- `REDIS_URL`: Redis (кэш и хранение refresh токенов)
-- `ALLOWED_ORIGINS`: whitelist для CORS
-- `MAX_DEVICES_PER_USER`: лимит устройств на пользователя
-- `HLS_KEY_SECRET`: подпись токенов для выдачи HLS ключей
+Внутренние ссылки задаются в `frontend/src/config/site.js` (`routes`, `site.supportEmail`).
+
+## Видео и защита
+
+- Загрузка в админке: **MP4 (H.264 + AAC)**.
+- После загрузки — фоновая конвертация в **HLS с AES-128** (`ffmpeg` на сервере).
+- Прямая раздача `/media/:videoId` отключена; воспроизведение только через защищённый HLS manifest + key по JWT.
 
 ## Demo flow
 
-- Откройте frontend и нажмите `Подключиться к API`
-- Используется демо-пользователь: `student@example.com / demo1234`
-- После входа загрузятся главы, прогресс и сохранение позиции через backend API
-- В разделе уроков кнопка `Смотреть` открывает Video.js и защищенный HLS manifest
-- При `401` frontend автоматически делает `POST /auth/refresh` и повторяет запрос
+1. Откройте frontend (`http://localhost:5173`).
+2. Войдите: `student@example.com` / `demo1234` (после `npm run db:seed`).
+3. Кабинет → **Уроки** → предмет → глава → **Смотреть**.
+4. При `401` frontend автоматически делает `POST /auth/refresh` и повторяет запрос.
 
-## Админка (MVP)
+## Админка
 
-1) В `backend/.env` задайте:
+1. В `backend/.env`: `ADMIN_EMAIL`, `ADMIN_PASSWORD` (по умолчанию `admin@example.com` / `admin1234`).
+2. Вход на `/login` или `/admin` с учётной записью admin (`subscription_type = admin` в БД).
+3. Загрузка MP4 → автоматическая упаковка HLS; статус виден в разделе «Курсы и уроки».
 
-- `ADMIN_EMAIL` (по умолчанию `admin@example.com`)
-- `ADMIN_PASSWORD` (по умолчанию `admin1234`)
+## Деплой
 
-2) На экране входа используйте блок **Админ вход** и нажмите **Войти как админ**.
-
-3) В разделе **Админка**:
-
-- создавайте главы/подглавы/видео
-- меняйте порядок (кнопки ↑/↓ — MVP, дальше можно заменить на drag&drop)
-- загружайте файл видео (mp4) для записи видео — файл будет доступен как `/uploads/...`
-
-## Следующие шаги (по этапам из ТЗ)
-
-1. Перенести мок-данные (`chapters`, `demoUser`, progress) в PostgreSQL и сидирование.
-2. Подключить Video.js или Shaka Player в `frontend` и использовать `manifest` + `access-token`.
-3. Добавить реальную генерацию сегментов HLS и хранение ключей в KMS/secret manager.
-4. Добавить админку: сортировка drag & drop для глав/подглав и загрузка видео.
-5. На этапе 2 интегрировать DRM (Widevine/FairPlay).
+См. [DEPLOY.md](./DEPLOY.md).

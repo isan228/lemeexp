@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import SiteBrand from "../components/SiteBrand.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
+import { routes } from "../config/site.js";
 
 const subscriptionPlans = [
   {
@@ -54,7 +56,7 @@ export default function RegisterPage() {
     try {
       const registrationNickname = nickname?.trim() || fullName?.trim() || "";
       await register(email, password, registrationNickname);
-      navigate(`/payment?plan=${selectedPlanId}`, {
+      navigate(routes.payment(selectedPlanId), {
         replace: true,
         state: {
           plan: selectedPlanId,
@@ -70,6 +72,17 @@ export default function RegisterPage() {
 
   return (
     <div className="payment-stub-page register-page">
+      <header className="auth-flow-header">
+        <SiteBrand />
+        <div className="auth-flow-header-actions">
+          <Link to={routes.login} className="nav-muted">
+            Войти
+          </Link>
+          <Link to={routes.home} className="nav-muted">
+            Главная
+          </Link>
+        </div>
+      </header>
       <div className="payment-stub-card card register-card">
         <div className="flow-hero">
           <p className="landing-kicker">Регистрация</p>
@@ -113,7 +126,7 @@ export default function RegisterPage() {
               ))}
             </div>
             <div className="register-form-actions">
-              <Link to="/" className="btn-secondary">
+              <Link to={routes.home} className="btn-secondary">
                 На главную
               </Link>
               <button
@@ -125,6 +138,9 @@ export default function RegisterPage() {
                 Далее: анкета
               </button>
             </div>
+            <p className="auth-page-links">
+              Уже есть аккаунт? <Link to={routes.login}>Войти</Link>
+            </p>
           </div>
         ) : (
           <form className="auth-form step-anim" key="form-step" onSubmit={onRegister}>
@@ -167,6 +183,9 @@ export default function RegisterPage() {
                 {pending ? "Регистрация..." : "Перейти к оплате"}
               </button>
             </div>
+            <p className="auth-page-links">
+              Уже есть аккаунт? <Link to={routes.login}>Войти</Link>
+            </p>
           </form>
         )}
       </div>

@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import PageHeader from "../components/PageHeader.jsx";
+import { routes } from "../config/site.js";
 import { countCatalogStats, findContinueLesson } from "../utils/continueLesson.js";
 
 export default function HomePage() {
@@ -17,7 +18,7 @@ export default function HomePage() {
         title={`Здравствуйте, ${name}`}
         intro="Продолжайте обучение с того места, где остановились."
         actions={
-          <Link to="/learning/lessons" className="btn-primary btn-study">
+          <Link to={routes.learningLessons} className="btn-primary btn-study">
             К урокам
           </Link>
         }
@@ -66,7 +67,7 @@ export default function HomePage() {
           <div>
             <h3>Поддержка</h3>
             <p className="muted small">Вопросы по урокам и технические проблемы</p>
-            <Link to="/learning/support" className="btn-link">
+            <Link to={routes.learningSupport} className="btn-link">
               Написать →
             </Link>
           </div>
@@ -77,14 +78,14 @@ export default function HomePage() {
         <article className="card home-quick-card">
           <h3>Уроки</h3>
           <p className="muted">Предмет → глава → видеоурок</p>
-          <Link to="/learning/lessons" className="btn-secondary inline">
+          <Link to={routes.learningLessons} className="btn-secondary inline">
             Открыть каталог
           </Link>
         </article>
         <article className="card home-quick-card">
           <h3>Профиль</h3>
           <p className="muted">Тариф и данные аккаунта</p>
-          <Link to="/learning/profile" className="btn-secondary inline">
+          <Link to={routes.learningProfile} className="btn-secondary inline">
             Настройки
           </Link>
         </article>

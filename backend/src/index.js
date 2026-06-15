@@ -28,7 +28,7 @@ import {
   safeSegmentName
 } from "./hlsTranscode.js";
 import { createReadStream, mkdirSync } from "node:fs";
-import { access, readFile, stat, writeFile } from "node:fs/promises";
+import { access, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
 import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1413,6 +1413,94 @@ app.post("/admin/videos/:videoId/package-hls", auth, requireAdmin, async (req, r
   const sourceFilename = path.basename(inputPath);
   await queueHlsPackaging(videoId, inputPath, sourceFilename);
   res.json({ ok: true, message: "HLS packaging started" });
+});
+
+async function removeVideoMediaFiles(videoId, streamPath) {
+  hlsPackaging.delete(videoId);
+
+  let sourceMp4 = getUploadFilenameFromStreamPath(streamPath);
+  if (!sourceMp4 && isProtectedHlsStreamPath(streamPath)) {
+    try {
+      sourceMp4 = (await readFile(path.join(getHlsDir(videoId), "source.txt"), "utf8")).trim();
+    } catch {
+      /* no source metadata */
+    }
+  }
+
+  try {
+    await rm(getHlsDir(videoId), { recursive: true, force: true });
+  } catch {
+    /* ignore */
+  }
+
+  if (sourceMp4) {
+    try {
+      await unlink(path.join(uploadsDir, sourceMp4));
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+app.delete("/admin/videos/:videoId", auth, requireAdmin, async (req, res) => {
+  const videoId = Number(req.params.videoId);
+  if (!Number.isFinite(videoId)) return res.status(400).json({ message: "Invalid id" });
+  if (!dbReady) return res.status(503).json({ message: "DB required for admin" });
+
+  try {
+    const row = await pool.query(`select stream_path from videos where id = $1`, [videoId]);
+    if (!row.rows[0]) return res.status(404).json({ message: "Video not found" });
+    const streamPath = row.rows[0].stream_path || "";
+    await pool.query(`delete from videos where id = $1`, [videoId]);
+    void removeVideoMediaFiles(videoId, streamPath);
+    return res.status(204).send();
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to delete video", error: error.message });
+  }
+});
+
+app.delete("/admin/subtopics/:subtopicId", auth, requireAdmin, async (req, res) => {
+  const subtopicId = Number(req.params.subtopicId);
+  if (!Number.isFinite(subtopicId)) return res.status(400).json({ message: "Invalid id" });
+  if (!dbReady) return res.status(503).json({ message: "DB required for admin" });
+
+  try {
+    const videos = await pool.query(`select id, stream_path from videos where subtopic_id = $1`, [subtopicId]);
+    const exists = await pool.query(`select id from subtopics where id = $1`, [subtopicId]);
+    if (!exists.rows[0]) return res.status(404).json({ message: "Subtopic not found" });
+    await pool.query(`delete from subtopics where id = $1`, [subtopicId]);
+    for (const v of videos.rows) {
+      void removeVideoMediaFiles(v.id, v.stream_path || "");
+    }
+    return res.status(204).send();
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to delete subtopic", error: error.message });
+  }
+});
+
+app.delete("/admin/courses/:courseId", auth, requireAdmin, async (req, res) => {
+  const courseId = Number(req.params.courseId);
+  if (!Number.isFinite(courseId)) return res.status(400).json({ message: "Invalid id" });
+  if (!dbReady) return res.status(503).json({ message: "DB required for admin" });
+
+  try {
+    const videos = await pool.query(
+      `select v.id, v.stream_path
+       from videos v
+       join subtopics s on s.id = v.subtopic_id
+       where s.course_id = $1`,
+      [courseId]
+    );
+    const exists = await pool.query(`select id from courses where id = $1`, [courseId]);
+    if (!exists.rows[0]) return res.status(404).json({ message: "Course not found" });
+    await pool.query(`delete from courses where id = $1`, [courseId]);
+    for (const v of videos.rows) {
+      void removeVideoMediaFiles(v.id, v.stream_path || "");
+    }
+    return res.status(204).send();
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to delete course", error: error.message });
+  }
 });
 
 app.get("/admin/users", auth, requireAdmin, async (_req, res) => {

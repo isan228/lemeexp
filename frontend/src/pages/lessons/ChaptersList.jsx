@@ -1,6 +1,7 @@
 import { Link, useParams } from "react-router-dom";
 import PageHeader from "../../components/PageHeader.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { routes } from "../../config/site.js";
 
 export default function ChaptersList() {
   const { subjectId } = useParams();
@@ -24,7 +25,7 @@ export default function ChaptersList() {
       <section className="lessons-flow lessons-flow-padded">
         <div className="empty-state card">
           <p>Предмет не найден.</p>
-          <Link to="/learning/lessons" className="btn-link">
+          <Link to={routes.learningLessons} className="btn-link">
             ← К предметам
           </Link>
         </div>
@@ -35,7 +36,7 @@ export default function ChaptersList() {
   return (
     <section className="lessons-flow lessons-flow-padded">
       <nav className="breadcrumb" aria-label="Навигация">
-        <Link to="/learning/lessons">Предметы</Link>
+        <Link to={routes.learningLessons}>Предметы</Link>
         <span className="bc-sep">/</span>
         <span className="bc-current">{subject.title}</span>
       </nav>
@@ -43,7 +44,7 @@ export default function ChaptersList() {
       <ul className="chapter-link-list">
         {(subject.subtopics || []).map((ch, index) => (
           <li key={ch.id}>
-            <Link to={`/learning/lessons/${subject.id}/chapters/${ch.id}`} className="chapter-row card">
+            <Link to={routes.lessonChapter(subject.id, ch.id)} className="chapter-row card">
               <span className="chapter-row-num">{index + 1}</span>
               <span className="chapter-row-body">
                 <span className="chapter-title">{ch.title}</span>
@@ -62,7 +63,7 @@ export default function ChaptersList() {
         </div>
       )}
       <p className="back-row">
-        <Link to="/learning/lessons">← Все предметы</Link>
+        <Link to={routes.learningLessons}>← Все предметы</Link>
       </p>
     </section>
   );

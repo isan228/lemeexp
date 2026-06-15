@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
+import SiteBrand from "../components/SiteBrand.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
+import { routes } from "../config/site.js";
 
 const planTitles = {
   basic: "Базовая",
@@ -54,6 +56,12 @@ export default function PaymentPage() {
 
   return (
     <div className="payment-stub-page payment-page">
+      <header className="auth-flow-header">
+        <SiteBrand />
+        <Link to={routes.home} className="nav-muted">
+          На главную
+        </Link>
+      </header>
       <div className="payment-stub-card card payment-card">
         <div className="flow-hero">
           <p className="landing-kicker">Шаг оплаты</p>
@@ -88,8 +96,17 @@ export default function PaymentPage() {
         )}
         {error && <p className="form-error">{error}</p>}
         <div className="payment-stub-actions">
-          <Link to="/" className="btn-secondary">
-            На главную
+          {!planTitles[planId] ? (
+            <Link to={routes.register} className="btn-secondary">
+              Выбрать тариф
+            </Link>
+          ) : (
+            <Link to={routes.register} className="btn-secondary">
+              Изменить тариф
+            </Link>
+          )}
+          <Link to={routes.login} className="btn-link">
+            Войти
           </Link>
           <button type="button" className="btn-primary inline" onClick={onPayWithFinik} disabled={pending}>
             {pending ? "Создаём платёж..." : "Оплатить через Finik"}

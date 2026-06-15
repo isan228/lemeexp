@@ -2,12 +2,13 @@ import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import NavIcon from "../components/NavIcon.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
+import { routes } from "../config/site.js";
 
 const NAV = [
-  { to: "/learning/home", end: true, icon: "home", label: "Главная" },
-  { to: "/learning/lessons", icon: "lessons", label: "Уроки" },
-  { to: "/learning/profile", icon: "profile", label: "Профиль" },
-  { to: "/learning/support", icon: "support", label: "Поддержка" }
+  { to: routes.learningHome, end: true, icon: "home", label: "Главная" },
+  { to: routes.learningLessons, icon: "lessons", label: "Уроки" },
+  { to: routes.learningProfile, icon: "profile", label: "Профиль" },
+  { to: routes.learningSupport, icon: "support", label: "Поддержка" }
 ];
 
 export default function StudentLayout() {
@@ -91,7 +92,7 @@ export default function StudentLayout() {
               <div className="sidebar-progress-bar" style={{ width: `${pct}%` }} />
               <span className="sidebar-progress-label">{pct}% пройдено</span>
             </div>
-            <Link to="/?public=1" className="sidebar-site-link">
+            <Link to={routes.homePublic} className="sidebar-site-link">
               Сайт проекта
             </Link>
           </div>
@@ -117,7 +118,7 @@ export default function StudentLayout() {
               type="button"
               className="btn-ghost btn-logout"
               onClick={() => {
-                void logout().then(() => navigate("/", { replace: true }));
+                void logout().then(() => navigate(routes.home, { replace: true }));
               }}
             >
               Выйти

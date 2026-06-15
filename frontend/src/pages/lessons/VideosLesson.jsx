@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
 import PageHeader from "../../components/PageHeader.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { routes } from "../../config/site.js";
 import { getVideoWatchedSeconds, isLessonVideoCompleted } from "../../utils/videoProgress.js";
 import { isPlayableStream, isProcessingStream } from "../../utils/streamPath.js";
 
@@ -32,7 +33,7 @@ export default function VideosLesson() {
     return (
       <section className="lessons-flow lessons-flow-padded">
         <p>Раздел не найден.</p>
-        <Link to="/learning/lessons">← К предметам</Link>
+        <Link to={routes.learningLessons}>← К предметам</Link>
       </section>
     );
   }
@@ -65,9 +66,9 @@ export default function VideosLesson() {
   return (
     <section className="lessons-flow lessons-flow-padded">
       <nav className="breadcrumb" aria-label="Навигация">
-        <Link to="/learning/lessons">Предметы</Link>
+        <Link to={routes.learningLessons}>Предметы</Link>
         <span className="bc-sep">/</span>
-        <Link to={`/learning/lessons/${subject.id}`}>{subject.title}</Link>
+        <Link to={routes.lessonSubject(subject.id)}>{subject.title}</Link>
         <span className="bc-sep">/</span>
         <span className="bc-current">{chapter.title}</span>
       </nav>
@@ -83,8 +84,8 @@ export default function VideosLesson() {
           const hasPartialProgress = !completed && watchedSeconds > 0;
           const isNext = ready && vId === nextVideoId && !completed;
           const watchHref = hasPartialProgress
-            ? `/learning/lessons/${subject.id}/chapters/${chapter.id}/videos/${v.id}?resume=1`
-            : `/learning/lessons/${subject.id}/chapters/${chapter.id}/videos/${v.id}`;
+            ? routes.lessonVideo(subject.id, chapter.id, v.id, { resume: true })
+            : routes.lessonVideo(subject.id, chapter.id, v.id);
           return (
             <li key={v.id} className={`card video-row video-row-youtube${ready ? "" : " video-row-pending"}`}>
               {ready ? (
@@ -136,7 +137,7 @@ export default function VideosLesson() {
                   </span>
                 )}
                 <Link
-                  to={`/learning/support?videoId=${v.id}&videoTitle=${encodeURIComponent(v.title || "")}`}
+                  to={routes.learningSupportLesson(v.id, v.title || "")}
                   className="btn-secondary inline"
                 >
                   Вопросы к уроку
@@ -149,7 +150,7 @@ export default function VideosLesson() {
       {videos.length === 0 && <p className="muted">В этой главе пока нет видео.</p>}
 
       <p className="back-row">
-        <Link to={`/learning/lessons/${subject.id}`}>← К главам предмета</Link>
+        <Link to={routes.lessonSubject(subject.id)}>← К главам предмета</Link>
       </p>
     </section>
   );

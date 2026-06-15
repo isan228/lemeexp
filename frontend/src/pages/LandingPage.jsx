@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
+import SiteBrand from "../components/SiteBrand.jsx";
+import SiteFooter from "../components/SiteFooter.jsx";
+import { routes } from "../config/site.js";
 
 function scrollToSection(id) {
   const el = document.getElementById(id);
@@ -78,9 +80,9 @@ export default function LandingPage() {
     if (searchParams.get("public") === "1") return;
     if (!hydrated || !token) return;
     if (profile?.subscriptionType === "admin") {
-      navigate("/admin", { replace: true });
+      navigate(routes.admin, { replace: true });
     } else {
-      navigate("/learning/home", { replace: true });
+      navigate(routes.learningHome, { replace: true });
     }
   }, [hydrated, token, profile, navigate, searchParams]);
 
@@ -112,11 +114,8 @@ export default function LandingPage() {
   return (
     <div className="landing landing-marketing">
       <header className={`landing-header landing-header-wide ${mobileMenuOpen ? "landing-header-mobile-open" : ""}`}>
-        <div className="landing-brand">
-          <span className="logo-mark">
-            <img src="/9ff6137d-ee1d-4cd6-a762-9795d7540eae.svg" alt="Let me explain" className="logo-mark-img" />
-          </span>
-          <span className="logo-text">Let me explain</span>
+        <div className="landing-brand-row">
+          <SiteBrand />
           <button
             type="button"
             className="landing-burger"
@@ -151,12 +150,12 @@ export default function LandingPage() {
           </button>
           <div className="landing-drawer-actions">
             {!token && (
-              <Link to="/register" className="btn-primary inline landing-register-btn" onClick={() => setMobileMenuOpen(false)}>
+              <Link to={routes.register} className="btn-primary inline landing-register-btn" onClick={() => setMobileMenuOpen(false)}>
                 Купить
               </Link>
             )}
             {!token && (
-              <Link to="/login" className="btn-secondary inline landing-register-btn" onClick={() => setMobileMenuOpen(false)}>
+              <Link to={routes.login} className="btn-secondary inline landing-register-btn" onClick={() => setMobileMenuOpen(false)}>
                 Войти
               </Link>
             )}
@@ -164,13 +163,18 @@ export default function LandingPage() {
         </nav>
         <div className="landing-header-actions">
           {!token && (
-            <Link to="/register" className="btn-primary inline landing-register-btn" onClick={() => setMobileMenuOpen(false)}>
+            <Link to={routes.register} className="btn-primary inline landing-register-btn" onClick={() => setMobileMenuOpen(false)}>
               Купить
             </Link>
           )}
           {!token && (
-            <Link to="/login" className="btn-secondary inline landing-register-btn" onClick={() => setMobileMenuOpen(false)}>
+            <Link to={routes.login} className="btn-secondary inline landing-register-btn" onClick={() => setMobileMenuOpen(false)}>
               Войти
+            </Link>
+          )}
+          {token && (
+            <Link to={routes.learningHome} className="btn-primary inline landing-register-btn">
+              Кабинет
             </Link>
           )}
         </div>
@@ -199,12 +203,17 @@ export default function LandingPage() {
             <button type="button" className="btn-primary" onClick={() => scrollToSection("trial")}>
               Смотреть пробники
             </button>
-            <Link to="/login" className="btn-secondary">
+            <Link to={routes.login} className="btn-secondary">
               Войти
             </Link>
             {!token && (
-              <Link to="/register" className="btn-link landing-hero-buy-link">
+              <Link to={routes.register} className="btn-link landing-hero-buy-link">
                 Купить доступ →
+              </Link>
+            )}
+            {token && (
+              <Link to={routes.learningHome} className="btn-link landing-hero-buy-link">
+                В кабинет →
               </Link>
             )}
           </div>
@@ -227,6 +236,9 @@ export default function LandingPage() {
                   ))}
                 </ul>
                 <p className="landing-seed-note">{seed.note}</p>
+                <Link to={routes.register} className="btn-link landing-seed-cta">
+                  Зарегистрироваться →
+                </Link>
               </article>
             ))}
           </div>
@@ -285,10 +297,10 @@ export default function LandingPage() {
             <h2 id="landing-cta-title">Готовы начать подготовку?</h2>
             <p>Выберите тариф, зарегистрируйтесь и получите доступ ко всем урокам платформы.</p>
             <div className="landing-cta-actions">
-              <Link to="/register" className="btn-primary inline">
+              <Link to={routes.register} className="btn-primary inline">
                 Выбрать тариф
               </Link>
-              <Link to="/login" className="btn-secondary inline">
+              <Link to={routes.login} className="btn-secondary inline">
                 Уже есть аккаунт
               </Link>
             </div>
@@ -297,42 +309,7 @@ export default function LandingPage() {
 
       </main>
 
-      <footer className="landing-footer-pro">
-        <div className="landing-footer-grid">
-          <div>
-            <div className="landing-brand landing-brand-footer">
-              <span className="logo-mark">
-                <img src="/9ff6137d-ee1d-4cd6-a762-9795d7540eae.svg" alt="Let me explain" className="logo-mark-img" />
-              </span>
-              <span className="logo-text">Let me explain</span>
-            </div>
-            <p className="muted small landing-footer-copy">© {new Date().getFullYear()} Let me explain. Все права защищены.</p>
-          </div>
-          <div>
-            <h3 className="landing-footer-heading">Контакты</h3>
-            <ul className="landing-footer-contacts">
-              <li>
-                <a href="mailto:support@lemexplain.com">support@lemexplain.com</a>
-              </li>
-              <li>
-                <a href="tel:+78001234567">8 (800) 123-45-67</a> <span className="muted small">(бесплатно по РФ)</span>
-              </li>
-              <li className="muted small">Пн–Пт, 10:00–19:00 (МСК)</li>
-            </ul>
-          </div>
-          <div>
-            <h3 className="landing-footer-heading">Документы</h3>
-            <ul className="landing-footer-links">
-              <li>
-                <span className="muted">Политика конфиденциальности — скоро</span>
-              </li>
-              <li>
-                <span className="muted">Оферта — скоро</span>
-              </li>
-            </ul>
-          </div>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

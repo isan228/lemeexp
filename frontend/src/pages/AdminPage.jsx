@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
+import { routes } from "../config/site.js";
 import { isPlayableStream, isProcessingStream } from "../utils/streamPath.js";
 import "./AdminPage.css";
 
@@ -264,7 +265,7 @@ export default function AdminPage() {
 
   async function onLogout() {
     await logout();
-    navigate("/admin", { replace: true });
+    navigate(routes.admin, { replace: true });
   }
 
   function switchTab(id) {
@@ -347,6 +348,50 @@ export default function AdminPage() {
     setNewVideoDurationMin("");
     await loadAdminCatalog();
     showToast(`Урок «${title}» создан — загрузите mp4`);
+  }
+
+  async function deleteVideo(videoId, title) {
+    if (!window.confirm(`Удалить урок «${title}»? Видеофайлы тоже будут удалены.`)) return;
+    setCatalogError("");
+    const res = await apiRequest(`/admin/videos/${videoId}`, { method: "DELETE" });
+    if (!res.ok && res.status !== 204) {
+      setCatalogError("Не удалось удалить урок");
+      showToast("Не удалось удалить урок", "error");
+      return;
+    }
+    await loadAdminCatalog();
+    showToast("Урок удалён");
+  }
+
+  async function deleteSubtopic(subtopicId, title) {
+    if (!window.confirm(`Удалить главу «${title}» и все уроки в ней?`)) return;
+    setCatalogError("");
+    const res = await apiRequest(`/admin/subtopics/${subtopicId}`, { method: "DELETE" });
+    if (!res.ok && res.status !== 204) {
+      setCatalogError("Не удалось удалить главу");
+      showToast("Не удалось удалить главу", "error");
+      return;
+    }
+    if (selectedSubtopic === subtopicId) setSelectedSubtopic(null);
+    await loadAdminCatalog();
+    showToast("Глава удалена");
+  }
+
+  async function deleteCourse(courseId, title) {
+    if (!window.confirm(`Удалить предмет «${title}» со всеми главами и уроками?`)) return;
+    setCatalogError("");
+    const res = await apiRequest(`/admin/courses/${courseId}`, { method: "DELETE" });
+    if (!res.ok && res.status !== 204) {
+      setCatalogError("Не удалось удалить предмет");
+      showToast("Не удалось удалить предмет", "error");
+      return;
+    }
+    if (selectedCourse === courseId) {
+      setSelectedCourse(null);
+      setSelectedSubtopic(null);
+    }
+    await loadAdminCatalog();
+    showToast("Предмет удалён");
   }
 
   async function pollHlsReady(videoId) {
@@ -547,7 +592,7 @@ export default function AdminPage() {
     return (
       <div className="adm-login">
         <div className="adm-login-box">
-          <Link to="/" className="adm-back">
+          <Link to={routes.home} className="adm-back">
             ← На главную
           </Link>
           <h1>Админ-панель</h1>
@@ -618,7 +663,7 @@ export default function AdminPage() {
           ))}
         </nav>
         <div className="adm-sidebar-foot">
-          <Link to="/" className="adm-sidebar-link">
+          <Link to={routes.homePublic} className="adm-sidebar-link">
             Открыть сайт
           </Link>
           <button type="button" className="adm-sidebar-btn" onClick={() => void onLogout()}>
@@ -746,6 +791,14 @@ export default function AdminPage() {
                             <div className="adm-reorder">
                               <button type="button" aria-label="Выше" onClick={() => void reorderCourses(swapInList(adminCatalog.map((c) => c.id), course.id, -1))}>▲</button>
                               <button type="button" aria-label="Ниже" onClick={() => void reorderCourses(swapInList(adminCatalog.map((c) => c.id), course.id, 1))}>▼</button>
+                              <button
+                                type="button"
+                                className="adm-btn adm-btn-ghost adm-btn-sm"
+                                aria-label={`Удалить ${course.title}`}
+                                onClick={() => void deleteCourse(course.id, course.title)}
+                              >
+                                ✕
+                              </button>
                             </div>
                           </li>
                         ))}
@@ -809,6 +862,14 @@ export default function AdminPage() {
                             <div className="adm-reorder">
                               <button type="button" aria-label="Выше" onClick={() => { const ids = selectedCourseObj?.subtopics?.map((s) => s.id) || []; void reorderSubtopics(selectedCourse, swapInList(ids, st.id, -1)); }}>▲</button>
                               <button type="button" aria-label="Ниже" onClick={() => { const ids = selectedCourseObj?.subtopics?.map((s) => s.id) || []; void reorderSubtopics(selectedCourse, swapInList(ids, st.id, 1)); }}>▼</button>
+                              <button
+                                type="button"
+                                className="adm-btn adm-btn-ghost adm-btn-sm"
+                                aria-label={`Удалить ${st.title}`}
+                                onClick={() => void deleteSubtopic(st.id, st.title)}
+                              >
+                                ✕
+                              </button>
                             </div>
                           </li>
                         ))}
@@ -912,6 +973,14 @@ export default function AdminPage() {
                                   Подготовить поток
                                 </button>
                               ) : null}
+                              <button
+                                type="button"
+                                className="adm-btn adm-btn-ghost adm-btn-sm"
+                                aria-label={`Удалить ${v.title}`}
+                                onClick={() => void deleteVideo(v.id, v.title)}
+                              >
+                                Удалить
+                              </button>
                             </div>
                           </li>
                         ))}

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import SiteBrand from "../components/SiteBrand.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
+import { routes } from "../config/site.js";
 
 export default function PaymentSuccessPage() {
   const [searchParams] = useSearchParams();
@@ -68,13 +70,19 @@ export default function PaymentSuccessPage() {
 
   useEffect(() => {
     if (status === "succeeded") {
-      const timer = setTimeout(() => navigate("/learning/home", { replace: true }), 1500);
+      const timer = setTimeout(() => navigate(routes.learningHome, { replace: true }), 1500);
       return () => clearTimeout(timer);
     }
   }, [status, navigate]);
 
   return (
     <div className="payment-stub-page payment-page">
+      <header className="auth-flow-header">
+        <SiteBrand />
+        <Link to={routes.home} className="nav-muted">
+          На главную
+        </Link>
+      </header>
       <div className="payment-stub-card card payment-card">
         <div className="flow-hero">
           <p className="landing-kicker">Оплата</p>
@@ -98,12 +106,21 @@ export default function PaymentSuccessPage() {
         {error && <p className="form-error">{error}</p>}
 
         <div className="payment-stub-actions">
-          {status !== "succeeded" && (
-            <Link to="/payment" className="btn-secondary">
-              К оплате
+          {status === "succeeded" ? (
+            <Link to={routes.learningHome} className="btn-primary inline">
+              В личный кабинет
             </Link>
+          ) : (
+            <>
+              <Link to={routes.register} className="btn-secondary">
+                К регистрации
+              </Link>
+              <Link to={routes.payment()} className="btn-link">
+                Повторить оплату
+              </Link>
+            </>
           )}
-          <Link to="/" className="btn-primary inline">
+          <Link to={routes.home} className="btn-link">
             На главную
           </Link>
         </div>
