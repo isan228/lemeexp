@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
+import LockIcon from "../../components/LockIcon.jsx";
 import PageHeader from "../../components/PageHeader.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { SUBSCRIPTION_PLAN } from "../../config/billing.js";
@@ -111,7 +112,9 @@ export default function VideosLesson() {
                       loading="lazy"
                       className="video-thumb-img"
                     />
-                    <span className="video-thumb-lock">🔒</span>
+                    <span className="video-thumb-lock">
+                      <LockIcon size={20} />
+                    </span>
                     <span className="video-thumb-duration">{formatClock(v.duration || 0)}</span>
                   </div>
                   <div className="video-meta">

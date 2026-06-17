@@ -1,5 +1,6 @@
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useCallback, useMemo } from "react";
+import LockIcon from "../../components/LockIcon.jsx";
 import LessonPlayer from "../../components/LessonPlayer.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { SUBSCRIPTION_PLAN } from "../../config/billing.js";
@@ -171,7 +172,9 @@ export default function VideoLessonPage() {
                         loading="lazy"
                         className="watch-item-thumb-img"
                       />
-                      <span className="watch-item-thumb-play">{item.locked ? "🔒" : "▶"}</span>
+                      <span className="watch-item-thumb-play">
+                        {item.locked ? <LockIcon size={14} /> : "▶"}
+                      </span>
                     </span>
                     <span className="watch-item-meta">
                       <strong>{item.title}</strong>
