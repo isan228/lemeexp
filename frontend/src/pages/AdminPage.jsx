@@ -96,6 +96,15 @@ export default function AdminPage() {
   const [newUserNickname, setNewUserNickname] = useState("");
   const [newUserSubscription, setNewUserSubscription] = useState("free");
   const [userCreating, setUserCreating] = useState(false);
+  const [editingUserId, setEditingUserId] = useState(null);
+  const [editUserEmail, setEditUserEmail] = useState("");
+  const [editUserPassword, setEditUserPassword] = useState("");
+  const [editUserNickname, setEditUserNickname] = useState("");
+  const [editUserSubscription, setEditUserSubscription] = useState("free");
+  const [editUserBanReason, setEditUserBanReason] = useState("");
+  const [userSaving, setUserSaving] = useState(false);
+  const [securityAlerts, setSecurityAlerts] = useState([]);
+  const [securityAlertsLoading, setSecurityAlertsLoading] = useState(false);
 
   const [chatUserId, setChatUserId] = useState(null);
   const [chatSearch, setChatSearch] = useState("");
@@ -377,6 +386,20 @@ export default function AdminPage() {
     }
   }, [apiRequest]);
 
+  const loadSecurityAlerts = useCallback(async () => {
+    setSecurityAlertsLoading(true);
+    try {
+      const res = await apiRequest("/admin/security-alerts");
+      if (!res.ok) {
+        setSecurityAlerts([]);
+        return;
+      }
+      setSecurityAlerts(await res.json());
+    } finally {
+      setSecurityAlertsLoading(false);
+    }
+  }, [apiRequest]);
+
   async function submitCreateUser(e) {
     e.preventDefault();
     const email = newUserEmail.trim();
@@ -415,6 +438,110 @@ export default function AdminPage() {
     } finally {
       setUserCreating(false);
     }
+  }
+
+  function resetUserEditForm() {
+    setEditingUserId(null);
+    setEditUserEmail("");
+    setEditUserPassword("");
+    setEditUserNickname("");
+    setEditUserSubscription("free");
+    setEditUserBanReason("");
+  }
+
+  function startEditUser(user) {
+    if (user.subscriptionType === "admin") return;
+    setEditingUserId(user.id);
+    setEditUserEmail(user.email);
+    setEditUserPassword("");
+    setEditUserNickname(user.nickname);
+    setEditUserSubscription(user.subscriptionType);
+    setEditUserBanReason(user.banReason || "");
+    setUsersError("");
+  }
+
+  async function submitEditUser(e) {
+    e.preventDefault();
+    if (!editingUserId) return;
+
+    const email = editUserEmail.trim();
+    const nickname = editUserNickname.trim();
+    if (!email || !nickname) return;
+
+    setUsersError("");
+    setUserSaving(true);
+    try {
+      const payload = {
+        email,
+        nickname,
+        subscriptionType: editUserSubscription
+      };
+      if (editUserPassword.length >= 6) payload.password = editUserPassword;
+      if (editUserBanReason.trim()) payload.banReason = editUserBanReason.trim();
+
+      const res = await apiRequest(`/admin/users/${editingUserId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setUsersError(err.message || "Не удалось сохранить изменения");
+        showToast(err.message || "Не удалось сохранить изменения", "error");
+        return;
+      }
+      resetUserEditForm();
+      await loadUsers();
+      showToast("Данные ученика обновлены");
+    } finally {
+      setUserSaving(false);
+    }
+  }
+
+  async function toggleUserBan(user) {
+    if (user.subscriptionType === "admin") return;
+    const banning = !user.banned;
+    let banReason = user.banReason || "";
+    if (banning) {
+      const input = window.prompt("Причина блокировки (необязательно):", banReason);
+      if (input === null) return;
+      banReason = input.trim();
+    } else if (!window.confirm(`Разблокировать ученика «${user.nickname || user.email}»?`)) {
+      return;
+    }
+
+    setUsersError("");
+    try {
+      const payload = { banned: banning };
+      if (banning && banReason) payload.banReason = banReason;
+      const res = await apiRequest(`/admin/users/${user.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.message || "Не удалось изменить статус", "error");
+        return;
+      }
+      if (editingUserId === user.id) {
+        if (banning) setEditUserBanReason(banReason);
+        else setEditUserBanReason("");
+      }
+      await loadUsers();
+      showToast(banning ? "Ученик заблокирован" : "Ученик разблокирован");
+    } catch {
+      showToast("Не удалось изменить статус", "error");
+    }
+  }
+
+  async function dismissSecurityAlert(alertId) {
+    const res = await apiRequest(`/admin/security-alerts/${alertId}/dismiss`, { method: "POST" });
+    if (!res.ok) {
+      showToast("Не удалось скрыть уведомление", "error");
+      return;
+    }
+    setSecurityAlerts((prev) => prev.filter((a) => a.id !== alertId));
   }
 
   const loadNews = useCallback(async () => {
@@ -476,6 +603,13 @@ export default function AdminPage() {
     if (!hydrated || !token || !isAdmin || tab !== "users") return;
     void loadUsers();
   }, [hydrated, token, isAdmin, tab, loadUsers]);
+
+  useEffect(() => {
+    if (!hydrated || !token || !isAdmin) return;
+    void loadSecurityAlerts();
+    const timer = setInterval(() => void loadSecurityAlerts(), 30_000);
+    return () => clearInterval(timer);
+  }, [hydrated, token, isAdmin, loadSecurityAlerts]);
 
   useEffect(() => {
     if (!hydrated || !token || !isAdmin || tab !== "support") return;
@@ -1182,6 +1316,9 @@ export default function AdminPage() {
               {item.id === "support" && chatUnreadTotal > 0 ? (
                 <span className="adm-nav-badge">{chatUnreadTotal}</span>
               ) : null}
+              {item.id === "users" && securityAlerts.length > 0 ? (
+                <span className="adm-nav-badge adm-nav-badge-warn">{securityAlerts.length}</span>
+              ) : null}
             </button>
           ))}
         </nav>
@@ -1207,6 +1344,51 @@ export default function AdminPage() {
         </header>
 
         <main className="adm-body">
+          {securityAlerts.length > 0 && (
+            <div className="adm-security-alerts adm-card">
+              <div className="adm-security-alerts-head">
+                <strong>⚠ Подозрительная активность</strong>
+                {securityAlertsLoading ? <span className="adm-security-alerts-loading">обновление…</span> : null}
+              </div>
+              <ul className="adm-security-alerts-list">
+                {securityAlerts.map((alert) => (
+                  <li key={alert.id} className="adm-security-alert-item">
+                    <div>
+                      <p className="adm-security-alert-msg">{alert.message}</p>
+                      <p className="adm-security-alert-meta">
+                        {alert.userEmail}
+                        {alert.meta?.otherDeviceCount ? ` · устройств: ${alert.meta.otherDeviceCount + 1}` : ""}
+                        {alert.createdAt
+                          ? ` · ${new Date(alert.createdAt).toLocaleString("ru-RU")}`
+                          : ""}
+                      </p>
+                    </div>
+                    <div className="adm-security-alert-actions">
+                      <button
+                        type="button"
+                        className="adm-btn adm-btn-secondary adm-btn-sm"
+                        onClick={() => {
+                          switchTab("users");
+                          const u = users.find((x) => x.id === alert.userId);
+                          if (u) startEditUser(u);
+                        }}
+                      >
+                        Открыть
+                      </button>
+                      <button
+                        type="button"
+                        className="adm-btn adm-btn-ghost adm-btn-sm"
+                        onClick={() => void dismissSecurityAlert(alert.id)}
+                      >
+                        Скрыть
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {tab === "content" && catalogError && <div className="adm-alert warn">{catalogError}</div>}
 
           {tab === "content" && (
@@ -1877,11 +2059,84 @@ export default function AdminPage() {
           {tab === "users" && (
             <div className="adm-news-layout">
               <section className="adm-card" style={{ padding: 20 }}>
-                <h2 style={{ margin: "0 0 8px", fontSize: "1rem" }}>Новый ученик</h2>
+                <h2 style={{ margin: "0 0 8px", fontSize: "1rem" }}>
+                  {editingUserId ? `Редактирование #${editingUserId}` : "Новый ученик"}
+                </h2>
                 <p className="adm-page-desc" style={{ margin: "0 0 16px" }}>
-                  Создайте учётную запись вручную. Ученик сможет войти с указанным email и паролем.
+                  {editingUserId
+                    ? "Измените данные ученика, тариф или пароль. Для смены пароля введите новый (мин. 6 символов)."
+                    : "Создайте учётную запись вручную. Ученик сможет войти с указанным email и паролем."}
                 </p>
                 {usersError && <div className="adm-alert warn">{usersError}</div>}
+                {editingUserId ? (
+                  <form className="adm-form" onSubmit={submitEditUser}>
+                    <div className="adm-field">
+                      <label htmlFor="edit-user-email">Email</label>
+                      <input
+                        id="edit-user-email"
+                        type="email"
+                        value={editUserEmail}
+                        onChange={(e) => setEditUserEmail(e.target.value)}
+                        required
+                        autoComplete="off"
+                      />
+                    </div>
+                    <div className="adm-field">
+                      <label htmlFor="edit-user-nickname">Ник</label>
+                      <input
+                        id="edit-user-nickname"
+                        value={editUserNickname}
+                        onChange={(e) => setEditUserNickname(e.target.value)}
+                        required
+                        maxLength={80}
+                      />
+                    </div>
+                    <div className="adm-field">
+                      <label htmlFor="edit-user-password">Новый пароль (необязательно)</label>
+                      <input
+                        id="edit-user-password"
+                        type="password"
+                        value={editUserPassword}
+                        onChange={(e) => setEditUserPassword(e.target.value)}
+                        minLength={6}
+                        autoComplete="new-password"
+                        placeholder="Оставьте пустым, чтобы не менять"
+                      />
+                    </div>
+                    <div className="adm-field">
+                      <label htmlFor="edit-user-subscription">Тариф</label>
+                      <select
+                        id="edit-user-subscription"
+                        value={editUserSubscription}
+                        onChange={(e) => setEditUserSubscription(e.target.value)}
+                        style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--adm-border)" }}
+                      >
+                        <option value="free">Free</option>
+                        <option value="basic">Basic</option>
+                        <option value="premium">Pro</option>
+                        <option value="mentor">Mentor</option>
+                      </select>
+                    </div>
+                    <div className="adm-field">
+                      <label htmlFor="edit-user-ban-reason">Причина блокировки (если заблокирован)</label>
+                      <input
+                        id="edit-user-ban-reason"
+                        value={editUserBanReason}
+                        onChange={(e) => setEditUserBanReason(e.target.value)}
+                        maxLength={500}
+                        placeholder="Видна только администратору"
+                      />
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button type="submit" className="adm-btn adm-btn-primary" disabled={userSaving}>
+                        {userSaving ? "Сохранение…" : "Сохранить"}
+                      </button>
+                      <button type="button" className="adm-btn adm-btn-secondary" onClick={resetUserEditForm}>
+                        Отмена
+                      </button>
+                    </div>
+                  </form>
+                ) : (
                 <form className="adm-form" onSubmit={submitCreateUser}>
                   <div className="adm-field">
                     <label htmlFor="new-user-email">Email</label>
@@ -1934,6 +2189,7 @@ export default function AdminPage() {
                     {userCreating ? "Создание…" : "Добавить ученика"}
                   </button>
                 </form>
+                )}
               </section>
 
               <section className="adm-card" style={{ padding: 20 }}>
@@ -1962,28 +2218,62 @@ export default function AdminPage() {
                           <th>Email</th>
                           <th>Ник</th>
                           <th>Тариф</th>
+                          <th>Статус</th>
+                          <th>Устройства</th>
                           <th>Регистрация</th>
+                          <th />
                         </tr>
                       </thead>
                       <tbody>
                         {filteredUsers.length === 0 ? (
                           <tr>
-                            <td colSpan={5} style={{ textAlign: "center", color: "var(--adm-text-muted)" }}>
+                            <td colSpan={8} style={{ textAlign: "center", color: "var(--adm-text-muted)" }}>
                               {userSearch.trim() ? "Ничего не найдено" : "Нет пользователей"}
                             </td>
                           </tr>
                         ) : (
                           filteredUsers.map((u) => {
                             const tag = subscriptionTag(u.subscriptionType);
+                            const isAdminUser = u.subscriptionType === "admin";
                             return (
-                              <tr key={u.id}>
+                              <tr key={u.id} className={u.banned ? "adm-row-banned" : undefined}>
                                 <td>{u.id}</td>
                                 <td>{u.email}</td>
                                 <td>{u.nickname}</td>
                                 <td>
                                   <span className={`adm-tag ${tag.className}`}>{tag.label}</span>
                                 </td>
+                                <td>
+                                  {u.banned ? (
+                                    <span className="adm-tag adm-tag-banned" title={u.banReason || undefined}>
+                                      Заблокирован
+                                    </span>
+                                  ) : (
+                                    <span className="adm-tag adm-tag-active">Активен</span>
+                                  )}
+                                </td>
+                                <td>{isAdminUser ? "—" : (u.deviceCount ?? 0)}</td>
                                 <td>{u.createdAt ? new Date(u.createdAt).toLocaleDateString("ru-RU") : "—"}</td>
+                                <td>
+                                  {!isAdminUser && (
+                                    <div className="adm-table-actions">
+                                      <button
+                                        type="button"
+                                        className="adm-btn adm-btn-secondary adm-btn-sm"
+                                        onClick={() => startEditUser(u)}
+                                      >
+                                        Изменить
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className={`adm-btn adm-btn-sm ${u.banned ? "adm-btn-primary" : "adm-btn-ghost adm-btn-danger"}`}
+                                        onClick={() => void toggleUserBan(u)}
+                                      >
+                                        {u.banned ? "Разбанить" : "Забанить"}
+                                      </button>
+                                    </div>
+                                  )}
+                                </td>
                               </tr>
                             );
                           })

@@ -12,6 +12,23 @@ create table if not exists users (
 alter table users
   add column if not exists last_video_id bigint;
 
+alter table users add column if not exists banned boolean not null default false;
+alter table users add column if not exists banned_at timestamptz;
+alter table users add column if not exists ban_reason text;
+
+create table if not exists security_alerts (
+  id bigserial primary key,
+  user_id bigint not null references users(id) on delete cascade,
+  alert_type text not null,
+  message text not null,
+  meta jsonb not null default '{}',
+  dismissed boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_security_alerts_active on security_alerts (dismissed, created_at desc);
+create index if not exists idx_security_alerts_user on security_alerts (user_id);
+
 create table if not exists courses (
   id bigserial primary key,
   title text not null,

@@ -88,12 +88,15 @@ const memState = {
   /** @type {Array<{ promoCodeId: number; userId: number; paymentId: string | null; redeemedAt: string }>} */
   promoRedemptions: [],
   /** @type {Record<string, string>} */
-  settings: {}
+  settings: {},
+  /** @type {Array<{ id: number; userId: number; alertType: string; message: string; meta: object; dismissed: boolean; createdAt: string }>} */
+  securityAlerts: []
 };
 
 let memNewsNextId = 1;
 let memSupportMessageNextId = 1;
 let memPromoNextId = 1;
+let memSecurityAlertNextId = 1;
 
 let memNextUserId = 10_000;
 const memRegisteredUsersByEmail = new Map();
@@ -189,6 +192,26 @@ const adminUserCreateSchema = z.object({
   nickname: z.string().min(1).max(80).optional(),
   subscriptionType: z.enum(["free", "basic", "premium", "mentor"]).optional().default("free")
 });
+
+const adminUserUpdateSchema = z
+  .object({
+    email: z.string().email().optional(),
+    password: z.string().min(6).optional(),
+    nickname: z.string().min(1).max(80).optional(),
+    subscriptionType: z.enum(["free", "basic", "premium", "mentor"]).optional(),
+    banned: z.boolean().optional(),
+    banReason: z.string().max(500).optional().nullable()
+  })
+  .refine(
+    (data) =>
+      data.email !== undefined ||
+      data.password !== undefined ||
+      data.nickname !== undefined ||
+      data.subscriptionType !== undefined ||
+      data.banned !== undefined ||
+      data.banReason !== undefined,
+    { message: "No fields to update" }
+  );
 
 const activateSubscriptionSchema = z.object({
   plan: z.literal("standard").optional().default("standard")
@@ -436,6 +459,74 @@ async function putSession(userId, deviceId, ip, userAgent) {
   memState.sessions.set(key, filtered.slice(0, maxDevices));
 }
 
+async function isUserBanned(userId) {
+  const id = Number(userId);
+  if (id === adminUser.id) return false;
+  if (!dbReady) {
+    const memUser = getMemRegisteredUserById(id);
+    if (memUser) return Boolean(memUser.banned);
+    if (id === demoUser.id) return Boolean(demoUser.banned);
+    return false;
+  }
+  const result = await pool.query(`select banned from users where id = $1 limit 1`, [id]);
+  return Boolean(result.rows[0]?.banned);
+}
+
+async function revokeAllUserSessions(userId) {
+  if (dbReady) {
+    await pool.query(`delete from refresh_tokens where user_id = $1`, [userId]);
+    await pool.query(`delete from sessions where user_id = $1`, [userId]);
+    return;
+  }
+  memState.sessions.delete(String(userId));
+  for (const key of [...memState.refreshTokens.keys()]) {
+    if (key.startsWith(`${userId}:`)) memState.refreshTokens.delete(key);
+  }
+}
+
+async function recordMultiDeviceAlert(userId, deviceId, ip, userAgent) {
+  if (Number(userId) === adminUser.id) return;
+
+  let isNewDevice = false;
+  let otherDeviceCount = 0;
+
+  if (dbReady) {
+    const existing = await pool.query(`select device_id from sessions where user_id = $1`, [userId]);
+    isNewDevice = !existing.rows.some((row) => row.device_id === deviceId);
+    otherDeviceCount = existing.rows.filter((row) => row.device_id !== deviceId).length;
+  } else {
+    const list = memState.sessions.get(String(userId)) || [];
+    isNewDevice = !list.some((item) => item.deviceId === deviceId);
+    otherDeviceCount = list.filter((item) => item.deviceId !== deviceId).length;
+  }
+
+  if (!isNewDevice || otherDeviceCount < 1) return;
+
+  const user = await getUserPublicById(userId);
+  const label = user?.nickname || user?.email || `ID ${userId}`;
+  const message = `Ученик «${label}» вошёл с нового устройства при активных сессиях на ${otherDeviceCount} других устройствах`;
+  const meta = { deviceId, ip: ip || null, userAgent: userAgent || null, otherDeviceCount };
+
+  if (dbReady) {
+    await pool.query(
+      `insert into security_alerts (user_id, alert_type, message, meta)
+       values ($1, 'multi_device_login', $2, $3::jsonb)`,
+      [userId, message, JSON.stringify(meta)]
+    );
+    return;
+  }
+
+  memState.securityAlerts.unshift({
+    id: memSecurityAlertNextId++,
+    userId: Number(userId),
+    alertType: "multi_device_login",
+    message,
+    meta,
+    dismissed: false,
+    createdAt: new Date().toISOString()
+  });
+}
+
 async function storeRefreshToken(userId, deviceId, token) {
   if (dbReady) {
     const tokenHash = await bcrypt.hash(token, 10);
@@ -495,6 +586,9 @@ async function auth(req, res, next) {
 
   try {
     req.user = jwt.verify(token, jwtSecret);
+    if (req.user.role !== "admin" && (await isUserBanned(req.user.userId))) {
+      return res.status(403).json({ message: "Аккаунт заблокирован" });
+    }
     return next();
   } catch {
     return res.status(401).json({ message: "Invalid token" });
@@ -826,7 +920,7 @@ async function getUserByEmail(email) {
   }
 
   const result = await pool.query(
-    `select id, email, password_hash, nickname, subscription_type, exam_date
+    `select id, email, password_hash, nickname, subscription_type, exam_date, banned
      from users where lower(trim(email)) = $1 limit 1`,
     [key]
   );
@@ -839,7 +933,8 @@ async function getUserByEmail(email) {
     passwordHash: row.password_hash,
     nickname: row.nickname,
     subscriptionType: row.subscription_type,
-    examDate: row.exam_date
+    examDate: row.exam_date,
+    banned: Boolean(row.banned)
   };
 }
 
@@ -995,9 +1090,14 @@ async function saveProgress(userId, videoId, watchedSeconds, completed) {
 }
 
 async function sendAuthTokensForUser(req, res, user) {
+  if (user.banned) {
+    return res.status(403).json({ message: "Аккаунт заблокирован. Обратитесь в поддержку." });
+  }
+
   const deviceId = String(getDeviceId(req));
   const ip = getIp(req);
   const userAgent = req.headers["user-agent"] || "";
+  await recordMultiDeviceAlert(user.id, deviceId, ip, userAgent);
   await putSession(user.id, deviceId, ip, userAgent);
   const token = signAccessToken(user);
   const refreshToken = signRefreshToken(user, deviceId);
@@ -2002,47 +2102,246 @@ app.post("/admin/users", auth, requireAdmin, async (req, res) => {
 app.get("/admin/users", auth, requireAdmin, async (_req, res) => {
   try {
     if (!dbReady) {
-      const rows = [
-        {
-          id: demoUser.id,
-          email: demoUser.email,
-          nickname: demoUser.nickname,
-          subscriptionType: demoUser.subscriptionType,
-          examDate: demoUser.examDate ?? null,
-          createdAt: null
-        },
-        {
-          id: adminUser.id,
-          email: adminUser.email,
-          nickname: adminUser.nickname,
-          subscriptionType: "admin",
-          examDate: null,
-          createdAt: null
-        }
-      ];
-      for (const u of memRegisteredUsersById.values()) {
-        if (rows.some((r) => r.id === u.id)) continue;
-        rows.push({
+      const mapUserRow = (u, subscriptionType) => {
+        const sessions = memState.sessions.get(String(u.id)) || [];
+        return {
           id: u.id,
           email: u.email,
           nickname: u.nickname,
-          subscriptionType: u.subscriptionType,
+          subscriptionType: subscriptionType ?? u.subscriptionType,
           examDate: u.examDate ?? null,
-          createdAt: null
-        });
+          createdAt: u.createdAt ?? null,
+          banned: Boolean(u.banned),
+          bannedAt: u.bannedAt ?? null,
+          banReason: u.banReason ?? null,
+          deviceCount: sessions.length
+        };
+      };
+      const rows = [mapUserRow(demoUser), mapUserRow(adminUser, "admin")];
+      for (const u of memRegisteredUsersById.values()) {
+        if (rows.some((r) => r.id === u.id)) continue;
+        rows.push(mapUserRow(u));
       }
       rows.sort((a, b) => a.id - b.id);
       return res.json(rows);
     }
 
     const r = await pool.query(
-      `select id, email, nickname, subscription_type as "subscriptionType",
-              exam_date as "examDate", created_at as "createdAt"
-       from users order by id`
+      `select u.id, u.email, u.nickname, u.subscription_type as "subscriptionType",
+              u.exam_date as "examDate", u.created_at as "createdAt",
+              u.banned, u.banned_at as "bannedAt", u.ban_reason as "banReason",
+              coalesce(s.device_count, 0)::int as "deviceCount"
+       from users u
+       left join (
+         select user_id, count(*)::int as device_count
+         from sessions
+         group by user_id
+       ) s on s.user_id = u.id
+       order by u.id`
     );
     res.json(r.rows);
   } catch (error) {
     res.status(500).json({ message: "Failed to list users", error: error.message });
+  }
+});
+
+app.patch("/admin/users/:userId", auth, requireAdmin, async (req, res) => {
+  const userId = Number(req.params.userId);
+  if (!Number.isFinite(userId)) return res.status(400).json({ message: "Invalid id" });
+
+  const parsed = adminUserUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
+  }
+
+  if (userId === adminUser.id) {
+    return res.status(403).json({ message: "Нельзя изменять учётную запись администратора" });
+  }
+
+  const data = parsed.data;
+
+  if (data.email) {
+    const email = normalizeEmail(data.email);
+    if (email === normalizeEmail(adminUser.email)) {
+      return res.status(409).json({ message: "Этот email зарезервирован" });
+    }
+    const existing = await getUserByEmail(email);
+    if (existing && existing.id !== userId) {
+      return res.status(409).json({ message: "Пользователь с таким email уже есть" });
+    }
+  }
+
+  try {
+    if (!dbReady) {
+      const memUser =
+        userId === demoUser.id ? demoUser : getMemRegisteredUserById(userId);
+      if (!memUser) return res.status(404).json({ message: "User not found" });
+
+      if (data.email) memUser.email = normalizeEmail(data.email);
+      if (data.nickname) memUser.nickname = data.nickname.trim().slice(0, 80);
+      if (data.subscriptionType) memUser.subscriptionType = data.subscriptionType;
+      if (data.password) memUser.passwordHash = await bcrypt.hash(data.password, 10);
+      if (data.banned === true) {
+        memUser.banned = true;
+        memUser.bannedAt = new Date().toISOString();
+        memUser.banReason = data.banReason?.trim() || null;
+        await revokeAllUserSessions(userId);
+      } else if (data.banned === false) {
+        memUser.banned = false;
+        memUser.bannedAt = null;
+        memUser.banReason = null;
+      } else if (data.banReason !== undefined) {
+        memUser.banReason = data.banReason?.trim() || null;
+      }
+
+      const list = memState.sessions.get(String(userId)) || [];
+      return res.json({
+        id: memUser.id,
+        email: memUser.email,
+        nickname: memUser.nickname,
+        subscriptionType: memUser.subscriptionType,
+        examDate: memUser.examDate ?? null,
+        createdAt: memUser.createdAt ?? null,
+        banned: Boolean(memUser.banned),
+        bannedAt: memUser.bannedAt ?? null,
+        banReason: memUser.banReason ?? null,
+        deviceCount: list.length
+      });
+    }
+
+    const exists = await pool.query(`select id, subscription_type from users where id = $1`, [userId]);
+    if (!exists.rows[0]) return res.status(404).json({ message: "User not found" });
+    if (exists.rows[0].subscription_type === "admin") {
+      return res.status(403).json({ message: "Нельзя изменять учётную запись администратора" });
+    }
+
+    const sets = [];
+    const values = [];
+    let idx = 1;
+
+    if (data.email !== undefined) {
+      sets.push(`email = $${idx++}`);
+      values.push(normalizeEmail(data.email));
+    }
+    if (data.nickname !== undefined) {
+      sets.push(`nickname = $${idx++}`);
+      values.push(data.nickname.trim().slice(0, 80));
+    }
+    if (data.subscriptionType !== undefined) {
+      sets.push(`subscription_type = $${idx++}`);
+      values.push(data.subscriptionType);
+    }
+    if (data.password !== undefined) {
+      sets.push(`password_hash = $${idx++}`);
+      values.push(await bcrypt.hash(data.password, 10));
+    }
+    if (data.banned === true) {
+      sets.push(`banned = true`);
+      sets.push(`banned_at = now()`);
+      if (data.banReason !== undefined) {
+        sets.push(`ban_reason = $${idx++}`);
+        values.push(data.banReason?.trim() || null);
+      }
+    } else if (data.banned === false) {
+      sets.push(`banned = false`);
+      sets.push(`banned_at = null`);
+      sets.push(`ban_reason = null`);
+    } else if (data.banReason !== undefined) {
+      sets.push(`ban_reason = $${idx++}`);
+      values.push(data.banReason?.trim() || null);
+    }
+
+    if (sets.length === 0) {
+      return res.status(400).json({ message: "No fields to update" });
+    }
+
+    values.push(userId);
+    const updated = await pool.query(
+      `update users set ${sets.join(", ")}
+       where id = $${idx}
+       returning id, email, nickname, subscription_type as "subscriptionType",
+                 exam_date as "examDate", created_at as "createdAt",
+                 banned, banned_at as "bannedAt", ban_reason as "banReason"`,
+      values
+    );
+
+    if (data.banned === true) {
+      await revokeAllUserSessions(userId);
+    }
+
+    const deviceCount = await pool.query(`select count(*)::int as c from sessions where user_id = $1`, [
+      userId
+    ]);
+
+    return res.json({
+      ...updated.rows[0],
+      deviceCount: deviceCount.rows[0]?.c ?? 0
+    });
+  } catch (error) {
+    if (error.code === "23505") {
+      return res.status(409).json({ message: "Пользователь с таким email уже есть" });
+    }
+    return res.status(500).json({ message: "Не удалось обновить пользователя", error: error.message });
+  }
+});
+
+app.get("/admin/security-alerts", auth, requireAdmin, async (_req, res) => {
+  try {
+    if (!dbReady) {
+      const alerts = memState.securityAlerts
+        .filter((a) => !a.dismissed)
+        .map((a) => {
+          const user = a.userId === demoUser.id ? demoUser : getMemRegisteredUserById(a.userId);
+          return {
+            id: a.id,
+            userId: a.userId,
+            alertType: a.alertType,
+            message: a.message,
+            meta: a.meta,
+            createdAt: a.createdAt,
+            userEmail: user?.email ?? null,
+            userNickname: user?.nickname ?? null
+          };
+        });
+      return res.json(alerts);
+    }
+
+    const r = await pool.query(
+      `select a.id, a.user_id as "userId", a.alert_type as "alertType", a.message,
+              a.meta, a.created_at as "createdAt",
+              u.email as "userEmail", u.nickname as "userNickname"
+       from security_alerts a
+       join users u on u.id = a.user_id
+       where a.dismissed = false
+       order by a.created_at desc
+       limit 100`
+    );
+    res.json(r.rows);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to load security alerts", error: error.message });
+  }
+});
+
+app.post("/admin/security-alerts/:alertId/dismiss", auth, requireAdmin, async (req, res) => {
+  const alertId = Number(req.params.alertId);
+  if (!Number.isFinite(alertId)) return res.status(400).json({ message: "Invalid id" });
+
+  try {
+    if (!dbReady) {
+      const alert = memState.securityAlerts.find((a) => a.id === alertId);
+      if (!alert) return res.status(404).json({ message: "Alert not found" });
+      alert.dismissed = true;
+      return res.status(204).send();
+    }
+
+    const r = await pool.query(
+      `update security_alerts set dismissed = true where id = $1 and dismissed = false returning id`,
+      [alertId]
+    );
+    if (!r.rows[0]) return res.status(404).json({ message: "Alert not found" });
+    return res.status(204).send();
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to dismiss alert", error: error.message });
   }
 });
 
@@ -2639,6 +2938,10 @@ app.post("/auth/refresh", async (req, res) => {
       if (!user.rows[0]) {
         return res.status(401).json({ message: "User not found" });
       }
+      if (user.rows[0].banned) {
+        await revokeAllUserSessions(payload.userId);
+        return res.status(403).json({ message: "Аккаунт заблокирован" });
+      }
       authUser = {
         id: user.rows[0].id,
         email: user.rows[0].email,
@@ -2648,6 +2951,10 @@ app.post("/auth/refresh", async (req, res) => {
       authUser = getAuthUserForRefresh(payload.userId);
       if (!authUser) {
         return res.status(401).json({ message: "User not found" });
+      }
+      if (await isUserBanned(payload.userId)) {
+        await revokeAllUserSessions(payload.userId);
+        return res.status(403).json({ message: "Аккаунт заблокирован" });
       }
     }
 
