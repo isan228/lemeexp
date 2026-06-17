@@ -2166,7 +2166,7 @@ app.patch("/admin/users/:userId", auth, requireAdmin, async (req, res) => {
       return res.status(409).json({ message: "Этот email зарезервирован" });
     }
     const existing = await getUserByEmail(email);
-    if (existing && existing.id !== userId) {
+    if (existing && Number(existing.id) !== Number(userId)) {
       return res.status(409).json({ message: "Пользователь с таким email уже есть" });
     }
   }
