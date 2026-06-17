@@ -1,5 +1,5 @@
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import LessonPlayer from "../../components/LessonPlayer.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { routes } from "../../config/site.js";
@@ -21,10 +21,25 @@ export default function VideoLessonPage() {
     return Math.max(0, Math.floor(getVideoWatchedSeconds(watchedMap, vid)));
   }, [resume, vid]);
 
+  const onSavePosition = useCallback(async () => {
+    await refreshProgress();
+  }, [refreshProgress]);
+
   const subject = chapters.find((c) => Number(c.id) === sid);
   const chapter = subject?.subtopics?.find((s) => Number(s.id) === cid);
   const video = chapter?.videos?.find((v) => Number(v.id) === vid) || null;
   const chapterVideos = chapter?.videos || [];
+
+  const playerProps = useMemo(
+    () => ({
+      videoId: vid,
+      videoTitle: video?.title || "",
+      streamPath: video?.streamPath || "",
+      durationSec: Number(video?.duration) || 0,
+      initialPlaybackSeconds
+    }),
+    [vid, video?.title, video?.streamPath, video?.duration, initialPlaybackSeconds]
+  );
 
   if (catalogLoading && chapters.length === 0) {
     return (
@@ -91,10 +106,9 @@ export default function VideoLessonPage() {
       <div className="watch-layout">
         <div className="watch-main">
           <LessonPlayer
-            video={video}
+            {...playerProps}
             apiRequest={apiRequest}
-            onSavePosition={refreshProgress}
-            initialPlaybackSeconds={initialPlaybackSeconds}
+            onSavePosition={onSavePosition}
           />
         </div>
         <aside className="watch-sidebar card">

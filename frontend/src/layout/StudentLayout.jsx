@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import NavIcon from "../components/NavIcon.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { routes } from "../config/site.js";
@@ -14,20 +14,30 @@ const NAV = [
 export default function StudentLayout() {
   const { logout, profile, loadCatalog, token, apiRequest, progress } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [supportUnread, setSupportUnread] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
+  const lastCatalogRefreshRef = useRef(0);
 
   useEffect(() => {
     if (!token) return;
     void loadCatalog();
+    lastCatalogRefreshRef.current = Date.now();
   }, [token, loadCatalog]);
 
   useEffect(() => {
     if (!token) return;
-    const refresh = () => void loadCatalog();
-    window.addEventListener("focus", refresh);
-    return () => window.removeEventListener("focus", refresh);
-  }, [token, loadCatalog]);
+    const refreshCatalog = () => {
+      if (document.visibilityState !== "visible") return;
+      if (/\/videos\/\d+/.test(location.pathname)) return;
+      const now = Date.now();
+      if (now - lastCatalogRefreshRef.current < 60_000) return;
+      lastCatalogRefreshRef.current = now;
+      void loadCatalog();
+    };
+    document.addEventListener("visibilitychange", refreshCatalog);
+    return () => document.removeEventListener("visibilitychange", refreshCatalog);
+  }, [token, loadCatalog, location.pathname]);
 
   useEffect(() => {
     if (!token) return;
@@ -39,7 +49,7 @@ export default function StudentLayout() {
       if (mounted) setSupportUnread(Number(data.total || 0));
     };
     void poll();
-    const timer = setInterval(() => void poll(), 5000);
+    const timer = setInterval(() => void poll(), 30_000);
     return () => {
       mounted = false;
       clearInterval(timer);

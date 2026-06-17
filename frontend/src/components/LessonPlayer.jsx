@@ -1,20 +1,41 @@
 import Hls from "hls.js";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { apiBase } from "../config.js";
 import { getDeviceId } from "../utils/deviceId.js";
+import { preferNativeHls } from "../utils/videoPlayer.js";
 import { mapVideoElementError } from "../utils/mediaProbe.js";
 import { isPlayableStream, isProcessingStream } from "../utils/streamPath.js";
 import { isLessonVideoCompleted } from "../utils/videoProgress.js";
 
-export default function LessonPlayer({ video, apiRequest, onSavePosition, initialPlaybackSeconds = 0 }) {
+const MAX_HLS_RECOVERIES = 2;
+
+function LessonPlayerInner({
+  videoId,
+  videoTitle,
+  streamPath,
+  durationSec = 0,
+  apiRequest,
+  onSavePosition,
+  initialPlaybackSeconds = 0
+}) {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
-  const intervalRef = useRef(null);
   const onSavePositionRef = useRef(onSavePosition);
   const apiRequestRef = useRef(apiRequest);
   const persistPositionRef = useRef(null);
   const initialSeekRef = useRef({ videoId: null, seconds: 0 });
+  const pauseSaveTimerRef = useRef(null);
+  const loadedVideoRef = useRef(null);
+  const hlsRecoveryRef = useRef(0);
+  const durationSecRef = useRef(durationSec);
+  const streamPathRef = useRef(streamPath);
   const [playError, setPlayError] = useState("");
+
+  const numericVideoId = Number(videoId);
+
+  useEffect(() => {
+    streamPathRef.current = streamPath;
+  }, [streamPath]);
 
   useEffect(() => {
     onSavePositionRef.current = onSavePosition;
@@ -24,13 +45,13 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
     apiRequestRef.current = apiRequest;
   }, [apiRequest]);
 
-  const videoId = video?.id;
-  const streamPath = video?.streamPath;
-  const durationSec = Math.max(0, Number(video?.duration) || 0);
+  useEffect(() => {
+    durationSecRef.current = durationSec;
+  }, [durationSec]);
 
   const persistPosition = useCallback(async (vid, watchedSeconds, { refresh = false } = {}) => {
     const w = Math.max(0, Math.floor(Number(watchedSeconds) || 0));
-    const completed = isLessonVideoCompleted(w, durationSec, null, vid);
+    const completed = isLessonVideoCompleted(w, durationSecRef.current, null, vid);
     await apiRequestRef.current(`/videos/${vid}/position`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -39,44 +60,65 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
     if (refresh) {
       await onSavePositionRef.current?.();
     }
-  }, [durationSec]);
+  }, []);
 
   useEffect(() => {
     persistPositionRef.current = persistPosition;
   }, [persistPosition]);
 
+  useEffect(
+    () => () => {
+      if (pauseSaveTimerRef.current) clearTimeout(pauseSaveTimerRef.current);
+    },
+    []
+  );
+
   useEffect(() => {
     setPlayError("");
-  }, [videoId, streamPath]);
+  }, [numericVideoId]);
 
   useEffect(() => {
     const el = videoRef.current;
-    if (videoId == null || !el) return;
+    if (!Number.isFinite(numericVideoId) || !el) return;
 
-    if (!streamPath?.trim()) {
+    if (loadedVideoRef.current === numericVideoId && (hlsRef.current || el.src)) {
+      return;
+    }
+
+    if (!streamPathRef.current?.trim()) {
       setPlayError("Видеофайл ещё не загружен. Попробуйте позже или обновите страницу.");
       return;
     }
-    if (isProcessingStream(streamPath)) {
+    if (isProcessingStream(streamPathRef.current)) {
       setPlayError("Видео готовится к просмотру. Подождите 1–2 минуты и обновите страницу.");
       return;
     }
-    if (!isPlayableStream(streamPath)) {
+    if (!isPlayableStream(streamPathRef.current)) {
       setPlayError("Формат урока не поддерживается.");
       return;
     }
 
-    const onPageHide = () => {
+    loadedVideoRef.current = numericVideoId;
+    hlsRecoveryRef.current = 0;
+
+    const saveCurrentPosition = (refresh = false) => {
       const elNow = videoRef.current;
       if (!elNow) return;
       const ct = Math.floor(elNow.currentTime || 0);
-      if (ct > 0) void persistPositionRef.current?.(videoId, ct, { refresh: true });
+      if (ct > 0) void persistPositionRef.current?.(numericVideoId, ct, { refresh });
     };
-    window.addEventListener("pagehide", onPageHide);
 
-    if (initialSeekRef.current.videoId !== videoId) {
+    const onPageHide = () => saveCurrentPosition(false);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") saveCurrentPosition(false);
+    };
+
+    window.addEventListener("pagehide", onPageHide);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    if (initialSeekRef.current.videoId !== numericVideoId) {
       initialSeekRef.current = {
-        videoId,
+        videoId: numericVideoId,
         seconds: Math.max(0, Math.floor(Number(initialPlaybackSeconds) || 0))
       };
     }
@@ -85,10 +127,6 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
-    }
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
     }
     el.removeAttribute("src");
     el.load();
@@ -99,7 +137,9 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
     const deviceId = getDeviceId();
 
     (async () => {
-      const accessRes = await apiRequestRef.current(`/videos/${videoId}/access-token`, { method: "POST" });
+      const accessRes = await apiRequestRef.current(`/videos/${numericVideoId}/access-token`, {
+        method: "POST"
+      });
       if (cancelled || !elBound.isConnected) return;
       if (!accessRes.ok) {
         const err = await accessRes.json().catch(() => ({}));
@@ -107,7 +147,7 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
         return;
       }
       const accessData = await accessRes.json();
-      const src = `${apiBase}/hls/${videoId}/manifest.m3u8?token=${encodeURIComponent(accessData.token)}&did=${encodeURIComponent(deviceId)}`;
+      const src = `${apiBase}/hls/${numericVideoId}/manifest.m3u8?token=${encodeURIComponent(accessData.token)}&did=${encodeURIComponent(deviceId)}`;
 
       if (cancelled || !elBound.isConnected) return;
 
@@ -124,14 +164,14 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
             if (Number.isFinite(dur) && dur > 0) {
               t = Math.min(startAt, Math.max(0, dur - 0.25));
             }
-            node.currentTime = t;
+            if (Math.abs(node.currentTime - t) > 0.5) {
+              node.currentTime = t;
+            }
             applied = true;
           } catch {
             /* ignore */
           }
         };
-        node.addEventListener("loadedmetadata", applyInitialSeek, { once: true });
-        node.addEventListener("canplay", applyInitialSeek, { once: true });
       }
 
       const onVideoError = () => {
@@ -140,21 +180,40 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
       node.addEventListener("error", onVideoError);
       removeVideoError = () => node.removeEventListener("error", onVideoError);
 
-      if (Hls.isSupported()) {
+      const useNativeHls = preferNativeHls() && node.canPlayType("application/vnd.apple.mpegurl");
+
+      if (useNativeHls) {
+        if (applyInitialSeek) {
+          node.addEventListener("loadedmetadata", applyInitialSeek, { once: true });
+        }
+        node.src = src;
+      } else if (Hls.isSupported()) {
         const hls = new Hls({
-          enableWorker: false,
-          lowLatencyMode: false
+          enableWorker: true,
+          lowLatencyMode: false,
+          maxBufferLength: 30,
+          maxMaxBufferLength: 120,
+          backBufferLength: 30,
+          fragLoadingMaxRetry: 2,
+          manifestLoadingMaxRetry: 2
         });
         hlsRef.current = hls;
         hls.loadSource(src);
         hls.attachMedia(node);
         if (applyInitialSeek) {
-          hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          const onParsed = () => {
+            hls.off(Hls.Events.MANIFEST_PARSED, onParsed);
             applyInitialSeek();
-          });
+          };
+          hls.on(Hls.Events.MANIFEST_PARSED, onParsed);
         }
         hls.on(Hls.Events.ERROR, (_evt, data) => {
           if (!data.fatal) return;
+          if (hlsRecoveryRef.current >= MAX_HLS_RECOVERIES) {
+            setPlayError("Не удалось загрузить защищённый поток.");
+            return;
+          }
+          hlsRecoveryRef.current += 1;
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
             hls.startLoad();
             return;
@@ -166,59 +225,60 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
           setPlayError("Не удалось загрузить защищённый поток.");
         });
       } else if (node.canPlayType("application/vnd.apple.mpegurl")) {
+        if (applyInitialSeek) {
+          node.addEventListener("loadedmetadata", applyInitialSeek, { once: true });
+        }
         node.src = src;
       } else {
         setPlayError("Ваш браузер не поддерживает воспроизведение этого формата.");
-        return;
       }
-
-      intervalRef.current = setInterval(() => {
-        if (node.readyState >= 1) {
-          void persistPositionRef.current?.(videoId, Math.floor(node.currentTime || 0));
-        }
-      }, 15000);
     })();
 
     return () => {
       cancelled = true;
       removeVideoError?.();
       window.removeEventListener("pagehide", onPageHide);
-      const ct = Math.floor(elBound.currentTime || 0);
-      if (videoId != null && ct > 0) {
-        void persistPositionRef.current?.(videoId, ct, { refresh: true });
-      }
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      saveCurrentPosition(false);
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
+      if (loadedVideoRef.current === numericVideoId) {
+        loadedVideoRef.current = null;
+      }
       elBound.removeAttribute("src");
       elBound.load();
     };
-  }, [videoId, streamPath]);
-
-  if (!video || videoId == null) return null;
+  }, [numericVideoId]);
 
   function onPauseSave(e) {
-    const t = Math.floor(e.currentTarget.currentTime || 0);
-    if (t > 0) void persistPosition(videoId, t, { refresh: true });
+    const el = e.currentTarget;
+    if (el.seeking || el.ended) return;
+    if (pauseSaveTimerRef.current) clearTimeout(pauseSaveTimerRef.current);
+    pauseSaveTimerRef.current = setTimeout(() => {
+      pauseSaveTimerRef.current = null;
+      const node = videoRef.current;
+      if (!node || !node.paused || node.ended || node.seeking) return;
+      const t = Math.floor(node.currentTime || 0);
+      if (t > 0) void persistPosition(numericVideoId, t);
+    }, 1000);
   }
 
   function onEndedSave(e) {
     const el = e.currentTarget;
     const fromMeta = Math.floor(Number(el.duration) || 0);
-    const cap = fromMeta > 0 ? fromMeta : durationSec;
+    const cap = fromMeta > 0 ? fromMeta : durationSecRef.current;
     const t = Math.max(Math.floor(el.currentTime || 0), cap);
     const toSave = t > 0 ? t : cap;
-    if (toSave > 0) void persistPosition(videoId, toSave, { refresh: true });
+    if (toSave > 0) void persistPosition(numericVideoId, toSave, { refresh: true });
   }
+
+  if (!Number.isFinite(numericVideoId)) return null;
 
   return (
     <section className="card player-card">
-      <h3>Сейчас: {video.title}</h3>
+      <h3>Сейчас: {videoTitle}</h3>
       {playError ? (
         <p className="player-error" role="alert">
           {playError}
@@ -226,13 +286,14 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
       ) : null}
       <div className="lesson-video-wrap" onContextMenu={(e) => e.preventDefault()}>
         <video
-          key={video.id}
           ref={videoRef}
           className="lesson-video"
           controls
           controlsList="nodownload noplaybackrate noremoteplayback"
           disablePictureInPicture
+          disableRemotePlayback
           playsInline
+          preload="metadata"
           onPause={onPauseSave}
           onEnded={onEndedSave}
         />
@@ -240,3 +301,5 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
     </section>
   );
 }
+
+export default memo(LessonPlayerInner);
