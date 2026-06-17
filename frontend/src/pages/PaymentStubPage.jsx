@@ -10,8 +10,8 @@ export default function PaymentPage() {
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const { apiRequest, updateProfile } = useAuth();
-  const { amount: baseAmount, loading: planLoading, priceLabel } = useBillingPlan(apiRequest);
+  const { apiRequest, updateProfile, loadCatalog } = useAuth();
+  const { amount: baseAmount, loading: planLoading, priceLabel, periodLabel } = useBillingPlan(apiRequest);
   const planId = searchParams.get("plan") || SUBSCRIPTION_PLAN.id;
   const isValidPlan = planId === SUBSCRIPTION_PLAN.id;
   const [pending, setPending] = useState(false);
@@ -77,6 +77,7 @@ export default function PaymentPage() {
 
       if (data.free) {
         if (data.profile) updateProfile(data.profile);
+        void loadCatalog();
         navigate(routes.paymentSuccess(data.paymentId), { replace: true });
         return;
       }
@@ -106,13 +107,13 @@ export default function PaymentPage() {
         <div className="flow-hero">
           <p className="landing-kicker">Шаг оплаты</p>
           <div className="flow-steps" aria-label="Этапы оформления">
-            <span className="flow-step">1. Анкета</span>
+            <span className="flow-step">1. Аккаунт</span>
             <span className="flow-step active">2. Оплата</span>
           </div>
-          <h1>Оплата подписки</h1>
+          <h1>Купить подписку</h1>
         </div>
         <p className="muted">
-          {SUBSCRIPTION_PLAN.name} — <strong>{displayPrice}</strong>
+          {SUBSCRIPTION_PLAN.name} — <strong>{displayPrice}</strong> / {periodLabel}
           {appliedPromo?.discount > 0 ? (
             <>
               {" "}

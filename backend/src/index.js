@@ -130,8 +130,9 @@ const chapters = [
         title: "Молекулы",
         order: 1,
         videos: [
-          { id: 101, title: "Белки и аминокислоты", duration: 860, order: 1 },
-          { id: 102, title: "Углеводы и липиды", duration: 920, order: 2 }
+          { id: 101, title: "Белки и аминокислоты", duration: 860, order: 1, isTrial: true },
+          { id: 102, title: "Углеводы и липиды", duration: 920, order: 2, isTrial: true },
+          { id: 103, title: "Ферменты и катализ", duration: 540, order: 3, isTrial: false }
         ]
       }
     ]
@@ -145,7 +146,7 @@ const chapters = [
         id: 21,
         title: "Клеточный иммунитет",
         order: 1,
-        videos: [{ id: 201, title: "Т-лимфоциты", duration: 780, order: 1 }]
+        videos: [{ id: 201, title: "Т-лимфоциты", duration: 780, order: 1, isTrial: true }]
       }
     ]
   }
@@ -738,12 +739,14 @@ async function seedDemoData() {
   );
 
   await pool.query(
-    `insert into videos (id, subtopic_id, title, duration, stream_path, "order")
+    `insert into videos (id, subtopic_id, title, duration, stream_path, "order", is_trial)
      values
-       (101, 11, 'Белки и аминокислоты', 860, 'hls/101/manifest.m3u8', 1),
-       (102, 11, 'Углеводы и липиды', 920, 'hls/102/manifest.m3u8', 2),
-       (201, 21, 'Т-лимфоциты', 780, 'hls/201/manifest.m3u8', 1)
-     on conflict (id) do nothing`
+       (101, 11, 'Белки и аминокислоты', 860, 'hls/101/manifest.m3u8', 1, true),
+       (102, 11, 'Углеводы и липиды', 920, 'hls/102/manifest.m3u8', 2, true),
+       (103, 11, 'Ферменты и катализ', 540, 'hls/103/manifest.m3u8', 3, false),
+       (201, 21, 'Т-лимфоциты', 780, 'hls/201/manifest.m3u8', 1, true)
+     on conflict (id) do update
+     set is_trial = excluded.is_trial`
   );
 
   await pool.query(
@@ -887,7 +890,9 @@ async function getBillingPlanPayload() {
   return {
     id,
     title: getPlanTitle(id),
-    amount
+    amount,
+    periodDays: 30,
+    periodLabel: "1 месяц"
   };
 }
 
@@ -1003,7 +1008,7 @@ async function getUserByEmail(email) {
   }
 
   const result = await pool.query(
-    `select id, email, password_hash, nickname, subscription_type, exam_date, banned
+    `select id, email, password_hash, nickname, subscription_type, exam_date, banned, subscription_expires_at
      from users where lower(trim(email)) = $1 limit 1`,
     [key]
   );
@@ -1017,8 +1022,70 @@ async function getUserByEmail(email) {
     nickname: row.nickname,
     subscriptionType: row.subscription_type,
     examDate: row.exam_date,
-    banned: Boolean(row.banned)
+    banned: Boolean(row.banned),
+    subscriptionExpiresAt: row.subscription_expires_at ? new Date(row.subscription_expires_at).toISOString() : null
   };
+}
+
+const TRIAL_VIDEO_IDS_MEM = new Set([101, 102, 201]);
+
+function hasFullAccess(user) {
+  if (!user) return false;
+  if (user.subscriptionType === "admin") return true;
+  const paidTypes = ["premium", "mentor", "basic"];
+  if (!paidTypes.includes(user.subscriptionType)) return false;
+  if (!user.subscriptionExpiresAt) return true;
+  return new Date(user.subscriptionExpiresAt) > new Date();
+}
+
+function buildProfilePayload(user) {
+  return {
+    id: user.id,
+    email: user.email,
+    nickname: user.nickname,
+    subscriptionType: user.subscriptionType,
+    subscriptionExpiresAt: user.subscriptionExpiresAt || null,
+    hasFullAccess: hasFullAccess(user)
+  };
+}
+
+async function getUserRecordById(userId) {
+  const id = Number(userId);
+  if (id === adminUser.id) return adminUser;
+  if (id === demoUser.id) return demoUser;
+  if (!dbReady) return getMemRegisteredUserById(id);
+  const result = await pool.query(
+    `select id, email, password_hash, nickname, subscription_type, exam_date, banned, subscription_expires_at
+     from users where id = $1 limit 1`,
+    [id]
+  );
+  if (!result.rows[0]) return null;
+  const row = result.rows[0];
+  return {
+    id: row.id,
+    email: row.email,
+    passwordHash: row.password_hash,
+    nickname: row.nickname,
+    subscriptionType: row.subscription_type,
+    examDate: row.exam_date,
+    banned: Boolean(row.banned),
+    subscriptionExpiresAt: row.subscription_expires_at ? new Date(row.subscription_expires_at).toISOString() : null
+  };
+}
+
+async function isVideoTrial(videoId) {
+  const vid = Number(videoId);
+  if (!Number.isFinite(vid)) return false;
+  if (!dbReady) return TRIAL_VIDEO_IDS_MEM.has(vid);
+  const result = await pool.query(`select is_trial from videos where id = $1 limit 1`, [vid]);
+  return Boolean(result.rows[0]?.is_trial);
+}
+
+async function canUserWatchVideo(userId, videoId) {
+  const user = await getUserRecordById(userId);
+  if (!user) return false;
+  if (hasFullAccess(user)) return true;
+  return isVideoTrial(videoId);
 }
 
 async function getUserPublicById(userId) {
@@ -1050,7 +1117,8 @@ async function fetchChapters() {
     `select
        c.id as course_id, c.title as course_title, c."order" as course_order,
        s.id as subtopic_id, s.title as subtopic_title, s."order" as subtopic_order,
-       v.id as video_id, v.title as video_title, v.duration, v.stream_path, v."order" as video_order
+       v.id as video_id, v.title as video_title, v.duration, v.stream_path, v."order" as video_order,
+       v.is_trial as video_is_trial
      from courses c
      left join subtopics s on s.course_id = c.id
      left join videos v on v.subtopic_id = s.id
@@ -1088,12 +1156,30 @@ async function fetchChapters() {
         title: row.video_title,
         duration: row.duration,
         streamPath: row.stream_path,
-        order: row.video_order
+        order: row.video_order,
+        isTrial: Boolean(row.video_is_trial)
       });
     }
   }
 
   return Array.from(courseMap.values());
+}
+
+async function fetchChaptersForUser(userId) {
+  const tree = await fetchChapters();
+  const user = await getUserRecordById(userId);
+  const fullAccess = hasFullAccess(user);
+  return tree.map((course) => ({
+    ...course,
+    subtopics: (course.subtopics || []).map((subtopic) => ({
+      ...subtopic,
+      videos: (subtopic.videos || []).map((video) => ({
+        ...video,
+        isTrial: Boolean(video.isTrial),
+        locked: !fullAccess && !video.isTrial
+      }))
+    }))
+  }));
 }
 
 function countVideosInChapterTree(tree) {
@@ -1188,12 +1274,7 @@ async function sendAuthTokensForUser(req, res, user) {
   return res.json({
     token,
     refreshToken,
-    profile: {
-      id: user.id,
-      email: user.email,
-      nickname: user.nickname,
-      subscriptionType: user.subscriptionType
-    }
+    profile: buildProfilePayload(user)
   });
 }
 
@@ -1301,44 +1382,48 @@ async function activateSubscriptionForUser(userId, plan) {
   if (dbReady) {
     const updated = await pool.query(
       `update users
-       set subscription_type = $2
+       set subscription_type = $2,
+           subscription_expires_at = case
+             when subscription_expires_at is not null and subscription_expires_at > now()
+             then subscription_expires_at + interval '30 days'
+             else now() + interval '30 days'
+           end
        where id = $1
-       returning id, email, nickname, subscription_type`,
+       returning id, email, nickname, subscription_type, subscription_expires_at`,
       [userId, nextSubscription]
     );
     if (!updated.rows[0]) {
       return null;
     }
     const row = updated.rows[0];
-    return {
+    return buildProfilePayload({
       id: row.id,
       email: row.email,
       nickname: row.nickname,
-      subscriptionType: row.subscription_type
-    };
+      subscriptionType: row.subscription_type,
+      subscriptionExpiresAt: row.subscription_expires_at
+        ? new Date(row.subscription_expires_at).toISOString()
+        : null
+    });
   }
 
   const user = getMemRegisteredUserById(userId);
   if (user) {
     user.subscriptionType = nextSubscription;
+    const base = user.subscriptionExpiresAt ? new Date(user.subscriptionExpiresAt).getTime() : Date.now();
+    const from = Math.max(Date.now(), base);
+    user.subscriptionExpiresAt = new Date(from + 30 * 24 * 60 * 60 * 1000).toISOString();
     memRegisteredUsersById.set(user.id, user);
     memRegisteredUsersByEmail.set(normalizeEmail(user.email), user);
-    return {
-      id: user.id,
-      email: user.email,
-      nickname: user.nickname,
-      subscriptionType: user.subscriptionType
-    };
+    return buildProfilePayload(user);
   }
 
   if (userId === demoUser.id) {
     demoUser.subscriptionType = nextSubscription;
-    return {
-      id: demoUser.id,
-      email: demoUser.email,
-      nickname: demoUser.nickname,
-      subscriptionType: demoUser.subscriptionType
-    };
+    const base = demoUser.subscriptionExpiresAt ? new Date(demoUser.subscriptionExpiresAt).getTime() : Date.now();
+    const from = Math.max(Date.now(), base);
+    demoUser.subscriptionExpiresAt = new Date(from + 30 * 24 * 60 * 60 * 1000).toISOString();
+    return buildProfilePayload(demoUser);
   }
 
   return null;
@@ -1619,18 +1704,21 @@ app.get("/billing/payment-status/:paymentId", auth, async (req, res) => {
       let profile = null;
       if (row.status === "succeeded") {
         const userResult = await pool.query(
-          `select id, email, nickname, subscription_type
+          `select id, email, nickname, subscription_type, subscription_expires_at
            from users where id = $1`,
           [row.user_id]
         );
         const userRow = userResult.rows[0];
         if (userRow) {
-          profile = {
+          profile = buildProfilePayload({
             id: userRow.id,
             email: userRow.email,
             nickname: userRow.nickname,
-            subscriptionType: userRow.subscription_type
-          };
+            subscriptionType: userRow.subscription_type,
+            subscriptionExpiresAt: userRow.subscription_expires_at
+              ? new Date(userRow.subscription_expires_at).toISOString()
+              : null
+          });
         }
       }
 
@@ -1653,14 +1741,9 @@ app.get("/billing/payment-status/:paymentId", auth, async (req, res) => {
 
     let profile = null;
     if (payment.status === "succeeded") {
-      const user = getAuthUserForRefresh(payment.userId);
+      const user = await getUserRecordById(payment.userId);
       if (user) {
-        profile = {
-          id: user.id,
-          email: user.email,
-          nickname: user.nickname,
-          subscriptionType: user.subscriptionType
-        };
+        profile = buildProfilePayload(user);
       }
     }
 
@@ -3124,8 +3207,8 @@ app.post("/auth/logout", async (req, res) => {
   }
 });
 
-app.get("/chapters", auth, (_req, res) => {
-  fetchChapters()
+app.get("/chapters", auth, (req, res) => {
+  fetchChaptersForUser(req.user.userId)
     .then((items) => res.json(items))
     .catch((error) => res.status(500).json({ message: "Failed to load chapters", error: error.message }));
 });
@@ -3171,8 +3254,16 @@ app.post("/videos/:videoId/position", auth, async (req, res) => {
   res.status(204).send();
 });
 
-app.post("/videos/:videoId/access-token", auth, (req, res) => {
+app.post("/videos/:videoId/access-token", auth, async (req, res) => {
   const videoId = Number(req.params.videoId);
+  const allowed = await canUserWatchVideo(req.user.userId, videoId);
+  if (!allowed) {
+    return res.status(403).json({
+      message: "Для просмотра этого урока нужна подписка",
+      code: "subscription_required"
+    });
+  }
+
   const deviceId = getDeviceFromRequest(req);
   const origin = getOrigin(req);
   const originOk = origin && allowedOrigins.includes(origin);

@@ -52,8 +52,8 @@ export default function LoginPage() {
       <header className="landing-header landing-header-wide">
         <SiteBrand />
         <div className="landing-header-actions">
-          <Link to={routes.register} className="btn-primary inline landing-register-btn">
-            Купить
+          <Link to={routes.registerTrial} className="btn-primary inline landing-register-btn">
+            Попробовать
           </Link>
           <Link to={routes.home} className="nav-muted">
             На главную
@@ -81,8 +81,8 @@ export default function LoginPage() {
               </button>
               <p className="hint">
                 Нет аккаунта?{" "}
-                <Link to={routes.register} className="btn-link">
-                  Оформить доступ
+                <Link to={routes.registerTrial} className="btn-link">
+                  Зарегистрироваться
                 </Link>
               </p>
             </form>

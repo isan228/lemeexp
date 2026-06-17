@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
 import PageHeader from "../../components/PageHeader.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { SUBSCRIPTION_PLAN } from "../../config/billing.js";
 import { routes } from "../../config/site.js";
 import { getVideoWatchedSeconds, isLessonVideoCompleted } from "../../utils/videoProgress.js";
 import { isPlayableStream, isProcessingStream } from "../../utils/streamPath.js";
@@ -11,6 +12,7 @@ export default function VideosLesson() {
   const sid = Number(subjectId);
   const cid = Number(chapterId);
   const { chapters, catalogLoading, progress } = useAuth();
+  const subscribeHref = routes.payment(SUBSCRIPTION_PLAN.id);
 
   const { subject, chapter } = useMemo(() => {
     const subj = chapters.find((c) => Number(c.id) === sid);
@@ -53,7 +55,7 @@ export default function VideosLesson() {
   const nextVideoId =
     stoppedIndex >= 0 && stoppedIndex + 1 < videos.length
       ? Number(videos[stoppedIndex + 1].id)
-      : Number(videos.find((v) => !rowCompleted(v))?.id || 0);
+      : Number(videos.find((v) => !rowCompleted(v) && !v.locked)?.id || 0);
 
   const formatMinutes = (seconds) => `${Math.floor(Number(seconds || 0) / 60)} мин`;
   const formatClock = (seconds) => {
@@ -72,13 +74,14 @@ export default function VideosLesson() {
         <span className="bc-sep">/</span>
         <span className="bc-current">{chapter.title}</span>
       </nav>
-      <PageHeader kicker="Видео" title={chapter.title} intro="Выберите урок и нажмите «Смотреть»." />
+      <PageHeader kicker="Видео" title={chapter.title} intro="Выберите урок. Пробные доступны бесплатно, остальные — по подписке." />
 
       <ul className="video-rows">
         {videos.map((v) => {
           const vId = Number(v.id);
-          const ready = isPlayableStream(v.streamPath);
-          const processing = isProcessingStream(v.streamPath);
+          const locked = Boolean(v.locked);
+          const ready = !locked && isPlayableStream(v.streamPath);
+          const processing = !locked && isProcessingStream(v.streamPath);
           const watchedSeconds = getVideoWatchedSeconds(watched, v.id);
           const completed = rowCompleted(v);
           const hasPartialProgress = !completed && watchedSeconds > 0;
@@ -86,9 +89,40 @@ export default function VideosLesson() {
           const watchHref = hasPartialProgress
             ? routes.lessonVideo(subject.id, chapter.id, v.id, { resume: true })
             : routes.lessonVideo(subject.id, chapter.id, v.id);
+
+          const rowClass = [
+            "card",
+            "video-row",
+            "video-row-youtube",
+            locked ? "video-row-locked" : "",
+            ready ? "" : " video-row-pending"
+          ]
+            .filter(Boolean)
+            .join(" ");
+
           return (
-            <li key={v.id} className={`card video-row video-row-youtube${ready ? "" : " video-row-pending"}`}>
-              {ready ? (
+            <li key={v.id} className={rowClass}>
+              {locked ? (
+                <Link to={subscribeHref} className="video-row-link video-row-link-locked">
+                  <div className="video-thumb video-thumb-locked" aria-hidden="true">
+                    <img
+                      src={`https://picsum.photos/seed/drm-lesson-${v.id}/640/360`}
+                      alt=""
+                      loading="lazy"
+                      className="video-thumb-img"
+                    />
+                    <span className="video-thumb-lock">🔒</span>
+                    <span className="video-thumb-duration">{formatClock(v.duration || 0)}</span>
+                  </div>
+                  <div className="video-meta">
+                    <strong>{v.title}</strong>
+                    <div className="muted small">{formatMinutes(v.duration || 0)}</div>
+                    <div className="video-statuses">
+                      <span className="status-badge status-locked">По подписке</span>
+                    </div>
+                  </div>
+                </Link>
+              ) : ready ? (
                 <Link to={watchHref} className="video-row-link">
                   <div className="video-thumb" aria-hidden="true">
                     <img
@@ -104,6 +138,7 @@ export default function VideosLesson() {
                     <strong>{v.title}</strong>
                     <div className="muted small">{formatMinutes(v.duration || 0)}</div>
                     <div className="video-statuses">
+                      {v.isTrial ? <span className="status-badge status-trial">Пробник</span> : null}
                       {completed ? <span className="status-badge status-done">Просмотрено</span> : null}
                       {hasPartialProgress ? (
                         <span className="status-badge status-stopped">Остановились: {formatClock(watchedSeconds)}</span>
@@ -127,7 +162,11 @@ export default function VideosLesson() {
                 </div>
               )}
               <div className="video-row-actions">
-                {ready ? (
+                {locked ? (
+                  <Link to={subscribeHref} className="btn-primary inline">
+                    Купить подписку
+                  </Link>
+                ) : ready ? (
                   <Link to={watchHref} className="btn-primary inline">
                     {hasPartialProgress ? "Продолжить" : "Смотреть"}
                   </Link>
@@ -136,12 +175,14 @@ export default function VideosLesson() {
                     {processing ? "Готовится" : "Скоро"}
                   </span>
                 )}
-                <Link
-                  to={routes.learningSupportLesson(v.id, v.title || "")}
-                  className="btn-secondary inline"
-                >
-                  Вопросы к уроку
-                </Link>
+                {!locked ? (
+                  <Link
+                    to={routes.learningSupportLesson(v.id, v.title || "")}
+                    className="btn-secondary inline"
+                  >
+                    Вопросы к уроку
+                  </Link>
+                ) : null}
               </div>
             </li>
           );

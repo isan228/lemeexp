@@ -7,7 +7,7 @@ import { routes } from "../config/site.js";
 export default function PaymentSuccessPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { apiRequest, updateProfile } = useAuth();
+  const { apiRequest, updateProfile, loadCatalog } = useAuth();
   const paymentId = searchParams.get("paymentId") || "";
   const [status, setStatus] = useState("pending");
   const [error, setError] = useState("");
@@ -36,6 +36,7 @@ export default function PaymentSuccessPage() {
           if (data.profile) {
             updateProfile(data.profile);
           }
+          void loadCatalog();
           setStatus("succeeded");
           return;
         }
@@ -66,7 +67,7 @@ export default function PaymentSuccessPage() {
     return () => {
       cancelled = true;
     };
-  }, [paymentId, apiRequest, updateProfile]);
+  }, [paymentId, apiRequest, updateProfile, loadCatalog]);
 
   useEffect(() => {
     if (status === "succeeded") {
@@ -100,7 +101,7 @@ export default function PaymentSuccessPage() {
         )}
 
         {status === "succeeded" && (
-          <p className="muted">Подписка активирована. Перенаправляем в личный кабинет...</p>
+          <p className="muted">Подписка на 1 месяц активирована. Перенаправляем в личный кабинет...</p>
         )}
 
         {error && <p className="form-error">{error}</p>}

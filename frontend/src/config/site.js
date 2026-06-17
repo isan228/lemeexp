@@ -10,6 +10,8 @@ export const routes = {
   homePublic: "/?public=1",
   login: "/login",
   register: "/register",
+  registerTrial: "/register?intent=trial",
+  subscribe: "/payment",
   payment(plan) {
     return plan ? `/payment?plan=${encodeURIComponent(plan)}` : "/payment";
   },

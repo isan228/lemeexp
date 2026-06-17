@@ -52,17 +52,19 @@ async function run() {
   );
 
   await pool.query(
-    `insert into videos (id, subtopic_id, title, duration, stream_path, "order")
+    `insert into videos (id, subtopic_id, title, duration, stream_path, "order", is_trial)
      values
-      (101, 11, 'Белки и аминокислоты', 860, 'hls/101/manifest.m3u8', 1),
-      (102, 11, 'Углеводы и липиды', 920, 'hls/102/manifest.m3u8', 2),
-      (201, 21, 'Т-лимфоциты', 780, 'hls/201/manifest.m3u8', 1)
+      (101, 11, 'Белки и аминокислоты', 860, 'hls/101/manifest.m3u8', 1, true),
+      (102, 11, 'Углеводы и липиды', 920, 'hls/102/manifest.m3u8', 2, true),
+      (103, 11, 'Ферменты и катализ', 540, 'hls/103/manifest.m3u8', 3, false),
+      (201, 21, 'Т-лимфоциты', 780, 'hls/201/manifest.m3u8', 1, true)
      on conflict (id) do update
      set subtopic_id = excluded.subtopic_id,
          title = excluded.title,
          duration = excluded.duration,
          stream_path = excluded.stream_path,
-         "order" = excluded."order"`
+         "order" = excluded."order",
+         is_trial = excluded.is_trial`
   );
 
   await pool.query(

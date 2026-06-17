@@ -2,8 +2,9 @@
 export const SUBSCRIPTION_PLAN = {
   id: "standard",
   name: "Подписка Lemexplain",
+  periodDays: 30,
   bullets: [
-    "Все предметы, главы и видеоуроки",
+    "Все предметы, главы и видеоуроки на 1 месяц",
     "Личный кабинет и прогресс",
     "Чат с поддержкой"
   ]
@@ -16,8 +17,8 @@ export function formatPlanPrice(amount) {
   return Number.isInteger(n) ? `${n} сом` : `${n.toFixed(2)} сом`;
 }
 
-export function formatPlanPeriodLabel(amount) {
+export function formatPlanPeriodLabel(amount, periodLabel = "1 месяц") {
   const n = Number(amount);
-  if (!Number.isFinite(n) || n <= 0) return "бесплатно / доступ ко всем урокам";
-  return `${formatPlanPrice(amount)} / доступ ко всем урокам`;
+  if (!Number.isFinite(n) || n <= 0) return `бесплатно / ${periodLabel}`;
+  return `${formatPlanPrice(amount)} / ${periodLabel}`;
 }

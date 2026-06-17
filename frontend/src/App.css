@@ -446,6 +446,16 @@ input:focus {
   margin-top: 0;
 }
 
+.landing-hero-cta-center {
+  flex-direction: column;
+  align-items: center;
+}
+
+.landing-hero-try-btn {
+  min-width: 220px;
+  text-align: center;
+}
+
 .btn-secondary {
   display: inline-block;
   padding: 11px 20px;
@@ -1266,6 +1276,68 @@ input:focus {
   border-color: #93c5fd;
   background: #eff6ff;
   color: #1d4ed8;
+}
+
+.status-trial {
+  border-color: #86efac;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.status-locked {
+  border-color: #fcd34d;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.video-row-locked {
+  opacity: 0.95;
+}
+
+.video-thumb-locked .video-thumb-img {
+  filter: grayscale(0.35);
+}
+
+.video-thumb-lock,
+.watch-item-thumb-locked .watch-item-thumb-play {
+  font-size: 1.25rem;
+}
+
+.paywall-card {
+  max-width: 560px;
+  padding: 24px;
+}
+
+.paywall-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.home-trial-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.home-trial-banner h2 {
+  margin: 0 0 4px;
+  font-size: 1.15rem;
+}
+
+.profile-upgrade {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--med-border);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
 }
 
 .profile-dl {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiBase } from "../config.js";
-import { SUBSCRIPTION_PLAN, formatPlanPrice } from "../config/billing.js";
+import { SUBSCRIPTION_PLAN, formatPlanPrice, formatPlanPeriodLabel } from "../config/billing.js";
 
 function fallbackPlan() {
   return {
@@ -43,11 +43,13 @@ export function useBillingPlan(apiRequest) {
   }, [apiRequest]);
 
   const amount = plan?.amount ?? 1;
+  const periodLabel = plan?.periodLabel || "1 месяц";
   return {
     plan,
     loading,
     amount,
+    periodLabel,
     priceLabel: formatPlanPrice(amount),
-    periodLabel: `${formatPlanPrice(amount)} / доступ ко всем урокам`
+    periodPriceLabel: formatPlanPeriodLabel(amount, periodLabel)
   };
 }

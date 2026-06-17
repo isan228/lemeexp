@@ -2,6 +2,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useCallback, useMemo } from "react";
 import LessonPlayer from "../../components/LessonPlayer.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { SUBSCRIPTION_PLAN } from "../../config/billing.js";
 import { routes } from "../../config/site.js";
 import { isPlayableStream, isProcessingStream } from "../../utils/streamPath.js";
 import { getVideoWatchedSeconds } from "../../utils/videoProgress.js";
@@ -54,6 +55,35 @@ export default function VideoLessonPage() {
       <section className="lessons-flow lessons-flow-padded">
         <p>Урок не найден.</p>
         <Link to={routes.learningLessons}>← К предметам</Link>
+      </section>
+    );
+  }
+
+  if (video.locked) {
+    return (
+      <section className="lessons-flow lessons-flow-padded">
+        <div className="breadcrumb">
+          <Link to={routes.learningLessons}>Предметы</Link>
+          <span className="bc-sep">/</span>
+          <Link to={routes.lessonSubject(subject.id)}>{subject.title}</Link>
+          <span className="bc-sep">/</span>
+          <Link to={routes.lessonChapter(subject.id, chapter.id)}>{chapter.title}</Link>
+        </div>
+        <article className="card paywall-card">
+          <p className="student-page-kicker">Подписка</p>
+          <h1>{video.title}</h1>
+          <p className="muted">
+            Этот урок доступен только по подписке. Оформите доступ на 1 месяц и смотрите весь каталог без ограничений.
+          </p>
+          <div className="paywall-actions">
+            <Link to={routes.payment(SUBSCRIPTION_PLAN.id)} className="btn-primary">
+              Купить подписку
+            </Link>
+            <Link to={routes.lessonChapter(subject.id, chapter.id)} className="btn-secondary">
+              К списку уроков
+            </Link>
+          </div>
+        </article>
       </section>
     );
   }
@@ -116,27 +146,32 @@ export default function VideoLessonPage() {
           <ul className="watch-list">
             {chapterVideos.map((item) => {
               const active = Number(item.id) === vid;
+              const itemHref = item.locked
+                ? routes.payment(SUBSCRIPTION_PLAN.id)
+                : routes.lessonVideo(subject.id, chapter.id, item.id);
               return (
                 <li key={item.id}>
                   <Link
-                    to={routes.lessonVideo(subject.id, chapter.id, item.id)}
+                    to={itemHref}
                     className={active ? "watch-item active" : "watch-item"}
                     onClick={(e) => {
                       if (active) e.preventDefault();
                     }}
                   >
-                    <span className="watch-item-thumb" aria-hidden="true">
+                    <span className={`watch-item-thumb${item.locked ? " watch-item-thumb-locked" : ""}`} aria-hidden="true">
                       <img
                         src={`https://picsum.photos/seed/drm-lesson-${item.id}/160/90`}
                         alt={item.title}
                         loading="lazy"
                         className="watch-item-thumb-img"
                       />
-                      <span className="watch-item-thumb-play">▶</span>
+                      <span className="watch-item-thumb-play">{item.locked ? "🔒" : "▶"}</span>
                     </span>
                     <span className="watch-item-meta">
                       <strong>{item.title}</strong>
-                      <span>{Math.floor(Number(item.duration || 0) / 60)} мин</span>
+                      <span>
+                        {item.locked ? "По подписке" : `${Math.floor(Number(item.duration || 0) / 60)} мин`}
+                      </span>
                     </span>
                   </Link>
                 </li>

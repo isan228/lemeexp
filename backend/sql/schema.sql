@@ -15,6 +15,7 @@ alter table users
 alter table users add column if not exists banned boolean not null default false;
 alter table users add column if not exists banned_at timestamptz;
 alter table users add column if not exists ban_reason text;
+alter table users add column if not exists subscription_expires_at timestamptz;
 
 create table if not exists security_alerts (
   id bigserial primary key,
@@ -51,8 +52,11 @@ create table if not exists videos (
   duration int not null default 0,
   stream_path text not null,
   "order" int not null default 0,
+  is_trial boolean not null default false,
   created_at timestamptz not null default now()
 );
+
+alter table videos add column if not exists is_trial boolean not null default false;
 
 create table if not exists progress (
   user_id bigint not null references users(id) on delete cascade,

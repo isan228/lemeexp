@@ -20,22 +20,31 @@ function scrollToSection(id) {
 
 const trialSeeds = [
   {
-    title: "Биохимия — «Белки»",
-    tag: "45 мин",
+    title: "Биохимия — «Белки и аминокислоты»",
+    tag: "14 мин",
+    subjectId: 1,
+    chapterId: 11,
+    videoId: 101,
     bullets: ["Ввод в аминокислоты", "Структура белка", "Тот же плеер, что в курсе"],
-    note: "Бесплатный доступ 48 часов"
+    note: "Бесплатный пробный урок"
   },
   {
-    title: "Иммунология — «TLR»",
-    tag: "32 мин",
-    bullets: ["Распознавание ПАМП", "Сигнальные пути", "Конспект внутри урока"],
-    note: "Бесплатный доступ 48 часов"
+    title: "Биохимия — «Углеводы и липиды»",
+    tag: "15 мин",
+    subjectId: 1,
+    chapterId: 11,
+    videoId: 102,
+    bullets: ["Моно- и полисахариды", "Жирные кислоты", "Мембраны и энергия"],
+    note: "Бесплатный пробный урок"
   },
   {
-    title: "Фармакология — «Агонисты»",
-    tag: "28 мин",
-    bullets: ["Рецепторы и лиганды", "Примеры препаратов", "Мини-тест после видео"],
-    note: "Бесплатный доступ 48 часов"
+    title: "Иммунология — «Т-лимфоциты»",
+    tag: "13 мин",
+    subjectId: 2,
+    chapterId: 21,
+    videoId: 201,
+    bullets: ["Дифференцировка Т-клеток", "MHC и распознавание", "Клинические примеры"],
+    note: "Бесплатный пробный урок"
   }
 ];
 
@@ -151,8 +160,8 @@ export default function LandingPage() {
           </button>
           <div className="landing-drawer-actions">
             {!token && (
-              <Link to={routes.register} className="btn-primary inline landing-register-btn" onClick={() => setMobileMenuOpen(false)}>
-                Купить
+              <Link to={routes.registerTrial} className="btn-primary inline landing-register-btn" onClick={() => setMobileMenuOpen(false)}>
+                Попробовать
               </Link>
             )}
             {!token && (
@@ -164,8 +173,8 @@ export default function LandingPage() {
         </nav>
         <div className="landing-header-actions">
           {!token && (
-            <Link to={routes.register} className="btn-primary inline landing-register-btn" onClick={() => setMobileMenuOpen(false)}>
-              Купить
+            <Link to={routes.registerTrial} className="btn-primary inline landing-register-btn" onClick={() => setMobileMenuOpen(false)}>
+              Попробовать
             </Link>
           )}
           {!token && (
@@ -200,19 +209,24 @@ export default function LandingPage() {
               <strong>24/7</strong> доступ в кабинете
             </span>
           </div>
-          <div className="landing-hero-cta">
-            <button type="button" className="btn-primary" onClick={() => scrollToSection("trial")}>
-              Смотреть пробники
-            </button>
-            <Link to={routes.login} className="btn-secondary">
-              Войти
-            </Link>
-            {!token && (
-              <Link to={routes.register} className="btn-link landing-hero-buy-link">
-                Купить доступ →
+          <div className="landing-hero-cta landing-hero-cta-center">
+            {!token ? (
+              <Link to={routes.registerTrial} className="btn-primary landing-hero-try-btn">
+                Попробовать
+              </Link>
+            ) : (
+              <Link to={routes.learningLessons} className="btn-primary landing-hero-try-btn">
+                К урокам
               </Link>
             )}
-            {token && (
+            <button type="button" className="btn-secondary" onClick={() => scrollToSection("trial")}>
+              Смотреть пробники
+            </button>
+            {!token ? (
+              <Link to={routes.login} className="btn-link landing-hero-buy-link">
+                Уже есть аккаунт →
+              </Link>
+            ) : (
               <Link to={routes.learningHome} className="btn-link landing-hero-buy-link">
                 В кабинет →
               </Link>
@@ -227,8 +241,12 @@ export default function LandingPage() {
             открыть видео в личном кабинете.
           </p>
           <div className="landing-seed-grid">
-            {trialSeeds.map((seed) => (
-              <article key={seed.title} className="landing-seed-card card">
+            {trialSeeds.map((seed) => {
+              const trialHref = token
+                ? routes.lessonVideo(seed.subjectId, seed.chapterId, seed.videoId)
+                : routes.registerTrial;
+              return (
+              <article key={seed.videoId} className="landing-seed-card card">
                 <span className="landing-seed-tag">{seed.tag}</span>
                 <h3>{seed.title}</h3>
                 <ul className="landing-seed-list">
@@ -237,11 +255,12 @@ export default function LandingPage() {
                   ))}
                 </ul>
                 <p className="landing-seed-note">{seed.note}</p>
-                <Link to={routes.register} className="btn-link landing-seed-cta">
-                  Зарегистрироваться →
+                <Link to={trialHref} className="btn-link landing-seed-cta">
+                  {token ? "Смотреть урок →" : "Зарегистрироваться →"}
                 </Link>
               </article>
-            ))}
+            );
+            })}
           </div>
         </section>
 
@@ -295,11 +314,11 @@ export default function LandingPage() {
 
         {!token ? (
           <section className="landing-cta-banner" aria-labelledby="landing-cta-title">
-            <h2 id="landing-cta-title">Готовы начать подготовку?</h2>
-            <p>Выберите тариф, зарегистрируйтесь и получите доступ ко всем урокам платформы.</p>
+            <h2 id="landing-cta-title">Нужен полный каталог?</h2>
+            <p>Оформите подписку на 1 месяц и смотрите все уроки без ограничений.</p>
             <div className="landing-cta-actions">
               <Link to={routes.register} className="btn-primary inline">
-                Выбрать тариф
+                Купить подписку
               </Link>
               <Link to={routes.login} className="btn-secondary inline">
                 Уже есть аккаунт

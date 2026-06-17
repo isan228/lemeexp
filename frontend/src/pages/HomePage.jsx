@@ -1,8 +1,10 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import PageHeader from "../components/PageHeader.jsx";
+import { SUBSCRIPTION_PLAN } from "../config/billing.js";
 import { routes } from "../config/site.js";
 import { countCatalogStats, findContinueLesson } from "../utils/continueLesson.js";
+import { hasFullAccess } from "../utils/subscription.js";
 
 export default function HomePage() {
   const { progress, chapters, profile, catalogLoading } = useAuth();
@@ -10,19 +12,36 @@ export default function HomePage() {
   const stats = countCatalogStats(chapters);
   const pct = Math.min(100, Math.max(0, Number(progress.percentage) || 0));
   const name = profile?.nickname || profile?.email?.split("@")[0] || "студент";
+  const fullAccess = hasFullAccess(profile);
 
   return (
     <section className="lessons-flow lessons-flow-padded">
       <PageHeader
         kicker="Личный кабинет"
         title={`Здравствуйте, ${name}`}
-        intro="Продолжайте обучение с того места, где остановились."
+        intro={
+          fullAccess
+            ? "Продолжайте обучение с того места, где остановились."
+            : "У вас открыты пробные уроки. Оформите подписку, чтобы смотреть весь каталог."
+        }
         actions={
           <Link to={routes.learningLessons} className="btn-primary btn-study">
             К урокам
           </Link>
         }
       />
+
+      {!fullAccess ? (
+        <article className="home-trial-banner card">
+          <div>
+            <h2>Пробный доступ</h2>
+            <p className="muted small">Смотрите бесплатные уроки или оформите подписку на 1 месяц.</p>
+          </div>
+          <Link to={routes.payment(SUBSCRIPTION_PLAN.id)} className="btn-primary">
+            Купить подписку
+          </Link>
+        </article>
+      ) : null}
 
       {continueLesson ? (
         <article className="home-continue card">
