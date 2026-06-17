@@ -11,6 +11,8 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
   const hlsRef = useRef(null);
   const intervalRef = useRef(null);
   const onSavePositionRef = useRef(onSavePosition);
+  const apiRequestRef = useRef(apiRequest);
+  const persistPositionRef = useRef(null);
   const initialSeekRef = useRef({ videoId: null, seconds: 0 });
   const [playError, setPlayError] = useState("");
 
@@ -18,23 +20,30 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
     onSavePositionRef.current = onSavePosition;
   }, [onSavePosition]);
 
+  useEffect(() => {
+    apiRequestRef.current = apiRequest;
+  }, [apiRequest]);
+
   const videoId = video?.id;
   const streamPath = video?.streamPath;
   const durationSec = Math.max(0, Number(video?.duration) || 0);
 
-  const savePosition = useCallback(
-    async (vid, watchedSeconds) => {
-      const w = Math.max(0, Math.floor(Number(watchedSeconds) || 0));
-      const completed = isLessonVideoCompleted(w, durationSec, null, vid);
-      await apiRequest(`/videos/${vid}/position`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ watchedSeconds: w, completed })
-      });
+  const persistPosition = useCallback(async (vid, watchedSeconds, { refresh = false } = {}) => {
+    const w = Math.max(0, Math.floor(Number(watchedSeconds) || 0));
+    const completed = isLessonVideoCompleted(w, durationSec, null, vid);
+    await apiRequestRef.current(`/videos/${vid}/position`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ watchedSeconds: w, completed })
+    });
+    if (refresh) {
       await onSavePositionRef.current?.();
-    },
-    [apiRequest, durationSec]
-  );
+    }
+  }, [durationSec]);
+
+  useEffect(() => {
+    persistPositionRef.current = persistPosition;
+  }, [persistPosition]);
 
   useEffect(() => {
     setPlayError("");
@@ -61,7 +70,7 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
       const elNow = videoRef.current;
       if (!elNow) return;
       const ct = Math.floor(elNow.currentTime || 0);
-      if (ct > 0) void savePosition(videoId, ct);
+      if (ct > 0) void persistPositionRef.current?.(videoId, ct, { refresh: true });
     };
     window.addEventListener("pagehide", onPageHide);
 
@@ -90,7 +99,7 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
     const deviceId = getDeviceId();
 
     (async () => {
-      const accessRes = await apiRequest(`/videos/${videoId}/access-token`, { method: "POST" });
+      const accessRes = await apiRequestRef.current(`/videos/${videoId}/access-token`, { method: "POST" });
       if (cancelled || !elBound.isConnected) return;
       if (!accessRes.ok) {
         const err = await accessRes.json().catch(() => ({}));
@@ -165,9 +174,9 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
 
       intervalRef.current = setInterval(() => {
         if (node.readyState >= 1) {
-          void savePosition(videoId, Math.floor(node.currentTime || 0));
+          void persistPositionRef.current?.(videoId, Math.floor(node.currentTime || 0));
         }
-      }, 5000);
+      }, 15000);
     })();
 
     return () => {
@@ -176,7 +185,7 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
       window.removeEventListener("pagehide", onPageHide);
       const ct = Math.floor(elBound.currentTime || 0);
       if (videoId != null && ct > 0) {
-        void savePosition(videoId, ct);
+        void persistPositionRef.current?.(videoId, ct, { refresh: true });
       }
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -189,13 +198,13 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
       elBound.removeAttribute("src");
       elBound.load();
     };
-  }, [videoId, streamPath, apiRequest, savePosition]);
+  }, [videoId, streamPath]);
 
   if (!video || videoId == null) return null;
 
   function onPauseSave(e) {
     const t = Math.floor(e.currentTarget.currentTime || 0);
-    if (t > 0) void savePosition(videoId, t);
+    if (t > 0) void persistPosition(videoId, t, { refresh: true });
   }
 
   function onEndedSave(e) {
@@ -204,7 +213,7 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
     const cap = fromMeta > 0 ? fromMeta : durationSec;
     const t = Math.max(Math.floor(el.currentTime || 0), cap);
     const toSave = t > 0 ? t : cap;
-    if (toSave > 0) void savePosition(videoId, toSave);
+    if (toSave > 0) void persistPosition(videoId, toSave, { refresh: true });
   }
 
   return (

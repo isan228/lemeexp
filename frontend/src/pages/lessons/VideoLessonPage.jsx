@@ -1,4 +1,5 @@
 import { Link, useParams, useSearchParams } from "react-router-dom";
+import { useMemo } from "react";
 import LessonPlayer from "../../components/LessonPlayer.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { routes } from "../../config/site.js";
@@ -15,7 +16,10 @@ export default function VideoLessonPage() {
 
   const resume = searchParams.get("resume") === "1";
   const watchedMap = progress?.watchedSeconds || {};
-  const initialPlaybackSeconds = resume ? Math.max(0, Math.floor(getVideoWatchedSeconds(watchedMap, vid))) : 0;
+  const initialPlaybackSeconds = useMemo(() => {
+    if (!resume) return 0;
+    return Math.max(0, Math.floor(getVideoWatchedSeconds(watchedMap, vid)));
+  }, [resume, vid]);
 
   const subject = chapters.find((c) => Number(c.id) === sid);
   const chapter = subject?.subtopics?.find((s) => Number(s.id) === cid);
