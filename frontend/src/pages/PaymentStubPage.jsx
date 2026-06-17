@@ -4,7 +4,7 @@ import SiteBrand from "../components/SiteBrand.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { SUBSCRIPTION_PLAN, formatPlanPrice } from "../config/billing.js";
 import { useBillingPlan } from "../hooks/useBillingPlan.js";
-import { routes } from "../config/site.js";
+import { routes, GET_ACCESS_LABEL } from "../config/site.js";
 
 export default function PaymentPage() {
   const [searchParams] = useSearchParams();
@@ -110,7 +110,7 @@ export default function PaymentPage() {
             <span className="flow-step">1. Аккаунт</span>
             <span className="flow-step active">2. Оплата</span>
           </div>
-          <h1>Купить подписку</h1>
+          <h1>{GET_ACCESS_LABEL}</h1>
         </div>
         <p className="muted">
           {SUBSCRIPTION_PLAN.name} — <strong>{displayPrice}</strong> / {periodLabel}

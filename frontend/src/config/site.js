@@ -4,6 +4,9 @@ export const site = {
   url: "https://lemexplain.com"
 };
 
+/** Единая подпись CTA для оформления доступа. */
+export const GET_ACCESS_LABEL = "Получить доступ";
+
 /** Внутренние маршруты SPA — единая точка правды для ссылок. */
 export const routes = {
   home: "/",

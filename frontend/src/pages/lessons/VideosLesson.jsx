@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import PageHeader from "../../components/PageHeader.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { SUBSCRIPTION_PLAN } from "../../config/billing.js";
-import { routes } from "../../config/site.js";
+import { routes, GET_ACCESS_LABEL } from "../../config/site.js";
 import { getVideoWatchedSeconds, isLessonVideoCompleted } from "../../utils/videoProgress.js";
 import { isPlayableStream, isProcessingStream } from "../../utils/streamPath.js";
 
@@ -164,7 +164,7 @@ export default function VideosLesson() {
               <div className="video-row-actions">
                 {locked ? (
                   <Link to={subscribeHref} className="btn-primary inline">
-                    Купить подписку
+                    {GET_ACCESS_LABEL}
                   </Link>
                 ) : ready ? (
                   <Link to={watchHref} className="btn-primary inline">

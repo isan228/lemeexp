@@ -3,7 +3,7 @@ import { useCallback, useMemo } from "react";
 import LessonPlayer from "../../components/LessonPlayer.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { SUBSCRIPTION_PLAN } from "../../config/billing.js";
-import { routes } from "../../config/site.js";
+import { routes, GET_ACCESS_LABEL } from "../../config/site.js";
 import { isPlayableStream, isProcessingStream } from "../../utils/streamPath.js";
 import { getVideoWatchedSeconds } from "../../utils/videoProgress.js";
 
@@ -77,7 +77,7 @@ export default function VideoLessonPage() {
           </p>
           <div className="paywall-actions">
             <Link to={routes.payment(SUBSCRIPTION_PLAN.id)} className="btn-primary">
-              Купить подписку
+              {GET_ACCESS_LABEL}
             </Link>
             <Link to={routes.lessonChapter(subject.id, chapter.id)} className="btn-secondary">
               К списку уроков

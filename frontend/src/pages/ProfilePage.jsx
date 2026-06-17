@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { SUBSCRIPTION_PLAN } from "../config/billing.js";
-import { routes } from "../config/site.js";
+import { routes, GET_ACCESS_LABEL } from "../config/site.js";
 import { formatSubscriptionExpiry, hasFullAccess } from "../utils/subscription.js";
 
 const PLAN_LABELS = {
@@ -55,7 +55,7 @@ export default function ProfilePage() {
           <div className="profile-upgrade">
             <p className="muted small">Полный каталог — по подписке на 1 месяц.</p>
             <Link to={routes.payment(SUBSCRIPTION_PLAN.id)} className="btn-primary inline">
-              Купить подписку
+              {GET_ACCESS_LABEL}
             </Link>
           </div>
         ) : null}

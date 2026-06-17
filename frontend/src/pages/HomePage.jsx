@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import { SUBSCRIPTION_PLAN } from "../config/billing.js";
-import { routes } from "../config/site.js";
+import { routes, GET_ACCESS_LABEL } from "../config/site.js";
 import { countCatalogStats, findContinueLesson } from "../utils/continueLesson.js";
 import { hasFullAccess } from "../utils/subscription.js";
 
@@ -38,7 +38,7 @@ export default function HomePage() {
             <p className="muted small">Смотрите бесплатные уроки или оформите подписку на 1 месяц.</p>
           </div>
           <Link to={routes.payment(SUBSCRIPTION_PLAN.id)} className="btn-primary">
-            Купить подписку
+            {GET_ACCESS_LABEL}
           </Link>
         </article>
       ) : null}

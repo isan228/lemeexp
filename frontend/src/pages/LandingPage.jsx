@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import SiteBrand from "../components/SiteBrand.jsx";
 import SiteFooter from "../components/SiteFooter.jsx";
-import { routes } from "../config/site.js";
+import { routes, GET_ACCESS_LABEL } from "../config/site.js";
 
 function scrollToSection(id) {
   const el = document.getElementById(id);
@@ -318,7 +318,7 @@ export default function LandingPage() {
             <p>Оформите подписку на 1 месяц и смотрите все уроки без ограничений.</p>
             <div className="landing-cta-actions">
               <Link to={routes.register} className="btn-primary inline">
-                Купить подписку
+                {GET_ACCESS_LABEL}
               </Link>
               <Link to={routes.login} className="btn-secondary inline">
                 Уже есть аккаунт

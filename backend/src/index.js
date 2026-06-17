@@ -290,11 +290,17 @@ const videoUpdateSchema = z
   .object({
     title: z.string().min(1).optional(),
     duration: z.coerce.number().int().min(0).optional(),
-    subtopicId: z.coerce.number().int().optional()
+    subtopicId: z.coerce.number().int().optional(),
+    isTrial: z.boolean().optional()
   })
-  .refine((data) => data.title !== undefined || data.duration !== undefined || data.subtopicId !== undefined, {
-    message: "No fields to update"
-  });
+  .refine(
+    (data) =>
+      data.title !== undefined ||
+      data.duration !== undefined ||
+      data.subtopicId !== undefined ||
+      data.isTrial !== undefined,
+    { message: "No fields to update" }
+  );
 const reorderSchema = z.object({
   courses: z.array(z.coerce.number().int()).optional(),
   subtopics: z
@@ -2006,10 +2012,14 @@ app.patch("/admin/videos/:videoId", auth, requireAdmin, async (req, res) => {
       fields.push(`subtopic_id = $${p++}`);
       values.push(parsed.data.subtopicId);
     }
+    if (parsed.data.isTrial !== undefined) {
+      fields.push(`is_trial = $${p++}`);
+      values.push(parsed.data.isTrial);
+    }
     values.push(videoId);
     const updated = await pool.query(
       `update videos set ${fields.join(", ")} where id = $${p}
-       returning id, subtopic_id, title, duration, stream_path, "order"`,
+       returning id, subtopic_id, title, duration, stream_path, "order", is_trial`,
       values
     );
     if (!updated.rows[0]) return res.status(404).json({ message: "Video not found" });
@@ -2019,7 +2029,8 @@ app.patch("/admin/videos/:videoId", auth, requireAdmin, async (req, res) => {
       title: updated.rows[0].title,
       duration: updated.rows[0].duration,
       streamPath: updated.rows[0].stream_path,
-      order: updated.rows[0].order
+      order: updated.rows[0].order,
+      isTrial: Boolean(updated.rows[0].is_trial)
     });
   } catch (error) {
     return res.status(500).json({ message: "Failed to update video", error: error.message });

@@ -1183,6 +1183,29 @@ export default function AdminPage() {
     }
   }
 
+  async function toggleVideoTrial(video, nextTrial) {
+    setCatalogSaving(true);
+    setCatalogError("");
+    try {
+      const res = await apiRequest(`/admin/videos/${video.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isTrial: nextTrial })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Не удалось обновить пробник");
+      }
+      await loadAdminCatalog();
+      showToast(nextTrial ? "Урок добавлен в пробники" : "Урок убран из пробников");
+    } catch (err) {
+      setCatalogError(err.message || "Ошибка");
+      showToast(err.message || "Не удалось обновить пробник", "error");
+    } finally {
+      setCatalogSaving(false);
+    }
+  }
+
   async function pollHlsReady(videoId) {
     for (let attempt = 0; attempt < 40; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 3000));
@@ -1919,6 +1942,7 @@ export default function AdminPage() {
                                   <strong>{v.title}</strong>
                                   <div className="adm-lesson-meta">
                                     {formatLessonDuration(v.duration)}
+                                    {v.isTrial ? <span className="adm-badge trial"> Пробник</span> : null}
                                     {isPlayableStream(v.streamPath) ? (
                                       <span className="adm-badge ok"> Готово (защищённый HLS)</span>
                                     ) : isProcessingStream(v.streamPath) ? (
@@ -1931,6 +1955,15 @@ export default function AdminPage() {
                                   </div>
                                 </div>
                                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                  <button
+                                    type="button"
+                                    className={`adm-btn adm-btn-sm${v.isTrial ? " adm-btn-trial-active" : " adm-btn-secondary"}`}
+                                    disabled={catalogSaving}
+                                    title={v.isTrial ? "Убрать из пробников" : "Сделать пробником"}
+                                    onClick={() => void toggleVideoTrial(v, !v.isTrial)}
+                                  >
+                                    {v.isTrial ? "Убрать из пробников" : "Сделать пробником"}
+                                  </button>
                                   <button
                                     type="button"
                                     className="adm-btn adm-btn-secondary adm-btn-sm"
