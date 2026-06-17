@@ -722,18 +722,18 @@
 }
 
 .adm-badge.trial {
-  background: #dcfce7;
-  color: #166534;
+  background: #f1f5f9;
+  color: #475569;
 }
 
 .adm-btn-trial-active {
-  background: #166534;
+  background: #475569;
   color: #fff;
-  border-color: #166534;
+  border-color: #475569;
 }
 
 .adm-btn-trial-active:hover {
-  background: #14532d;
+  background: #334155;
 }
 
 .adm-upload {
