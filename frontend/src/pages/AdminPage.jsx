@@ -53,21 +53,31 @@ function formatPromoType(type, value) {
   return type;
 }
 
-function shortenDeviceId(id) {
-  if (!id) return "—";
-  const text = String(id);
-  if (text.length <= 14) return text;
-  return `${text.slice(0, 8)}…${text.slice(-4)}`;
-}
+function describeOperatingSystem(ua) {
+  if (!ua) return "ОС неизвестна";
+  const text = String(ua);
 
-function describeUserAgent(ua) {
-  if (!ua) return "Браузер неизвестен";
-  if (/Edg\//.test(ua)) return "Microsoft Edge";
-  if (/Chrome\//.test(ua) && !/Edg\//.test(ua)) return "Chrome";
-  if (/Firefox\//.test(ua)) return "Firefox";
-  if (/Safari\//.test(ua) && !/Chrome\//.test(ua)) return "Safari";
-  if (/Mobile|Android|iPhone|iPad/i.test(ua)) return "Мобильный браузер";
-  return ua.length > 56 ? `${ua.slice(0, 56)}…` : ua;
+  if (/iPhone|iPad|iPod/i.test(text)) {
+    const match = text.match(/OS (\d+)[_.](\d+)/);
+    return match ? `iOS ${match[1]}.${match[2]}` : "iOS";
+  }
+  if (/Android/i.test(text)) {
+    const match = text.match(/Android (\d+(?:\.\d+)?)/);
+    return match ? `Android ${match[1]}` : "Android";
+  }
+  if (/Windows NT 10\.0/.test(text)) return "Windows 10 / 11";
+  if (/Windows NT 6\.3/.test(text)) return "Windows 8.1";
+  if (/Windows NT 6\.2/.test(text)) return "Windows 8";
+  if (/Windows NT 6\.1/.test(text)) return "Windows 7";
+  if (/Windows/i.test(text)) return "Windows";
+  if (/Mac OS X|Macintosh/i.test(text)) {
+    const match = text.match(/Mac OS X (\d+)[_.](\d+)/);
+    return match ? `macOS ${match[1]}.${match[2]}` : "macOS";
+  }
+  if (/CrOS/i.test(text)) return "Chrome OS";
+  if (/Linux/i.test(text)) return "Linux";
+  if (/Ubuntu/i.test(text)) return "Ubuntu";
+  return "ОС неизвестна";
 }
 
 export default function AdminPage() {
@@ -2416,7 +2426,7 @@ export default function AdminPage() {
                   <div>
                     <h2 style={{ margin: "0 0 8px", fontSize: "1rem" }}>Ученики с несколькими устройствами</h2>
                     <p className="adm-page-desc" style={{ margin: 0 }}>
-                      Показаны активные сессии: ID устройства, IP, браузер и время последнего входа.
+                      Показаны активные сессии: IP, операционная система и время последнего входа.
                     </p>
                   </div>
                   <button
@@ -2474,22 +2484,18 @@ export default function AdminPage() {
                           <table className="adm-table adm-device-table">
                             <thead>
                               <tr>
-                                <th>Устройство</th>
                                 <th>IP</th>
-                                <th>Браузер</th>
+                                <th>Операционная система</th>
                                 <th>Последний вход</th>
                               </tr>
                             </thead>
                             <tbody>
                               {item.devices.map((device) => (
                                 <tr key={device.deviceId}>
-                                  <td>
-                                    <code className="adm-device-id" title={device.deviceId}>
-                                      {shortenDeviceId(device.deviceId)}
-                                    </code>
-                                  </td>
                                   <td>{device.ip || "—"}</td>
-                                  <td title={device.userAgent || undefined}>{describeUserAgent(device.userAgent)}</td>
+                                  <td title={device.userAgent || undefined}>
+                                    {describeOperatingSystem(device.userAgent)}
+                                  </td>
                                   <td>
                                     {device.lastActive
                                       ? new Date(device.lastActive).toLocaleString("ru-RU")
