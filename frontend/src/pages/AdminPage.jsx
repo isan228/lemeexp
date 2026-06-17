@@ -91,6 +91,11 @@ export default function AdminPage() {
   const [usersError, setUsersError] = useState("");
   const [usersLoading, setUsersLoading] = useState(false);
   const [userSearch, setUserSearch] = useState("");
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("");
+  const [newUserNickname, setNewUserNickname] = useState("");
+  const [newUserSubscription, setNewUserSubscription] = useState("free");
+  const [userCreating, setUserCreating] = useState(false);
 
   const [chatUserId, setChatUserId] = useState(null);
   const [chatSearch, setChatSearch] = useState("");
@@ -371,6 +376,46 @@ export default function AdminPage() {
       setUsersLoading(false);
     }
   }, [apiRequest]);
+
+  async function submitCreateUser(e) {
+    e.preventDefault();
+    const email = newUserEmail.trim();
+    const password = newUserPassword;
+    if (!email || password.length < 6) return;
+
+    setUsersError("");
+    setUserCreating(true);
+    try {
+      const payload = {
+        email,
+        password,
+        subscriptionType: newUserSubscription
+      };
+      const nickname = newUserNickname.trim();
+      if (nickname) payload.nickname = nickname;
+
+      const res = await apiRequest("/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setUsersError(err.message || "Не удалось создать ученика");
+        showToast(err.message || "Не удалось создать ученика", "error");
+        return;
+      }
+      const created = await res.json();
+      setNewUserEmail("");
+      setNewUserPassword("");
+      setNewUserNickname("");
+      setNewUserSubscription("free");
+      await loadUsers();
+      showToast(`Ученик «${created.nickname || created.email}» добавлен`);
+    } finally {
+      setUserCreating(false);
+    }
+  }
 
   const loadNews = useCallback(async () => {
     setNewsError("");
@@ -1830,63 +1875,125 @@ export default function AdminPage() {
           )}
 
           {tab === "users" && (
-            <section className="adm-card" style={{ padding: 20 }}>
-              {usersError && <div className="adm-alert warn">{usersError}</div>}
-              <AdminSearchBox
-                id="user-search"
-                value={userSearch}
-                onChange={setUserSearch}
-                suggestions={userSuggestions}
-                onPick={pickUserSearch}
-                placeholder="Поиск по email, нику или ID…"
-                ariaLabel="Поиск пользователей"
-                style={{ maxWidth: 420, marginBottom: 16 }}
-              />
-              {usersLoading ? (
-                <div className="adm-loading-block">
-                  <span className="adm-spinner" />
-                  Загрузка…
-                </div>
-              ) : (
-                <div className="adm-table-wrap">
-                  <table className="adm-table">
-                    <thead>
-                      <tr>
-                        <th>ID</th>
-                        <th>Email</th>
-                        <th>Ник</th>
-                        <th>Тариф</th>
-                        <th>Регистрация</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredUsers.length === 0 ? (
+            <div className="adm-news-layout">
+              <section className="adm-card" style={{ padding: 20 }}>
+                <h2 style={{ margin: "0 0 8px", fontSize: "1rem" }}>Новый ученик</h2>
+                <p className="adm-page-desc" style={{ margin: "0 0 16px" }}>
+                  Создайте учётную запись вручную. Ученик сможет войти с указанным email и паролем.
+                </p>
+                {usersError && <div className="adm-alert warn">{usersError}</div>}
+                <form className="adm-form" onSubmit={submitCreateUser}>
+                  <div className="adm-field">
+                    <label htmlFor="new-user-email">Email</label>
+                    <input
+                      id="new-user-email"
+                      type="email"
+                      value={newUserEmail}
+                      onChange={(e) => setNewUserEmail(e.target.value)}
+                      required
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div className="adm-field">
+                    <label htmlFor="new-user-password">Пароль</label>
+                    <input
+                      id="new-user-password"
+                      type="password"
+                      value={newUserPassword}
+                      onChange={(e) => setNewUserPassword(e.target.value)}
+                      required
+                      minLength={6}
+                      autoComplete="new-password"
+                    />
+                  </div>
+                  <div className="adm-field">
+                    <label htmlFor="new-user-nickname">Ник (необязательно)</label>
+                    <input
+                      id="new-user-nickname"
+                      value={newUserNickname}
+                      onChange={(e) => setNewUserNickname(e.target.value)}
+                      maxLength={80}
+                      placeholder="Из email, если пусто"
+                    />
+                  </div>
+                  <div className="adm-field">
+                    <label htmlFor="new-user-subscription">Тариф</label>
+                    <select
+                      id="new-user-subscription"
+                      value={newUserSubscription}
+                      onChange={(e) => setNewUserSubscription(e.target.value)}
+                      style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--adm-border)" }}
+                    >
+                      <option value="free">Free</option>
+                      <option value="basic">Basic</option>
+                      <option value="premium">Pro</option>
+                      <option value="mentor">Mentor</option>
+                    </select>
+                  </div>
+                  <button type="submit" className="adm-btn adm-btn-primary" disabled={userCreating}>
+                    {userCreating ? "Создание…" : "Добавить ученика"}
+                  </button>
+                </form>
+              </section>
+
+              <section className="adm-card" style={{ padding: 20 }}>
+                <h2 style={{ margin: "0 0 16px", fontSize: "1rem" }}>Все пользователи</h2>
+                <AdminSearchBox
+                  id="user-search"
+                  value={userSearch}
+                  onChange={setUserSearch}
+                  suggestions={userSuggestions}
+                  onPick={pickUserSearch}
+                  placeholder="Поиск по email, нику или ID…"
+                  ariaLabel="Поиск пользователей"
+                  style={{ marginBottom: 16 }}
+                />
+                {usersLoading ? (
+                  <div className="adm-loading-block">
+                    <span className="adm-spinner" />
+                    Загрузка…
+                  </div>
+                ) : (
+                  <div className="adm-table-wrap">
+                    <table className="adm-table">
+                      <thead>
                         <tr>
-                          <td colSpan={5} style={{ textAlign: "center", color: "var(--adm-text-muted)" }}>
-                            {userSearch.trim() ? "Ничего не найдено" : "Нет пользователей"}
-                          </td>
+                          <th>ID</th>
+                          <th>Email</th>
+                          <th>Ник</th>
+                          <th>Тариф</th>
+                          <th>Регистрация</th>
                         </tr>
-                      ) : (
-                        filteredUsers.map((u) => {
-                          const tag = subscriptionTag(u.subscriptionType);
-                          return (
-                            <tr key={u.id}>
-                              <td>{u.id}</td>
-                              <td>{u.email}</td>
-                              <td>{u.nickname}</td>
-                              <td>
-                                <span className={`adm-tag ${tag.className}`}>{tag.label}</span>
-                              </td>
-                              <td>{u.createdAt ? new Date(u.createdAt).toLocaleDateString("ru-RU") : "—"}</td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </section>
+                      </thead>
+                      <tbody>
+                        {filteredUsers.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} style={{ textAlign: "center", color: "var(--adm-text-muted)" }}>
+                              {userSearch.trim() ? "Ничего не найдено" : "Нет пользователей"}
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredUsers.map((u) => {
+                            const tag = subscriptionTag(u.subscriptionType);
+                            return (
+                              <tr key={u.id}>
+                                <td>{u.id}</td>
+                                <td>{u.email}</td>
+                                <td>{u.nickname}</td>
+                                <td>
+                                  <span className={`adm-tag ${tag.className}`}>{tag.label}</span>
+                                </td>
+                                <td>{u.createdAt ? new Date(u.createdAt).toLocaleDateString("ru-RU") : "—"}</td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+            </div>
           )}
 
           {tab === "news" && (

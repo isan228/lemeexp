@@ -183,6 +183,13 @@ const registerSchema = z.object({
   nickname: z.string().min(1).max(80).optional()
 });
 
+const adminUserCreateSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+  nickname: z.string().min(1).max(80).optional(),
+  subscriptionType: z.enum(["free", "basic", "premium", "mentor"]).optional().default("free")
+});
+
 const activateSubscriptionSchema = z.object({
   plan: z.literal("standard").optional().default("standard")
 });
@@ -1935,6 +1942,60 @@ app.delete("/admin/courses/:courseId", auth, requireAdmin, async (req, res) => {
     return res.status(204).send();
   } catch (error) {
     return res.status(500).json({ message: "Failed to delete course", error: error.message });
+  }
+});
+
+app.post("/admin/users", auth, requireAdmin, async (req, res) => {
+  const parsed = adminUserCreateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
+  }
+
+  const email = normalizeEmail(parsed.data.email);
+  const nickname = (parsed.data.nickname?.trim() || email.split("@")[0] || "user").slice(0, 80);
+  const subscriptionType = parsed.data.subscriptionType;
+
+  if (email === normalizeEmail(adminUser.email) || email === normalizeEmail(demoUser.email)) {
+    return res.status(409).json({ message: "Этот email зарезервирован" });
+  }
+
+  const existing = await getUserByEmail(email);
+  if (existing) {
+    return res.status(409).json({ message: "Пользователь с таким email уже есть" });
+  }
+
+  const passwordHash = await bcrypt.hash(parsed.data.password, 10);
+
+  try {
+    if (dbReady) {
+      const created = await pool.query(
+        `insert into users (email, password_hash, nickname, subscription_type)
+         values ($1, $2, $3, $4)
+         returning id, email, nickname, subscription_type as "subscriptionType",
+                   exam_date as "examDate", created_at as "createdAt"`,
+        [email, passwordHash, nickname, subscriptionType]
+      );
+      return res.status(201).json(created.rows[0]);
+    }
+
+    const id = memNextUserId++;
+    const user = { id, email, passwordHash, nickname, subscriptionType };
+    memRegisteredUsersByEmail.set(email, user);
+    memRegisteredUsersById.set(id, user);
+    memState.progressByUser.set(id, { lastVideoId: null, watchedSeconds: {}, videoCompleted: {} });
+    return res.status(201).json({
+      id,
+      email,
+      nickname,
+      subscriptionType,
+      examDate: null,
+      createdAt: new Date().toISOString()
+    });
+  } catch (error) {
+    if (error.code === "23505") {
+      return res.status(409).json({ message: "Пользователь с таким email уже есть" });
+    }
+    return res.status(500).json({ message: "Не удалось создать пользователя", error: error.message });
   }
 });
 
