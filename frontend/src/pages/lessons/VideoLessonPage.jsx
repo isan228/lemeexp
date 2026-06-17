@@ -22,7 +22,7 @@ export default function VideoLessonPage() {
   const video = chapter?.videos?.find((v) => Number(v.id) === vid) || null;
   const chapterVideos = chapter?.videos || [];
 
-  if (catalogLoading) {
+  if (catalogLoading && chapters.length === 0) {
     return (
       <section className="lessons-flow lessons-flow-padded">
         <p className="muted">Загрузка каталога…</p>
@@ -103,6 +103,9 @@ export default function VideoLessonPage() {
                   <Link
                     to={routes.lessonVideo(subject.id, chapter.id, item.id)}
                     className={active ? "watch-item active" : "watch-item"}
+                    onClick={(e) => {
+                      if (active) e.preventDefault();
+                    }}
                   >
                     <span className="watch-item-thumb" aria-hidden="true">
                       <img

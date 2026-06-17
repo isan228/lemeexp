@@ -11,6 +11,7 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
   const hlsRef = useRef(null);
   const intervalRef = useRef(null);
   const onSavePositionRef = useRef(onSavePosition);
+  const initialSeekRef = useRef({ videoId: null, seconds: 0 });
   const [playError, setPlayError] = useState("");
 
   useEffect(() => {
@@ -64,7 +65,13 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
     };
     window.addEventListener("pagehide", onPageHide);
 
-    const startAt = Math.max(0, Math.floor(Number(initialPlaybackSeconds) || 0));
+    if (initialSeekRef.current.videoId !== videoId) {
+      initialSeekRef.current = {
+        videoId,
+        seconds: Math.max(0, Math.floor(Number(initialPlaybackSeconds) || 0))
+      };
+    }
+    const startAt = initialSeekRef.current.seconds;
 
     if (hlsRef.current) {
       hlsRef.current.destroy();
@@ -182,7 +189,7 @@ export default function LessonPlayer({ video, apiRequest, onSavePosition, initia
       elBound.removeAttribute("src");
       elBound.load();
     };
-  }, [videoId, streamPath, apiRequest, savePosition, initialPlaybackSeconds]);
+  }, [videoId, streamPath, apiRequest, savePosition]);
 
   if (!video || videoId == null) return null;
 

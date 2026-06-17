@@ -122,12 +122,16 @@ export function AuthProvider({ children }) {
     [setAuthState]
   );
 
+  const chaptersRef = useRef([]);
+  chaptersRef.current = chapters;
+
   const loadCatalog = useCallback(async () => {
     if (!tokenRef.current) {
       setCatalogLoading(false);
       return;
     }
-    setCatalogLoading(true);
+    const isInitialLoad = chaptersRef.current.length === 0;
+    if (isInitialLoad) setCatalogLoading(true);
     try {
       const [chaptersRes, progressRes] = await Promise.all([
         apiRequest("/chapters", {}, false),
