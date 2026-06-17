@@ -876,6 +876,111 @@
   opacity: 0.72;
 }
 
+.adm-row-multi-device td {
+  background: #fef2f2;
+}
+
+.adm-row-multi-device td:first-child {
+  box-shadow: inset 3px 0 0 #dc2626;
+}
+
+.adm-tag-multi-device {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.adm-device-count-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  color: #dc2626;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.adm-btn-danger-text {
+  color: #dc2626;
+}
+
+.adm-devices-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.adm-devices-panel {
+  padding: 20px;
+}
+
+.adm-devices-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.adm-devices-empty {
+  margin: 0;
+  padding: 24px 0;
+  text-align: center;
+  color: var(--adm-text-muted);
+}
+
+.adm-devices-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.adm-device-card {
+  border: 1px solid var(--adm-border);
+  border-radius: 12px;
+  padding: 16px;
+  background: #fff;
+}
+
+.adm-device-card-warn {
+  border-color: #fecaca;
+  background: #fffafa;
+}
+
+.adm-device-card-focus {
+  box-shadow: 0 0 0 2px #f87171;
+}
+
+.adm-device-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.adm-device-card-meta {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--adm-text-muted);
+}
+
+.adm-device-card-actions {
+  margin-top: 12px;
+}
+
+.adm-device-table th,
+.adm-device-table td {
+  font-size: 13px;
+}
+
+.adm-device-id {
+  font-size: 12px;
+  background: #f8fafc;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
 .adm-table-actions {
   display: flex;
   gap: 6px;

@@ -21,6 +21,7 @@ const NAV_ITEMS = [
   { id: "content", label: "Курсы и уроки", icon: "📚", desc: "Предметы, главы и видеоуроки" },
   { id: "promo", label: "Биллинг", icon: "🎟", desc: "Цена подписки и промокоды" },
   { id: "users", label: "Пользователи", icon: "👥", desc: "Учётные записи и тарифы" },
+  { id: "devices", label: "Устройства", icon: "📱", desc: "Входы учеников с разных устройств" },
   { id: "news", label: "Новости", icon: "📰", desc: "Публикации на главной" },
   { id: "support", label: "Поддержка", icon: "💬", desc: "Чат с учениками" }
 ];
@@ -50,6 +51,23 @@ function formatPromoType(type, value) {
   if (type === "percent") return `${value}%`;
   if (type === "fixed") return `${value} сом`;
   return type;
+}
+
+function shortenDeviceId(id) {
+  if (!id) return "—";
+  const text = String(id);
+  if (text.length <= 14) return text;
+  return `${text.slice(0, 8)}…${text.slice(-4)}`;
+}
+
+function describeUserAgent(ua) {
+  if (!ua) return "Браузер неизвестен";
+  if (/Edg\//.test(ua)) return "Microsoft Edge";
+  if (/Chrome\//.test(ua) && !/Edg\//.test(ua)) return "Chrome";
+  if (/Firefox\//.test(ua)) return "Firefox";
+  if (/Safari\//.test(ua) && !/Chrome\//.test(ua)) return "Safari";
+  if (/Mobile|Android|iPhone|iPad/i.test(ua)) return "Мобильный браузер";
+  return ua.length > 56 ? `${ua.slice(0, 56)}…` : ua;
 }
 
 export default function AdminPage() {
@@ -105,6 +123,12 @@ export default function AdminPage() {
   const [userSaving, setUserSaving] = useState(false);
   const [securityAlerts, setSecurityAlerts] = useState([]);
   const [securityAlertsLoading, setSecurityAlertsLoading] = useState(false);
+  const [userDevices, setUserDevices] = useState([]);
+  const [userDevicesError, setUserDevicesError] = useState("");
+  const [userDevicesLoading, setUserDevicesLoading] = useState(false);
+  const [devicesSearch, setDevicesSearch] = useState("");
+  const [devicesFocusUserId, setDevicesFocusUserId] = useState(null);
+  const devicesListRef = useRef(null);
 
   const [chatUserId, setChatUserId] = useState(null);
   const [chatSearch, setChatSearch] = useState("");
@@ -326,6 +350,20 @@ export default function AdminPage() {
     [users, userSearch]
   );
 
+  const multiDeviceUsersCount = useMemo(
+    () => users.filter((u) => u.subscriptionType !== "admin" && u.multiDevice).length,
+    [users]
+  );
+
+  const filteredUserDevices = useMemo(() => {
+    const multiOnly = userDevices.filter((item) => item.multiDevice);
+    return filterAssociative(multiOnly, devicesSearch, (item) => [
+      item.email,
+      item.nickname,
+      String(item.userId)
+    ]);
+  }, [userDevices, devicesSearch]);
+
   const supportUsersOrdered = useMemo(() => {
     const nonAdmin = users.filter((u) => u.subscriptionType !== "admin");
     const matched = filterAssociative(nonAdmin, chatSearch, (u) => [u.email, u.nickname]);
@@ -397,6 +435,23 @@ export default function AdminPage() {
       setSecurityAlerts(await res.json());
     } finally {
       setSecurityAlertsLoading(false);
+    }
+  }, [apiRequest]);
+
+  const loadUserDevices = useCallback(async () => {
+    setUserDevicesError("");
+    setUserDevicesLoading(true);
+    try {
+      const res = await apiRequest("/admin/user-devices?multiOnly=1");
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setUserDevicesError(err.message || "Не удалось загрузить устройства");
+        setUserDevices([]);
+        return;
+      }
+      setUserDevices(await res.json());
+    } finally {
+      setUserDevicesLoading(false);
     }
   }, [apiRequest]);
 
@@ -544,6 +599,11 @@ export default function AdminPage() {
     setSecurityAlerts((prev) => prev.filter((a) => a.id !== alertId));
   }
 
+  function openUserDevices(userId) {
+    setDevicesFocusUserId(Number(userId));
+    switchTab("devices");
+  }
+
   const loadNews = useCallback(async () => {
     setNewsError("");
     setNewsLoading(true);
@@ -606,10 +666,38 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!hydrated || !token || !isAdmin) return;
+    void loadUsers();
+  }, [hydrated, token, isAdmin, loadUsers]);
+
+  useEffect(() => {
+    if (!hydrated || !token || !isAdmin) return;
     void loadSecurityAlerts();
     const timer = setInterval(() => void loadSecurityAlerts(), 30_000);
     return () => clearInterval(timer);
   }, [hydrated, token, isAdmin, loadSecurityAlerts]);
+
+  useEffect(() => {
+    if (!hydrated || !token || !isAdmin || tab !== "devices") return;
+    void loadUserDevices();
+    void loadSecurityAlerts();
+    void loadUsers();
+    const timer = setInterval(() => {
+      void loadUserDevices();
+      void loadSecurityAlerts();
+    }, 30_000);
+    return () => clearInterval(timer);
+  }, [hydrated, token, isAdmin, tab, loadUserDevices, loadSecurityAlerts, loadUsers]);
+
+  useEffect(() => {
+    if (!devicesFocusUserId || tab !== "devices") return;
+    const el = devicesListRef.current?.querySelector(`[data-user-id="${devicesFocusUserId}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      el.classList.add("adm-device-card-focus");
+      const timer = setTimeout(() => el.classList.remove("adm-device-card-focus"), 2400);
+      return () => clearTimeout(timer);
+    }
+  }, [devicesFocusUserId, tab, userDevices]);
 
   useEffect(() => {
     if (!hydrated || !token || !isAdmin || tab !== "support") return;
@@ -1316,8 +1404,13 @@ export default function AdminPage() {
               {item.id === "support" && chatUnreadTotal > 0 ? (
                 <span className="adm-nav-badge">{chatUnreadTotal}</span>
               ) : null}
-              {item.id === "users" && securityAlerts.length > 0 ? (
-                <span className="adm-nav-badge adm-nav-badge-warn">{securityAlerts.length}</span>
+              {item.id === "users" && multiDeviceUsersCount > 0 ? (
+                <span className="adm-nav-badge adm-nav-badge-warn">{multiDeviceUsersCount}</span>
+              ) : null}
+              {item.id === "devices" && (multiDeviceUsersCount > 0 || securityAlerts.length > 0) ? (
+                <span className="adm-nav-badge adm-nav-badge-warn">
+                  {Math.max(multiDeviceUsersCount, securityAlerts.length)}
+                </span>
               ) : null}
             </button>
           ))}
@@ -1344,51 +1437,6 @@ export default function AdminPage() {
         </header>
 
         <main className="adm-body">
-          {securityAlerts.length > 0 && (
-            <div className="adm-security-alerts adm-card">
-              <div className="adm-security-alerts-head">
-                <strong>⚠ Подозрительная активность</strong>
-                {securityAlertsLoading ? <span className="adm-security-alerts-loading">обновление…</span> : null}
-              </div>
-              <ul className="adm-security-alerts-list">
-                {securityAlerts.map((alert) => (
-                  <li key={alert.id} className="adm-security-alert-item">
-                    <div>
-                      <p className="adm-security-alert-msg">{alert.message}</p>
-                      <p className="adm-security-alert-meta">
-                        {alert.userEmail}
-                        {alert.meta?.otherDeviceCount ? ` · устройств: ${alert.meta.otherDeviceCount + 1}` : ""}
-                        {alert.createdAt
-                          ? ` · ${new Date(alert.createdAt).toLocaleString("ru-RU")}`
-                          : ""}
-                      </p>
-                    </div>
-                    <div className="adm-security-alert-actions">
-                      <button
-                        type="button"
-                        className="adm-btn adm-btn-secondary adm-btn-sm"
-                        onClick={() => {
-                          switchTab("users");
-                          const u = users.find((x) => x.id === alert.userId);
-                          if (u) startEditUser(u);
-                        }}
-                      >
-                        Открыть
-                      </button>
-                      <button
-                        type="button"
-                        className="adm-btn adm-btn-ghost adm-btn-sm"
-                        onClick={() => void dismissSecurityAlert(alert.id)}
-                      >
-                        Скрыть
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
           {tab === "content" && catalogError && <div className="adm-alert warn">{catalogError}</div>}
 
           {tab === "content" && (
@@ -2235,8 +2283,14 @@ export default function AdminPage() {
                           filteredUsers.map((u) => {
                             const tag = subscriptionTag(u.subscriptionType);
                             const isAdminUser = u.subscriptionType === "admin";
+                            const rowClass = [
+                              u.banned ? "adm-row-banned" : null,
+                              !isAdminUser && u.multiDevice ? "adm-row-multi-device" : null
+                            ]
+                              .filter(Boolean)
+                              .join(" ");
                             return (
-                              <tr key={u.id} className={u.banned ? "adm-row-banned" : undefined}>
+                              <tr key={u.id} className={rowClass || undefined}>
                                 <td>{u.id}</td>
                                 <td>{u.email}</td>
                                 <td>{u.nickname}</td>
@@ -2248,11 +2302,28 @@ export default function AdminPage() {
                                     <span className="adm-tag adm-tag-banned" title={u.banReason || undefined}>
                                       Заблокирован
                                     </span>
+                                  ) : u.multiDevice ? (
+                                    <span className="adm-tag adm-tag-multi-device">Несколько устройств</span>
                                   ) : (
                                     <span className="adm-tag adm-tag-active">Активен</span>
                                   )}
                                 </td>
-                                <td>{isAdminUser ? "—" : (u.deviceCount ?? 0)}</td>
+                                <td>
+                                  {isAdminUser ? (
+                                    "—"
+                                  ) : u.multiDevice ? (
+                                    <button
+                                      type="button"
+                                      className="adm-device-count-btn"
+                                      onClick={() => openUserDevices(u.id)}
+                                      title="Открыть список устройств"
+                                    >
+                                      {u.deviceCount ?? 0}
+                                    </button>
+                                  ) : (
+                                    (u.deviceCount ?? 0)
+                                  )}
+                                </td>
                                 <td>{u.createdAt ? new Date(u.createdAt).toLocaleDateString("ru-RU") : "—"}</td>
                                 <td>
                                   {!isAdminUser && (
@@ -2264,6 +2335,15 @@ export default function AdminPage() {
                                       >
                                         Изменить
                                       </button>
+                                      {u.multiDevice ? (
+                                        <button
+                                          type="button"
+                                          className="adm-btn adm-btn-ghost adm-btn-sm adm-btn-danger-text"
+                                          onClick={() => openUserDevices(u.id)}
+                                        >
+                                          Устройства
+                                        </button>
+                                      ) : null}
                                       <button
                                         type="button"
                                         className={`adm-btn adm-btn-sm ${u.banned ? "adm-btn-primary" : "adm-btn-ghost adm-btn-danger"}`}
@@ -2280,6 +2360,161 @@ export default function AdminPage() {
                         )}
                       </tbody>
                     </table>
+                  </div>
+                )}
+              </section>
+            </div>
+          )}
+
+          {tab === "devices" && (
+            <div className="adm-devices-layout">
+              {securityAlerts.length > 0 && (
+                <section className="adm-security-alerts adm-card">
+                  <div className="adm-security-alerts-head">
+                    <strong>⚠ Подозрительная активность</strong>
+                    {securityAlertsLoading ? (
+                      <span className="adm-security-alerts-loading">обновление…</span>
+                    ) : null}
+                  </div>
+                  <ul className="adm-security-alerts-list">
+                    {securityAlerts.map((alert) => (
+                      <li key={alert.id} className="adm-security-alert-item">
+                        <div>
+                          <p className="adm-security-alert-msg">{alert.message}</p>
+                          <p className="adm-security-alert-meta">
+                            {alert.userEmail}
+                            {alert.meta?.otherDeviceCount ? ` · устройств: ${alert.meta.otherDeviceCount + 1}` : ""}
+                            {alert.createdAt
+                              ? ` · ${new Date(alert.createdAt).toLocaleString("ru-RU")}`
+                              : ""}
+                          </p>
+                        </div>
+                        <div className="adm-security-alert-actions">
+                          <button
+                            type="button"
+                            className="adm-btn adm-btn-secondary adm-btn-sm"
+                            onClick={() => openUserDevices(alert.userId)}
+                          >
+                            Устройства
+                          </button>
+                          <button
+                            type="button"
+                            className="adm-btn adm-btn-ghost adm-btn-sm"
+                            onClick={() => void dismissSecurityAlert(alert.id)}
+                          >
+                            Скрыть
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+
+              <section className="adm-card adm-devices-panel">
+                <div className="adm-devices-panel-head">
+                  <div>
+                    <h2 style={{ margin: "0 0 8px", fontSize: "1rem" }}>Ученики с несколькими устройствами</h2>
+                    <p className="adm-page-desc" style={{ margin: 0 }}>
+                      Показаны активные сессии: ID устройства, IP, браузер и время последнего входа.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="adm-btn adm-btn-secondary adm-btn-sm"
+                    onClick={() => void loadUserDevices()}
+                    disabled={userDevicesLoading}
+                  >
+                    {userDevicesLoading ? "Обновление…" : "Обновить"}
+                  </button>
+                </div>
+
+                {userDevicesError && <div className="adm-alert warn">{userDevicesError}</div>}
+
+                <AdminSearchBox
+                  id="devices-search"
+                  value={devicesSearch}
+                  onChange={setDevicesSearch}
+                  suggestions={[]}
+                  placeholder="Поиск по email, нику или ID…"
+                  ariaLabel="Поиск по устройствам"
+                  style={{ margin: "16px 0" }}
+                />
+
+                {userDevicesLoading && filteredUserDevices.length === 0 ? (
+                  <div className="adm-loading-block">
+                    <span className="adm-spinner" />
+                    Загрузка…
+                  </div>
+                ) : filteredUserDevices.length === 0 ? (
+                  <p className="adm-devices-empty">
+                    {devicesSearch.trim()
+                      ? "Ничего не найдено"
+                      : "Сейчас нет учеников с входами с нескольких устройств"}
+                  </p>
+                ) : (
+                  <div className="adm-devices-list" ref={devicesListRef}>
+                    {filteredUserDevices.map((item) => (
+                      <article
+                        key={item.userId}
+                        data-user-id={item.userId}
+                        className={`adm-device-card ${item.multiDevice ? "adm-device-card-warn" : ""}`}
+                      >
+                        <div className="adm-device-card-head">
+                          <div>
+                            <strong>{item.nickname || item.email}</strong>
+                            <p className="adm-device-card-meta">
+                              {item.email} · ID {item.userId}
+                              {item.banned ? " · заблокирован" : ""}
+                            </p>
+                          </div>
+                          <span className="adm-tag adm-tag-multi-device">{item.deviceCount} устройств</span>
+                        </div>
+                        <div className="adm-table-wrap">
+                          <table className="adm-table adm-device-table">
+                            <thead>
+                              <tr>
+                                <th>Устройство</th>
+                                <th>IP</th>
+                                <th>Браузер</th>
+                                <th>Последний вход</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {item.devices.map((device) => (
+                                <tr key={device.deviceId}>
+                                  <td>
+                                    <code className="adm-device-id" title={device.deviceId}>
+                                      {shortenDeviceId(device.deviceId)}
+                                    </code>
+                                  </td>
+                                  <td>{device.ip || "—"}</td>
+                                  <td title={device.userAgent || undefined}>{describeUserAgent(device.userAgent)}</td>
+                                  <td>
+                                    {device.lastActive
+                                      ? new Date(device.lastActive).toLocaleString("ru-RU")
+                                      : "—"}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <div className="adm-device-card-actions">
+                          <button
+                            type="button"
+                            className="adm-btn adm-btn-secondary adm-btn-sm"
+                            onClick={() => {
+                              const u = users.find((x) => Number(x.id) === Number(item.userId));
+                              switchTab("users");
+                              if (u) startEditUser(u);
+                            }}
+                          >
+                            Профиль ученика
+                          </button>
+                        </div>
+                      </article>
+                    ))}
                   </div>
                 )}
               </section>

@@ -484,6 +484,80 @@ async function revokeAllUserSessions(userId) {
   }
 }
 
+function mapSessionRow(row) {
+  return {
+    deviceId: row.deviceId ?? row.device_id,
+    ip: row.ip ?? null,
+    userAgent: row.userAgent ?? row.user_agent ?? null,
+    lastActive: row.lastActive ?? row.last_active ?? null
+  };
+}
+
+async function fetchAdminUserDevices({ multiOnly = false } = {}) {
+  if (!dbReady) {
+    const grouped = [];
+    for (const u of [demoUser, ...memRegisteredUsersById.values()]) {
+      if (u.subscriptionType === "admin") continue;
+      const sessions = memState.sessions.get(String(u.id)) || [];
+      if (sessions.length === 0) continue;
+      if (multiOnly && sessions.length < 2) continue;
+      grouped.push({
+        userId: u.id,
+        email: u.email,
+        nickname: u.nickname,
+        banned: Boolean(u.banned),
+        deviceCount: sessions.length,
+        multiDevice: sessions.length > 1,
+        devices: sessions.map((s) =>
+          mapSessionRow({
+            deviceId: s.deviceId,
+            ip: s.ip,
+            userAgent: s.userAgent,
+            lastActive: new Date(s.lastActive).toISOString()
+          })
+        )
+      });
+    }
+    grouped.sort((a, b) => b.deviceCount - a.deviceCount || Number(a.userId) - Number(b.userId));
+    return grouped;
+  }
+
+  const r = await pool.query(
+    `select u.id as "userId", u.email, u.nickname, u.banned,
+            s.device_id as "deviceId", host(s.ip) as ip, s.user_agent as "userAgent",
+            s.last_active as "lastActive"
+     from users u
+     join sessions s on s.user_id = u.id
+     where u.subscription_type != 'admin'
+     order by u.id, s.last_active desc`
+  );
+
+  const byUser = new Map();
+  for (const row of r.rows) {
+    const key = String(row.userId);
+    if (!byUser.has(key)) {
+      byUser.set(key, {
+        userId: row.userId,
+        email: row.email,
+        nickname: row.nickname,
+        banned: Boolean(row.banned),
+        deviceCount: 0,
+        multiDevice: false,
+        devices: []
+      });
+    }
+    const entry = byUser.get(key);
+    entry.devices.push(mapSessionRow(row));
+    entry.deviceCount = entry.devices.length;
+    entry.multiDevice = entry.deviceCount > 1;
+  }
+
+  let grouped = [...byUser.values()];
+  if (multiOnly) grouped = grouped.filter((item) => item.multiDevice);
+  grouped.sort((a, b) => b.deviceCount - a.deviceCount || Number(a.userId) - Number(b.userId));
+  return grouped;
+}
+
 async function recordMultiDeviceAlert(userId, deviceId, ip, userAgent) {
   if (Number(userId) === adminUser.id) return;
 
@@ -2104,6 +2178,7 @@ app.get("/admin/users", auth, requireAdmin, async (_req, res) => {
     if (!dbReady) {
       const mapUserRow = (u, subscriptionType) => {
         const sessions = memState.sessions.get(String(u.id)) || [];
+        const deviceCount = sessions.length;
         return {
           id: u.id,
           email: u.email,
@@ -2114,7 +2189,8 @@ app.get("/admin/users", auth, requireAdmin, async (_req, res) => {
           banned: Boolean(u.banned),
           bannedAt: u.bannedAt ?? null,
           banReason: u.banReason ?? null,
-          deviceCount: sessions.length
+          deviceCount,
+          multiDevice: deviceCount > 1
         };
       };
       const rows = [mapUserRow(demoUser), mapUserRow(adminUser, "admin")];
@@ -2130,7 +2206,8 @@ app.get("/admin/users", auth, requireAdmin, async (_req, res) => {
       `select u.id, u.email, u.nickname, u.subscription_type as "subscriptionType",
               u.exam_date as "examDate", u.created_at as "createdAt",
               u.banned, u.banned_at as "bannedAt", u.ban_reason as "banReason",
-              coalesce(s.device_count, 0)::int as "deviceCount"
+              coalesce(s.device_count, 0)::int as "deviceCount",
+              (coalesce(s.device_count, 0) > 1) as "multiDevice"
        from users u
        left join (
          select user_id, count(*)::int as device_count
@@ -2282,6 +2359,16 @@ app.patch("/admin/users/:userId", auth, requireAdmin, async (req, res) => {
       return res.status(409).json({ message: "Пользователь с таким email уже есть" });
     }
     return res.status(500).json({ message: "Не удалось обновить пользователя", error: error.message });
+  }
+});
+
+app.get("/admin/user-devices", auth, requireAdmin, async (req, res) => {
+  const multiOnly = req.query.multiOnly === "1" || req.query.multiOnly === "true";
+  try {
+    const rows = await fetchAdminUserDevices({ multiOnly });
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to load user devices", error: error.message });
   }
 });
 
