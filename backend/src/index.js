@@ -2188,6 +2188,9 @@ app.get("/admin/users", auth, requireAdmin, async (_req, res) => {
       const mapUserRow = (u, subscriptionType) => {
         const sessions = memState.sessions.get(String(u.id)) || [];
         const deviceCount = sessions.length;
+        const hasSecurityAlert = memState.securityAlerts.some(
+          (a) => !a.dismissed && Number(a.userId) === Number(u.id)
+        );
         return {
           id: u.id,
           email: u.email,
@@ -2199,7 +2202,8 @@ app.get("/admin/users", auth, requireAdmin, async (_req, res) => {
           bannedAt: u.bannedAt ?? null,
           banReason: u.banReason ?? null,
           deviceCount,
-          multiDevice: deviceCount > 1
+          multiDevice: deviceCount > 1,
+          hasSecurityAlert
         };
       };
       const rows = [mapUserRow(demoUser), mapUserRow(adminUser, "admin")];
@@ -2216,7 +2220,11 @@ app.get("/admin/users", auth, requireAdmin, async (_req, res) => {
               u.exam_date as "examDate", u.created_at as "createdAt",
               u.banned, u.banned_at as "bannedAt", u.ban_reason as "banReason",
               coalesce(s.device_count, 0)::int as "deviceCount",
-              (coalesce(s.device_count, 0) > 1) as "multiDevice"
+              (coalesce(s.device_count, 0) > 1) as "multiDevice",
+              exists (
+                select 1 from security_alerts sa
+                where sa.user_id = u.id and sa.dismissed = false
+              ) as "hasSecurityAlert"
        from users u
        left join (
          select user_id, count(*)::int as device_count
@@ -2431,7 +2439,7 @@ app.post("/admin/security-alerts/dismiss-viewed", auth, requireAdmin, async (req
       for (const alert of memState.securityAlerts) {
         if (alert.dismissed) continue;
         if (ids?.length) {
-          if (ids.includes(alert.id)) alert.dismissed = true;
+          if (ids.some((id) => Number(id) === Number(alert.id))) alert.dismissed = true;
         } else if (Number(alert.userId) === Number(userId)) {
           alert.dismissed = true;
         }
@@ -2441,8 +2449,9 @@ app.post("/admin/security-alerts/dismiss-viewed", auth, requireAdmin, async (req
 
     if (ids?.length) {
       await pool.query(
-        `update security_alerts set dismissed = true where id = any($1::bigint[]) and dismissed = false`,
-        [ids]
+        `update security_alerts set dismissed = true
+         where id = any($1::bigint[]) and dismissed = false`,
+        [ids.map(Number)]
       );
     } else {
       await pool.query(

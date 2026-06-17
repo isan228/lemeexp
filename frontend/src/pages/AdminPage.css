@@ -901,6 +901,17 @@
   text-underline-offset: 2px;
 }
 
+.adm-device-count-link {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .adm-btn-danger-text {
   color: #dc2626;
 }

@@ -366,6 +366,8 @@ export default function AdminPage() {
     [users]
   );
 
+  const unviewedAlertsCount = securityAlerts.length;
+
   const filteredUserDevices = useMemo(() => {
     const multiOnly = userDevices.filter((item) => item.multiDevice);
     return filterAssociative(multiOnly, devicesSearch, (item) => [
@@ -602,24 +604,41 @@ export default function AdminPage() {
   }
 
   const markAlertsAsViewed = useCallback(
-    async ({ ids, userId } = {}) => {
+    async ({ ids, userId, userIds } = {}) => {
+      const numericIds = ids?.map((id) => Number(id)).filter(Number.isFinite);
+      const numericUserId = userId !== undefined ? Number(userId) : undefined;
+      const numericUserIds = userIds?.map((id) => Number(id)).filter(Number.isFinite);
+
       const payload = {};
-      if (ids?.length) payload.ids = ids;
-      else if (userId !== undefined) payload.userId = userId;
-      else return;
+      if (numericIds?.length) payload.ids = numericIds;
+      else if (numericUserId !== undefined) payload.userId = numericUserId;
+      else return false;
 
       const res = await apiRequest("/admin/security-alerts/dismiss-viewed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
-      if (!res.ok) return;
+      if (!res.ok) return false;
 
       setSecurityAlerts((prev) => {
-        if (ids?.length) return prev.filter((a) => !ids.includes(a.id));
-        if (userId !== undefined) return prev.filter((a) => Number(a.userId) !== Number(userId));
+        if (numericIds?.length) {
+          return prev.filter((a) => !numericIds.includes(Number(a.id)));
+        }
+        if (numericUserId !== undefined) {
+          return prev.filter((a) => Number(a.userId) !== numericUserId);
+        }
         return prev;
       });
+
+      const clearIds = new Set(numericUserIds || []);
+      if (numericUserId !== undefined) clearIds.add(numericUserId);
+      if (clearIds.size > 0) {
+        setUsers((prev) =>
+          prev.map((u) => (clearIds.has(Number(u.id)) ? { ...u, hasSecurityAlert: false } : u))
+        );
+      }
+      return true;
     },
     [apiRequest]
   );
@@ -628,7 +647,7 @@ export default function AdminPage() {
     const id = Number(userId);
     setDevicesFocusUserId(id);
     switchTab("devices");
-    void markAlertsAsViewed({ userId: id });
+    void markAlertsAsViewed({ userId: id, userIds: [id] });
   }
 
   const loadNews = useCallback(async () => {
@@ -727,11 +746,20 @@ export default function AdminPage() {
   }, [devicesFocusUserId, tab, userDevices]);
 
   useEffect(() => {
-    if (tab !== "devices" || securityAlertsLoading) return;
-    const pending = securityAlerts.filter((a) => !dismissedAlertIdsRef.current.has(a.id));
+    if (tab !== "users" && tab !== "devices") return;
+    if (securityAlertsLoading) return;
+    const pending = securityAlerts.filter((a) => !dismissedAlertIdsRef.current.has(Number(a.id)));
     if (pending.length === 0) return;
-    for (const alert of pending) dismissedAlertIdsRef.current.add(alert.id);
-    void markAlertsAsViewed({ ids: pending.map((a) => a.id) });
+
+    void (async () => {
+      const ids = pending.map((a) => Number(a.id));
+      const userIds = [...new Set(pending.map((a) => Number(a.userId)))];
+      for (const alert of pending) dismissedAlertIdsRef.current.add(Number(alert.id));
+      const ok = await markAlertsAsViewed({ ids, userIds });
+      if (!ok) {
+        for (const alert of pending) dismissedAlertIdsRef.current.delete(Number(alert.id));
+      }
+    })();
   }, [tab, securityAlerts, securityAlertsLoading, markAlertsAsViewed]);
 
   useEffect(() => {
@@ -1439,13 +1467,11 @@ export default function AdminPage() {
               {item.id === "support" && chatUnreadTotal > 0 ? (
                 <span className="adm-nav-badge">{chatUnreadTotal}</span>
               ) : null}
-              {item.id === "users" && multiDeviceUsersCount > 0 ? (
-                <span className="adm-nav-badge adm-nav-badge-warn">{multiDeviceUsersCount}</span>
+              {item.id === "users" && unviewedAlertsCount > 0 ? (
+                <span className="adm-nav-badge adm-nav-badge-warn">{unviewedAlertsCount}</span>
               ) : null}
-              {item.id === "devices" && (multiDeviceUsersCount > 0 || securityAlerts.length > 0) ? (
-                <span className="adm-nav-badge adm-nav-badge-warn">
-                  {Math.max(multiDeviceUsersCount, securityAlerts.length)}
-                </span>
+              {item.id === "devices" && unviewedAlertsCount > 0 ? (
+                <span className="adm-nav-badge adm-nav-badge-warn">{unviewedAlertsCount}</span>
               ) : null}
             </button>
           ))}
@@ -2320,7 +2346,7 @@ export default function AdminPage() {
                             const isAdminUser = u.subscriptionType === "admin";
                             const rowClass = [
                               u.banned ? "adm-row-banned" : null,
-                              !isAdminUser && u.multiDevice ? "adm-row-multi-device" : null
+                              !isAdminUser && u.hasSecurityAlert ? "adm-row-multi-device" : null
                             ]
                               .filter(Boolean)
                               .join(" ");
@@ -2337,7 +2363,7 @@ export default function AdminPage() {
                                     <span className="adm-tag adm-tag-banned" title={u.banReason || undefined}>
                                       Заблокирован
                                     </span>
-                                  ) : u.multiDevice ? (
+                                  ) : u.hasSecurityAlert ? (
                                     <span className="adm-tag adm-tag-multi-device">Несколько устройств</span>
                                   ) : (
                                     <span className="adm-tag adm-tag-active">Активен</span>
@@ -2349,7 +2375,7 @@ export default function AdminPage() {
                                   ) : u.multiDevice ? (
                                     <button
                                       type="button"
-                                      className="adm-device-count-btn"
+                                      className={u.hasSecurityAlert ? "adm-device-count-btn" : "adm-device-count-link"}
                                       onClick={() => openUserDevices(u.id)}
                                       title="Открыть список устройств"
                                     >
