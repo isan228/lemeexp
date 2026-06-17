@@ -117,6 +117,7 @@ export default function VideosLesson() {
                   <div className="video-meta">
                     <strong>{v.title}</strong>
                     <div className="muted small">{formatMinutes(v.duration || 0)}</div>
+                    <p className="video-row-locked-hint">Просмотр недоступен — нужна подписка</p>
                     <div className="video-statuses">
                       <span className="status-badge status-locked">По подписке</span>
                     </div>
@@ -163,11 +164,11 @@ export default function VideosLesson() {
               )}
               <div className="video-row-actions">
                 {locked ? (
-                  <Link to={subscribeHref} className="btn-primary inline">
+                  <Link to={subscribeHref} className="btn-get-access inline">
                     {GET_ACCESS_LABEL}
                   </Link>
                 ) : ready ? (
-                  <Link to={watchHref} className="btn-primary inline">
+                  <Link to={watchHref} className="btn-watch inline">
                     {hasPartialProgress ? "Продолжить" : "Смотреть"}
                   </Link>
                 ) : (

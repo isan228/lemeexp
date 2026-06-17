@@ -54,7 +54,7 @@ export default function ProfilePage() {
         {!fullAccess ? (
           <div className="profile-upgrade">
             <p className="muted small">Полный каталог — по подписке на 1 месяц.</p>
-            <Link to={routes.payment(SUBSCRIPTION_PLAN.id)} className="btn-primary inline">
+            <Link to={routes.payment(SUBSCRIPTION_PLAN.id)} className="btn-get-access inline">
               {GET_ACCESS_LABEL}
             </Link>
           </div>

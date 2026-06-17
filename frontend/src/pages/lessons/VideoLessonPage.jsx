@@ -76,7 +76,7 @@ export default function VideoLessonPage() {
             Этот урок доступен только по подписке. Оформите доступ на 1 месяц и смотрите весь каталог без ограничений.
           </p>
           <div className="paywall-actions">
-            <Link to={routes.payment(SUBSCRIPTION_PLAN.id)} className="btn-primary">
+            <Link to={routes.payment(SUBSCRIPTION_PLAN.id)} className="btn-get-access">
               {GET_ACCESS_LABEL}
             </Link>
             <Link to={routes.lessonChapter(subject.id, chapter.id)} className="btn-secondary">
@@ -153,7 +153,13 @@ export default function VideoLessonPage() {
                 <li key={item.id}>
                   <Link
                     to={itemHref}
-                    className={active ? "watch-item active" : "watch-item"}
+                    className={[
+                      "watch-item",
+                      active ? "active" : "",
+                      item.locked ? "watch-item-locked" : ""
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
                     onClick={(e) => {
                       if (active) e.preventDefault();
                     }}

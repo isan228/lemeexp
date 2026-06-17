@@ -37,9 +37,9 @@ export default function HomePage() {
             <h2>Пробный доступ</h2>
             <p className="muted small">Смотрите бесплатные уроки или оформите подписку на 1 месяц.</p>
           </div>
-          <Link to={routes.payment(SUBSCRIPTION_PLAN.id)} className="btn-primary">
-            {GET_ACCESS_LABEL}
-          </Link>
+            <Link to={routes.payment(SUBSCRIPTION_PLAN.id)} className="btn-get-access">
+              {GET_ACCESS_LABEL}
+            </Link>
         </article>
       ) : null}
 

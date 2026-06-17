@@ -317,7 +317,7 @@ export default function LandingPage() {
             <h2 id="landing-cta-title">Нужен полный каталог?</h2>
             <p>Оформите подписку на 1 месяц и смотрите все уроки без ограничений.</p>
             <div className="landing-cta-actions">
-              <Link to={routes.register} className="btn-primary inline">
+              <Link to={routes.register} className="btn-get-access inline">
                 {GET_ACCESS_LABEL}
               </Link>
               <Link to={routes.login} className="btn-secondary inline">
