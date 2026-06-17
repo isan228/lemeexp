@@ -213,6 +213,15 @@ const adminUserUpdateSchema = z
     { message: "No fields to update" }
   );
 
+const securityAlertsDismissSchema = z
+  .object({
+    ids: z.array(z.coerce.number().int()).optional(),
+    userId: z.coerce.number().int().optional()
+  })
+  .refine((data) => (data.ids && data.ids.length > 0) || data.userId !== undefined, {
+    message: "ids or userId required"
+  });
+
 const activateSubscriptionSchema = z.object({
   plan: z.literal("standard").optional().default("standard")
 });
@@ -2406,6 +2415,44 @@ app.get("/admin/security-alerts", auth, requireAdmin, async (_req, res) => {
     res.json(r.rows);
   } catch (error) {
     res.status(500).json({ message: "Failed to load security alerts", error: error.message });
+  }
+});
+
+app.post("/admin/security-alerts/dismiss-viewed", auth, requireAdmin, async (req, res) => {
+  const parsed = securityAlertsDismissSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
+  }
+
+  const { ids, userId } = parsed.data;
+
+  try {
+    if (!dbReady) {
+      for (const alert of memState.securityAlerts) {
+        if (alert.dismissed) continue;
+        if (ids?.length) {
+          if (ids.includes(alert.id)) alert.dismissed = true;
+        } else if (Number(alert.userId) === Number(userId)) {
+          alert.dismissed = true;
+        }
+      }
+      return res.status(204).send();
+    }
+
+    if (ids?.length) {
+      await pool.query(
+        `update security_alerts set dismissed = true where id = any($1::bigint[]) and dismissed = false`,
+        [ids]
+      );
+    } else {
+      await pool.query(
+        `update security_alerts set dismissed = true where user_id = $1 and dismissed = false`,
+        [userId]
+      );
+    }
+    return res.status(204).send();
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to dismiss alerts", error: error.message });
   }
 });
 

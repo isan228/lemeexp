@@ -139,6 +139,7 @@ export default function AdminPage() {
   const [devicesSearch, setDevicesSearch] = useState("");
   const [devicesFocusUserId, setDevicesFocusUserId] = useState(null);
   const devicesListRef = useRef(null);
+  const dismissedAlertIdsRef = useRef(new Set());
 
   const [chatUserId, setChatUserId] = useState(null);
   const [chatSearch, setChatSearch] = useState("");
@@ -600,18 +601,34 @@ export default function AdminPage() {
     }
   }
 
-  async function dismissSecurityAlert(alertId) {
-    const res = await apiRequest(`/admin/security-alerts/${alertId}/dismiss`, { method: "POST" });
-    if (!res.ok) {
-      showToast("Не удалось скрыть уведомление", "error");
-      return;
-    }
-    setSecurityAlerts((prev) => prev.filter((a) => a.id !== alertId));
-  }
+  const markAlertsAsViewed = useCallback(
+    async ({ ids, userId } = {}) => {
+      const payload = {};
+      if (ids?.length) payload.ids = ids;
+      else if (userId !== undefined) payload.userId = userId;
+      else return;
+
+      const res = await apiRequest("/admin/security-alerts/dismiss-viewed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) return;
+
+      setSecurityAlerts((prev) => {
+        if (ids?.length) return prev.filter((a) => !ids.includes(a.id));
+        if (userId !== undefined) return prev.filter((a) => Number(a.userId) !== Number(userId));
+        return prev;
+      });
+    },
+    [apiRequest]
+  );
 
   function openUserDevices(userId) {
-    setDevicesFocusUserId(Number(userId));
+    const id = Number(userId);
+    setDevicesFocusUserId(id);
     switchTab("devices");
+    void markAlertsAsViewed({ userId: id });
   }
 
   const loadNews = useCallback(async () => {
@@ -708,6 +725,14 @@ export default function AdminPage() {
       return () => clearTimeout(timer);
     }
   }, [devicesFocusUserId, tab, userDevices]);
+
+  useEffect(() => {
+    if (tab !== "devices" || securityAlertsLoading) return;
+    const pending = securityAlerts.filter((a) => !dismissedAlertIdsRef.current.has(a.id));
+    if (pending.length === 0) return;
+    for (const alert of pending) dismissedAlertIdsRef.current.add(alert.id);
+    void markAlertsAsViewed({ ids: pending.map((a) => a.id) });
+  }, [tab, securityAlerts, securityAlertsLoading, markAlertsAsViewed]);
 
   useEffect(() => {
     if (!hydrated || !token || !isAdmin || tab !== "support") return;
@@ -2406,13 +2431,6 @@ export default function AdminPage() {
                             onClick={() => openUserDevices(alert.userId)}
                           >
                             Устройства
-                          </button>
-                          <button
-                            type="button"
-                            className="adm-btn adm-btn-ghost adm-btn-sm"
-                            onClick={() => void dismissSecurityAlert(alert.id)}
-                          >
-                            Скрыть
                           </button>
                         </div>
                       </li>
