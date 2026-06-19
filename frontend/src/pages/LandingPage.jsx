@@ -192,23 +192,11 @@ export default function LandingPage() {
 
       <main className="landing-main landing-main-wide">
         <section className="landing-hero landing-hero-center" aria-labelledby="hero-title">
-          <p className="landing-kicker">Медицинское онлайн-образование</p>
-          <h1 id="hero-title">Let me explain — видеокурсы для врачей и студентов медицинских вузов</h1>
+          <h1 id="hero-title">наконец-то! медицину можно понять</h1>
           <p className="lead landing-lead-wide">
-            Предметы, главы и защищённые уроки в одном спокойном интерфейсе. Три бесплатных пробника — оцените
-            качество и навигацию, затем оформите полный доступ.
+            видеоуроки для врачей и студентов-медиков, чтобы укрепить фундаментальные умения и легко сдать
+            международные экзамены USMLE, TUS, PLAB
           </p>
-          <div className="landing-hero-stats">
-            <span className="landing-hero-stat">
-              <strong>3</strong> пробных урока
-            </span>
-            <span className="landing-hero-stat">
-              <strong>HLS</strong> шифрование
-            </span>
-            <span className="landing-hero-stat">
-              <strong>24/7</strong> доступ в кабинете
-            </span>
-          </div>
           <div className="landing-hero-cta landing-hero-cta-center">
             {!token ? (
               <Link to={routes.registerTrial} className="btn-primary landing-hero-try-btn">
@@ -217,18 +205,6 @@ export default function LandingPage() {
             ) : (
               <Link to={routes.learningLessons} className="btn-primary landing-hero-try-btn">
                 К урокам
-              </Link>
-            )}
-            <button type="button" className="btn-secondary" onClick={() => scrollToSection("trial")}>
-              Смотреть пробники
-            </button>
-            {!token ? (
-              <Link to={routes.login} className="btn-link landing-hero-buy-link">
-                Уже есть аккаунт →
-              </Link>
-            ) : (
-              <Link to={routes.learningHome} className="btn-link landing-hero-buy-link">
-                В кабинет →
               </Link>
             )}
           </div>
