@@ -321,17 +321,12 @@
   margin-bottom: 0;
 }
 
-.landing-curriculum-body {
-  display: grid;
-  grid-template-columns: 1fr minmax(220px, 340px);
-  gap: 28px;
-  align-items: start;
-}
-
 .landing-curriculum-lists {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 28px 32px;
+  max-width: 720px;
+  margin: 0 auto;
   padding: 28px 32px;
   border-radius: var(--med-radius);
 }
@@ -384,17 +379,6 @@
 
 .landing-curriculum-list-compact li {
   padding: 4px 0;
-}
-
-.landing-curriculum-figure {
-  margin: 0;
-}
-
-.landing-curriculum-image {
-  width: 100%;
-  height: auto;
-  border-radius: var(--med-radius);
-  display: block;
 }
 
 .landing-footer-nav a {
@@ -453,16 +437,6 @@ a.nav-muted:hover {
 
 .support-back-links a + a::before {
   content: none;
-}
-
-@media (max-width: 900px) {
-  .landing-curriculum-body {
-    grid-template-columns: 1fr;
-  }
-
-  .landing-curriculum-figure {
-    display: none;
-  }
 }
 
 @media (max-width: 640px) {

@@ -222,33 +222,23 @@ export default function LandingPage() {
             <p>не отставать от новшеств и укрепить базу знаний.</p>
             <p>Вы изучите всё — от молекул до узких дисциплин.</p>
           </div>
-          <div className="landing-curriculum-body">
-            <div className="landing-curriculum-lists card">
-              <div className="landing-curriculum-block">
-                <h3 className="landing-curriculum-heading">Что включено:</h3>
-                <ul className="landing-curriculum-list">
-                  {includedSubjects.map((subject) => (
-                    <li key={subject}>{subject}</li>
-                  ))}
-                </ul>
-              </div>
-              <div className="landing-curriculum-block landing-curriculum-block-systems">
-                <h3 className="landing-curriculum-heading">Внутри систем:</h3>
-                <ul className="landing-curriculum-list landing-curriculum-list-compact">
-                  {systemSubjects.map((subject) => (
-                    <li key={subject}>{subject}</li>
-                  ))}
-                </ul>
-              </div>
+          <div className="landing-curriculum-lists card">
+            <div className="landing-curriculum-block">
+              <h3 className="landing-curriculum-heading">Что включено:</h3>
+              <ul className="landing-curriculum-list">
+                {includedSubjects.map((subject) => (
+                  <li key={subject}>{subject}</li>
+                ))}
+              </ul>
             </div>
-            <figure className="landing-curriculum-figure">
-              <img
-                src="/curriculum-included.png"
-                alt="Список предметов: биохимия, иммунология, кардиология и другие дисциплины"
-                className="landing-curriculum-image"
-                loading="lazy"
-              />
-            </figure>
+            <div className="landing-curriculum-block landing-curriculum-block-systems">
+              <h3 className="landing-curriculum-heading">Внутри систем:</h3>
+              <ul className="landing-curriculum-list landing-curriculum-list-compact">
+                {systemSubjects.map((subject) => (
+                  <li key={subject}>{subject}</li>
+                ))}
+              </ul>
+            </div>
           </div>
         </section>
 
