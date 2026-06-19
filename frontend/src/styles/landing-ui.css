@@ -5,6 +5,7 @@
   --lp-charcoal: #28282b;
   --lp-navy: #191970;
   --lp-blue: #0096ff;
+  --lp-cyan: #7df9ff;
   --lp-slate: #7293b3;
   --lp-gray-light: #d3d3d3;
   --lp-gray: #c0c0c0;
@@ -154,27 +155,37 @@
   padding: 48px 32px 64px;
   position: relative;
   box-sizing: border-box;
+  background: linear-gradient(
+    165deg,
+    rgba(25, 25, 112, 0.06) 0%,
+    rgba(0, 150, 255, 0.1) 42%,
+    rgba(125, 249, 255, 0.18) 100%
+  );
 }
 
 .landing-marketing .landing-hero-center h1 {
-  font-size: clamp(1.75rem, 4vw, 2.35rem);
-  line-height: 1.18;
-  margin-bottom: 20px;
+  font-size: clamp(2.1rem, 5.5vw, 3.1rem);
+  line-height: 1.12;
+  margin-bottom: 24px;
   font-weight: 800;
-  letter-spacing: -0.025em;
-  color: var(--lp-black);
-  max-width: 18ch;
+  letter-spacing: -0.03em;
+  max-width: 14ch;
   text-align: center;
   margin-left: auto;
   margin-right: auto;
+  background: linear-gradient(135deg, var(--lp-navy) 0%, var(--lp-blue) 55%, var(--lp-blue) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: var(--lp-navy);
 }
 
 .landing-marketing .landing-lead-wide {
-  color: var(--lp-slate);
-  font-size: clamp(0.95rem, 1.6vw, 1.08rem);
+  color: var(--lp-charcoal);
+  font-size: clamp(1.05rem, 2vw, 1.22rem);
   line-height: 1.65;
-  margin-bottom: 32px;
-  max-width: 36rem;
+  margin-bottom: 36px;
+  max-width: 38rem;
   text-align: center;
   margin-left: auto;
   margin-right: auto;
@@ -200,13 +211,46 @@
 }
 
 .landing-marketing .landing-section:nth-of-type(even) {
-  background: var(--lp-gray-bg);
+  background: linear-gradient(
+    180deg,
+    rgba(125, 249, 255, 0.14) 0%,
+    rgba(0, 150, 255, 0.06) 45%,
+    var(--lp-white) 100%
+  );
   margin-left: -24px;
   margin-right: -24px;
   padding-left: 24px;
   padding-right: 24px;
-  border-top: 1px solid var(--lp-gray-light);
-  border-bottom: 1px solid var(--lp-gray-light);
+  border-top: 1px solid rgba(0, 150, 255, 0.12);
+  border-bottom: 1px solid rgba(0, 150, 255, 0.12);
+}
+
+.landing-marketing #pricing.landing-section {
+  background: linear-gradient(135deg, var(--lp-navy) 0%, var(--lp-blue) 100%);
+  border-top: none;
+  border-bottom: none;
+}
+
+.landing-marketing #pricing .landing-section-title {
+  color: var(--lp-white);
+}
+
+.landing-marketing #pricing .landing-section-title::after {
+  background: var(--lp-cyan);
+}
+
+.landing-marketing #pricing .landing-pricing {
+  background: rgba(255, 255, 255, 0.97);
+  border: none;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+}
+
+.landing-marketing #curriculum.landing-section {
+  background: linear-gradient(180deg, var(--lp-white) 0%, rgba(125, 249, 255, 0.08) 100%);
+  margin-left: -24px;
+  margin-right: -24px;
+  padding-left: 24px;
+  padding-right: 24px;
 }
 
 .landing-section-alt {
@@ -232,7 +276,7 @@
   width: 40px;
   height: 3px;
   margin: 12px auto 0;
-  background: var(--lp-blue);
+  background: linear-gradient(90deg, var(--lp-blue), var(--lp-cyan));
   border-radius: 2px;
 }
 
@@ -357,11 +401,11 @@
   gap: 12px;
 }
 
-.landing-benefit-item {
+.landing-marketing .landing-benefit-item {
   padding: 18px 22px;
   border-radius: var(--lp-radius);
-  background: var(--lp-white);
-  border: 1px solid var(--lp-gray-light);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.95) 0%, rgba(125, 249, 255, 0.08) 100%);
+  border: 1px solid rgba(0, 150, 255, 0.15);
   border-left: 3px solid var(--lp-blue);
   color: var(--lp-black);
   font-weight: 600;
@@ -484,11 +528,11 @@
 
 /* —— CTA —— */
 
-.landing-cta-banner {
+.landing-marketing .landing-cta-banner {
   margin: 48px 0 24px;
   padding: 40px 28px;
   border-radius: var(--lp-radius);
-  background: linear-gradient(135deg, var(--lp-navy) 0%, var(--lp-charcoal) 100%);
+  background: linear-gradient(135deg, var(--lp-navy) 0%, var(--lp-blue) 55%, rgba(125, 249, 255, 0.4) 100%);
   color: var(--lp-white);
   text-align: center;
   box-shadow: var(--med-shadow);
@@ -733,7 +777,7 @@ a.nav-muted:hover {
   .landing-marketing .landing-hero-center h1 {
     text-align: center;
     max-width: none;
-    font-size: clamp(1.6rem, 5vw, 2rem);
+    font-size: clamp(1.85rem, 7vw, 2.5rem);
   }
 
   .landing-marketing .landing-lead-wide {
@@ -754,7 +798,9 @@ a.nav-muted:hover {
     text-align: center;
   }
 
-  .landing-marketing .landing-section:nth-of-type(even) {
+  .landing-marketing .landing-section:nth-of-type(even),
+  .landing-marketing #curriculum.landing-section,
+  .landing-marketing #pricing.landing-section {
     margin-left: -16px;
     margin-right: -16px;
     padding-left: 16px;
