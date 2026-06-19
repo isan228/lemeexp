@@ -254,7 +254,7 @@ input:focus {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #ffffff;
+  background: #f9f6ee;
 }
 
 .landing-header {
