@@ -153,7 +153,7 @@
   min-height: calc(100dvh - 72px);
   width: 100%;
   max-width: none;
-  margin: 0;
+  margin: -14px 0 0;
   padding: 48px 32px 64px;
   position: relative;
   box-sizing: border-box;
@@ -178,8 +178,9 @@
   );
 }
 
-.landing-marketing .landing-hero-center h1 {
-  font-size: clamp(2.1rem, 5.5vw, 3.1rem);
+.landing-marketing .landing-hero-center h1,
+.landing-marketing #hero-title {
+  font-size: clamp(2.15rem, 7vw, 2.5rem);
   line-height: 1.12;
   margin-bottom: 24px;
   font-weight: 800;
@@ -195,8 +196,9 @@
 
 .landing-marketing .landing-lead-wide {
   color: var(--lp-black);
-  font-size: clamp(1.05rem, 2vw, 1.22rem);
+  font-size: clamp(0.94rem, 2vw, 1.22rem);
   line-height: 1.65;
+  margin-top: 35px;
   margin-bottom: 36px;
   max-width: 38rem;
   text-align: center;
@@ -823,16 +825,17 @@ a.nav-muted:hover {
   .landing-marketing .landing-hero-center {
     min-height: calc(100dvh - 64px);
     width: 100%;
-    margin: 0;
+    margin: -14px 0 0;
     padding: 32px 20px 48px;
     text-align: center;
     align-items: center;
   }
 
-  .landing-marketing .landing-hero-center h1 {
+  .landing-marketing .landing-hero-center h1,
+  .landing-marketing #hero-title {
     text-align: center;
     max-width: none;
-    font-size: clamp(1.85rem, 7vw, 2.5rem);
+    font-size: clamp(2.15rem, 7vw, 2.5rem);
   }
 
   .landing-marketing .landing-lead-wide {
