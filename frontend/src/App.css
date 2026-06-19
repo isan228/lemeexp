@@ -254,7 +254,7 @@ input:focus {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, #dceefe 0%, var(--med-bg-warm) 45%, #ffffff 100%);
+  background: #ffffff;
 }
 
 .landing-header {
@@ -531,13 +531,13 @@ input:focus {
 }
 
 .landing-section-alt {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72) 0%, rgba(236, 253, 245, 0.5) 100%);
+  background: #f9fafb;
   margin-left: -24px;
   margin-right: -24px;
   padding-left: 24px;
   padding-right: 24px;
   border-radius: var(--med-radius);
-  border: 1px solid var(--med-border-soft);
+  border: 1px solid #e5e7eb;
 }
 
 .landing-section-title {
