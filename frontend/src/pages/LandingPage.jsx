@@ -195,7 +195,7 @@ export default function LandingPage() {
       </header>
 
       <main className="landing-main landing-main-wide">
-        <section className="landing-hero landing-hero-center" aria-labelledby="hero-title">
+        <section className="landing-hero landing-hero-center landing-block landing-block-hero" aria-labelledby="hero-title">
           <h1 id="hero-title">Наконец-то! 
            <br /> медицину можно понять</h1>
           <p className="lead landing-lead-wide">
@@ -215,7 +215,7 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section id="curriculum" className="landing-section">
+        <section id="curriculum" className="landing-section landing-block landing-block-cream">
           <h2 className="landing-section-title">Облегчите себе обучение</h2>
           <div className="landing-curriculum-intro">
             <p>Серия видеоуроков поможет вам</p>
@@ -242,7 +242,7 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section id="advantages" className="landing-section landing-section-alt">
+        <section id="advantages" className="landing-section landing-section-alt landing-block landing-block-dark">
           <h2 className="landing-section-title">Наши преимущества</h2>
           <p className="landing-section-intro">Технологии и сервис, на которые можно опереться в длительной подготовке.</p>
           <div className="landing-advantages-grid">
@@ -258,7 +258,7 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section id="about" className="landing-section">
+        <section id="about" className="landing-section landing-block landing-block-light">
           <h2 className="landing-section-title">О платформе</h2>
           <div className="landing-about card">
             <p>
@@ -274,7 +274,7 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section id="reviews" className="landing-section landing-section-alt">
+        <section id="reviews" className="landing-section landing-section-alt landing-block landing-block-gray">
           <h2 className="landing-section-title">Отзывы</h2>
           <p className="landing-section-intro">Что говорят те, кто уже учится с нами (примеры для демо-сайта).</p>
           <div className="landing-reviews-grid">
@@ -291,7 +291,7 @@ export default function LandingPage() {
         </section>
 
         {!token ? (
-          <section className="landing-cta-banner" aria-labelledby="landing-cta-title">
+          <section className="landing-cta-banner landing-block landing-block-cta" aria-labelledby="landing-cta-title">
             <h2 id="landing-cta-title">Нужен полный каталог?</h2>
             <p>Оформите подписку на 1 месяц и смотрите все уроки без ограничений.</p>
             <div className="landing-cta-actions">

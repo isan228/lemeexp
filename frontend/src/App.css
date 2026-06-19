@@ -531,13 +531,13 @@ input:focus {
 }
 
 .landing-section-alt {
-  background: rgba(211, 211, 211, 0.3);
-  margin-left: -24px;
-  margin-right: -24px;
-  padding-left: 24px;
-  padding-right: 24px;
-  border-radius: 16px;
-  border: 1px solid #d3d3d3;
+  background: transparent;
+  margin-left: 0;
+  margin-right: 0;
+  padding-left: 0;
+  padding-right: 0;
+  border-radius: 0;
+  border: none;
 }
 
 .landing-section-title {
