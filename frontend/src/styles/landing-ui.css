@@ -412,18 +412,18 @@
 .landing-marketing .landing-curriculum-expand-btn {
   display: none;
   position: relative;
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   padding: 0;
-  margin: 12px 0 0;
-  border: 2px solid var(--lp-blue);
-  border-radius: 50%;
-  background: var(--lp-white);
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
   color: var(--lp-blue);
   cursor: pointer;
-  flex-shrink: 0;
-  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
-  box-shadow: 0 2px 10px rgba(0, 150, 255, 0.18);
+  box-shadow: none;
+  grid-column: 1 / -1;
+  justify-self: center;
 }
 
 .landing-marketing .landing-curriculum-expand-btn::after {
@@ -431,29 +431,27 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 8px;
-  height: 8px;
-  margin-top: -2px;
-  border-right: 2px solid currentColor;
-  border-bottom: 2px solid currentColor;
+  width: 10px;
+  height: 10px;
+  margin-top: -3px;
+  border-right: 2.5px solid currentColor;
+  border-bottom: 2.5px solid currentColor;
   transform: translate(-50%, -50%) rotate(45deg);
   transition: transform 0.15s ease, margin 0.15s ease;
 }
 
 .landing-marketing .landing-curriculum-expand-btn[aria-expanded="true"]::after {
-  margin-top: 2px;
+  margin-top: 3px;
   transform: translate(-50%, -50%) rotate(-135deg);
 }
 
 .landing-marketing .landing-curriculum-expand-btn:hover {
-  background: var(--lp-blue);
-  color: var(--lp-white);
-  border-color: var(--lp-blue);
-  box-shadow: 0 4px 14px rgba(0, 150, 255, 0.28);
+  color: var(--lp-navy);
+  background: transparent;
 }
 
 .landing-marketing .landing-curriculum-expand-btn:active {
-  transform: scale(0.96);
+  opacity: 0.75;
 }
 
 /* —— About & benefits —— */
@@ -862,6 +860,7 @@ a.nav-muted:hover {
 
   .landing-marketing .landing-curriculum-expand-btn {
     display: block;
+    margin-top: 8px;
   }
 
   .landing-curriculum-block-systems {
