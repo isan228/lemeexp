@@ -283,15 +283,14 @@ export default function LandingPage() {
                 ))}
               </ul>
             </div>
+            <button
+              type="button"
+              className="landing-curriculum-expand-btn"
+              aria-expanded={curriculumExpanded}
+              aria-label={curriculumExpanded ? "Свернуть список" : "Показать весь список"}
+              onClick={() => setCurriculumExpanded((v) => !v)}
+            />
           </div>
-          <button
-            type="button"
-            className="landing-curriculum-expand-btn"
-            aria-expanded={curriculumExpanded}
-            onClick={() => setCurriculumExpanded((v) => !v)}
-          >
-            {curriculumExpanded ? "Свернуть" : "Показать больше"}
-          </button>
         </section>
 
         <section id="about" className="landing-section">

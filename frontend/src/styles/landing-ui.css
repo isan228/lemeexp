@@ -358,6 +358,7 @@
   border: 1px solid var(--lp-gray-light);
   border-left: 3px solid var(--lp-blue);
   box-shadow: var(--med-shadow-sm);
+  position: relative;
 }
 
 .landing-curriculum-heading {
@@ -410,52 +411,51 @@
 
 .landing-marketing .landing-curriculum-expand-btn {
   display: none;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin: 20px auto 0;
-  width: 100%;
-  max-width: 760px;
-  padding: 14px 28px;
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  margin: 0;
   border: 2px solid var(--lp-blue);
-  border-radius: var(--lp-radius-sm);
-  background: linear-gradient(180deg, var(--lp-white) 0%, rgba(125, 249, 255, 0.12) 100%);
-  color: var(--lp-navy);
-  font-family: inherit;
-  font-size: 1rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  border-radius: 50%;
+  background: var(--lp-white);
+  color: var(--lp-blue);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
-  box-shadow: 0 4px 14px rgba(0, 150, 255, 0.14);
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 2px 10px rgba(0, 150, 255, 0.18);
 }
 
 .landing-marketing .landing-curriculum-expand-btn::after {
   content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
   width: 8px;
   height: 8px;
+  margin-top: -2px;
   border-right: 2px solid currentColor;
   border-bottom: 2px solid currentColor;
-  transform: rotate(45deg);
-  margin-top: -4px;
-  transition: transform 0.15s ease;
+  transform: translate(-50%, -50%) rotate(45deg);
+  transition: transform 0.15s ease, margin 0.15s ease;
 }
 
 .landing-marketing .landing-curriculum-expand-btn[aria-expanded="true"]::after {
-  transform: rotate(-135deg);
   margin-top: 2px;
+  transform: translate(-50%, -50%) rotate(-135deg);
 }
 
 .landing-marketing .landing-curriculum-expand-btn:hover {
   background: var(--lp-blue);
   color: var(--lp-white);
   border-color: var(--lp-blue);
-  box-shadow: 0 6px 18px rgba(0, 150, 255, 0.28);
+  box-shadow: 0 4px 14px rgba(0, 150, 255, 0.28);
 }
 
 .landing-marketing .landing-curriculum-expand-btn:active {
-  transform: translateY(1px);
-  box-shadow: 0 2px 8px rgba(0, 150, 255, 0.2);
+  transform: translateX(-50%) scale(0.96);
 }
 
 /* —— About & benefits —— */
@@ -847,7 +847,7 @@ a.nav-muted:hover {
   .landing-curriculum-lists {
     grid-template-columns: 1fr;
     gap: 24px;
-    padding: 22px 18px;
+    padding: 22px 18px 58px;
   }
 
   .landing-curriculum-list {
@@ -863,7 +863,7 @@ a.nav-muted:hover {
   }
 
   .landing-marketing .landing-curriculum-expand-btn {
-    display: flex;
+    display: block;
   }
 
   .landing-curriculum-block-systems {
