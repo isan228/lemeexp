@@ -840,6 +840,47 @@ a.nav-muted:hover {
 /* —— Responsive —— */
 
 @media (max-width: 640px) {
+  .landing-marketing #curriculum {
+    padding-top: 44px;
+    padding-bottom: 44px;
+  }
+
+  .landing-marketing #curriculum .landing-section-title {
+    font-size: 1.5rem;
+    line-height: 1.28;
+    margin-bottom: 18px;
+    padding: 0 12px;
+  }
+
+  .landing-marketing #curriculum .landing-section-title::after {
+    width: 44px;
+    margin-top: 14px;
+  }
+
+  .landing-marketing #curriculum .landing-curriculum-intro {
+    max-width: none;
+    margin: 0 auto 28px;
+    padding: 0 8px;
+  }
+
+  .landing-marketing #curriculum .landing-curriculum-intro p {
+    font-size: 1rem;
+    line-height: 1.72;
+    margin-bottom: 12px;
+  }
+
+  .landing-marketing #curriculum .landing-curriculum-intro p:first-child {
+    font-size: 1.0625rem;
+    line-height: 1.65;
+    margin-bottom: 14px;
+  }
+
+  .landing-marketing #curriculum .landing-curriculum-intro p:last-child {
+    font-size: 1.03125rem;
+    line-height: 1.68;
+    font-weight: 600;
+  }
+
   .landing-curriculum-lists {
     grid-template-columns: 1fr;
     gap: 24px;
