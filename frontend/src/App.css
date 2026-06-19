@@ -254,7 +254,7 @@ input:focus {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #ffffff;
+  background: #06080f;
 }
 
 .landing-header {
@@ -531,13 +531,13 @@ input:focus {
 }
 
 .landing-section-alt {
-  background: #f9fafb;
+  background: rgba(16, 24, 42, 0.5);
   margin-left: -24px;
   margin-right: -24px;
   padding-left: 24px;
   padding-right: 24px;
-  border-radius: var(--med-radius);
-  border: 1px solid #e5e7eb;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 229, 255, 0.15);
 }
 
 .landing-section-title {
