@@ -274,6 +274,13 @@ export default function LandingPage() {
                   <li key={subject}>{subject}</li>
                 ))}
               </ul>
+              <button
+                type="button"
+                className="landing-curriculum-expand-btn"
+                aria-expanded={curriculumExpanded}
+                aria-label={curriculumExpanded ? "Свернуть список" : "Показать весь список"}
+                onClick={() => setCurriculumExpanded((v) => !v)}
+              />
             </div>
             <div className="landing-curriculum-block landing-curriculum-block-systems">
               <h3 className="landing-curriculum-heading">Внутри систем:</h3>
@@ -283,13 +290,6 @@ export default function LandingPage() {
                 ))}
               </ul>
             </div>
-            <button
-              type="button"
-              className="landing-curriculum-expand-btn"
-              aria-expanded={curriculumExpanded}
-              aria-label={curriculumExpanded ? "Свернуть список" : "Показать весь список"}
-              onClick={() => setCurriculumExpanded((v) => !v)}
-            />
           </div>
         </section>
 

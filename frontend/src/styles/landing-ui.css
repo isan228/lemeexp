@@ -411,19 +411,17 @@
 
 .landing-marketing .landing-curriculum-expand-btn {
   display: none;
-  position: absolute;
-  bottom: 14px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 40px;
-  height: 40px;
+  position: relative;
+  width: 36px;
+  height: 36px;
   padding: 0;
-  margin: 0;
+  margin: 12px 0 0;
   border: 2px solid var(--lp-blue);
   border-radius: 50%;
   background: var(--lp-white);
   color: var(--lp-blue);
   cursor: pointer;
+  flex-shrink: 0;
   transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
   box-shadow: 0 2px 10px rgba(0, 150, 255, 0.18);
 }
@@ -455,7 +453,7 @@
 }
 
 .landing-marketing .landing-curriculum-expand-btn:active {
-  transform: translateX(-50%) scale(0.96);
+  transform: scale(0.96);
 }
 
 /* —— About & benefits —— */
@@ -847,7 +845,7 @@ a.nav-muted:hover {
   .landing-curriculum-lists {
     grid-template-columns: 1fr;
     gap: 24px;
-    padding: 22px 18px 58px;
+    padding: 22px 18px;
   }
 
   .landing-curriculum-list {
