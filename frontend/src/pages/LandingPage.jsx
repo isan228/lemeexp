@@ -52,13 +52,43 @@ const systemSubjects = [
   "Неонатология"
 ];
 
-const advantages = [
-  { letter: "З", title: "Защищённый поток", text: "Шифрованный HLS, короткие токены и привязка к устройству — без прямых ссылок на файл." },
-  { letter: "К", title: "Понятный каталог", text: "Предмет → глава → видео: быстро найти нужную тему и продолжить с места остановки." },
-  { letter: "П", title: "Прогресс обучения", text: "Сохраняем позицию просмотра и показываем, сколько уроков уже пройдено." },
-  { letter: "В", title: "В браузере", text: "Смотрите с компьютера, планшета или телефона — без установки приложений." },
-  { letter: "Л", title: "Личный кабинет", text: "Профиль, поддержка по урокам и быстрый возврат к последнему видео." },
-  { letter: "О", title: "Онлайн-поддержка", text: "Задайте вопрос по материалу — ответ придёт в личный кабинет." }
+const courseBenefits = [
+  "Видеоуроки",
+  "Менторская поддержка в подготовке к USMLE",
+  "Чат для ваших вопросов, если объяснения были недостаточно просты"
+];
+
+const faqItems = [
+  {
+    question: "На каком языке?",
+    answer:
+      "Мы давно обучаем с помощью видеоуроков на русском, тесты и текст будут на английском. Этот курс подходит больше всего тем, у кого есть проблемы с английским, для наиболее быстрой адаптации. Большинство наших учеников сдали экзамен за год, хоть у них и был слабый английский, в отличие от тех, кто решил сначала подкачать английский и только потом учиться."
+  },
+  {
+    question: "Сколько длится обучение?",
+    answer:
+      "Вы учитесь в своём темпе. В норме, если готовиться к USMLE Step 1, то не больше года. На нашей платформе вы сможете изучить всё полноценно за 8 месяцев — вместе с просмотром видео ещё и делать тесты. А если вы хотите быстро просмотреть все видео разом — то 4 месяца."
+  },
+  {
+    question: "Меняются ли видео?",
+    answer:
+      "Да, мы их возобновляем и улучшаем с каждым годом новой информацией в медицине, чтобы держать подготовку и базу знаний актуальной."
+  },
+  {
+    question: "Поможете ли вы в сдаче USMLE?",
+    answer:
+      "Связь с ментором (Аман) всегда будет оставаться доступной. Мы сможем максимально облегчить вам процесс подготовки и регистрации."
+  },
+  {
+    question: "Что если я не хочу сдавать USMLE?",
+    answer:
+      "Это прекрасная идея — учиться для себя и быть лучшим врачом. Этот экзамен подтвердил себя как самый объёмный, а значит, изучая материал USMLE, вы запросто перешагнёте лимиты привычных вам способов обучения. Может, вам и не нужно идти за границу, но это может стать приятным бонусом!"
+  },
+  {
+    question: "Можно ли учиться стоматологам?",
+    answer:
+      "К сожалению, контент сориентирован для укрепления фундаментальных знаний лечебников, и вам такой подход может не принести особой пользы в карьере стоматолога. Если вы ищете экзамены для работы стоматологом в Штатах, изучите INBDE."
+  }
 ];
 
 const reviews = [
@@ -84,6 +114,11 @@ export default function LandingPage() {
   const [searchParams] = useSearchParams();
   const { token, profile, hydrated } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [openFaqIndex, setOpenFaqIndex] = useState(null);
+
+  function toggleFaq(index) {
+    setOpenFaqIndex((prev) => (prev === index ? null : index));
+  }
 
   function onNavToSection(id) {
     scrollToSection(id);
@@ -153,11 +188,14 @@ export default function LandingPage() {
           <button type="button" className="nav-anchor" onClick={() => onNavToSection("curriculum")}>
             Программа
           </button>
-          <button type="button" className="nav-anchor" onClick={() => onNavToSection("advantages")}>
-            Преимущества
-          </button>
           <button type="button" className="nav-anchor" onClick={() => onNavToSection("about")}>
-            О платформе
+            О курсе
+          </button>
+          <button type="button" className="nav-anchor" onClick={() => onNavToSection("pricing")}>
+            Цены
+          </button>
+          <button type="button" className="nav-anchor" onClick={() => onNavToSection("faq")}>
+            FAQ
           </button>
           <button type="button" className="nav-anchor" onClick={() => onNavToSection("reviews")}>
             Отзывы
@@ -245,35 +283,63 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section id="advantages" className="landing-section">
-          <h2 className="landing-section-title">Наши преимущества</h2>
-          <p className="landing-section-intro">Технологии и сервис, на которые можно опереться в длительной подготовке.</p>
-          <div className="landing-advantages-grid">
-            {advantages.map((a) => (
-              <article key={a.title} className="landing-adv-card card">
-                <div className="landing-adv-icon" aria-hidden="true">
-                  {a.letter}
-                </div>
-                <h3>{a.title}</h3>
-                <p className="muted">{a.text}</p>
-              </article>
+        <section id="about" className="landing-section">
+          <div className="landing-about-intro">
+            <p>
+              В Let me explain мы обучаем максимально легко, поддерживаем в подготовке к USMLE — вы учитесь
+              со свободным графиком и нужным вам темпом.
+            </p>
+          </div>
+          <h2 className="landing-section-title">Вы получите</h2>
+          <ul className="landing-benefits-list">
+            {courseBenefits.map((item) => (
+              <li key={item} className="landing-benefit-item card">
+                {item}
+              </li>
             ))}
+          </ul>
+        </section>
+
+        <section id="pricing" className="landing-section">
+          <h2 className="landing-section-title">Цены на наш курс</h2>
+          <div className="landing-pricing card">
+            <p className="landing-pricing-lead">
+              Полный доступ ко всем видеоурокам, тестам и менторской поддержке — оформите подписку в личном кабинете.
+            </p>
+            {!token ? (
+              <Link to={routes.register} className="btn-primary inline">
+                {GET_ACCESS_LABEL}
+              </Link>
+            ) : (
+              <Link to={routes.learningHome} className="btn-primary inline">
+                В кабинет
+              </Link>
+            )}
           </div>
         </section>
 
-        <section id="about" className="landing-section">
-          <h2 className="landing-section-title">О платформе</h2>
-          <div className="landing-about card">
-            <p>
-              Let me explain — это учебная платформа для врачей и студентов медицинских специальностей: структурированные
-              видео по предметам, отслеживание прогресса и защищённая выдача контента. Мы делаем упор на ясную навигацию
-              и стабильное воспроизведение, чтобы вы тратили время на учёбу, а не на поиск файлов и ссылок.
-            </p>
-            <p>
-              В ближайших релизах планируем расширить админку, добавить сертификаты о прохождении модулей и интеграцию с
-              промышленными DRM-системами для правообладателей. Если вы преподаватель или клиника — напишите нам через
-              контакты внизу страницы.
-            </p>
+        <section id="faq" className="landing-section">
+          <h2 className="landing-section-title">Часто задаваемые вопросы</h2>
+          <div className="landing-faq-list">
+            {faqItems.map((item, index) => {
+              const isOpen = openFaqIndex === index;
+              return (
+                <article key={item.question} className={`landing-faq-item card${isOpen ? " is-open" : ""}`}>
+                  <button
+                    type="button"
+                    className="landing-faq-question"
+                    aria-expanded={isOpen}
+                    onClick={() => toggleFaq(index)}
+                  >
+                    <span>{item.question}</span>
+                    <span className="landing-faq-icon" aria-hidden="true">
+                      {isOpen ? "−" : "+"}
+                    </span>
+                  </button>
+                  {isOpen ? <p className="landing-faq-answer">{item.answer}</p> : null}
+                </article>
+              );
+            })}
           </div>
         </section>
 
