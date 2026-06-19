@@ -192,7 +192,8 @@ export default function LandingPage() {
 
       <main className="landing-main landing-main-wide">
         <section className="landing-hero landing-hero-center" aria-labelledby="hero-title">
-          <h1 id="hero-title">наконец-то! медицину можно понять</h1>
+          <h1 id="hero-title">Наконец-то! 
+           <br /> медицину можно понять</h1>
           <p className="lead landing-lead-wide">
             видеоуроки для врачей и студентов-медиков, чтобы укрепить фундаментальные умения и легко сдать
             международные экзамены USMLE, TUS, PLAB
