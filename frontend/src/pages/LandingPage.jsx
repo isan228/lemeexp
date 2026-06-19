@@ -18,34 +18,38 @@ function scrollToSection(id) {
   });
 }
 
-const trialSeeds = [
-  {
-    title: "Биохимия — «Белки и аминокислоты»",
-    tag: "14 мин",
-    subjectId: 1,
-    chapterId: 11,
-    videoId: 101,
-    bullets: ["Ввод в аминокислоты", "Структура белка", "Тот же плеер, что в курсе"],
-    note: "Бесплатный пробный урок"
-  },
-  {
-    title: "Биохимия — «Углеводы и липиды»",
-    tag: "15 мин",
-    subjectId: 1,
-    chapterId: 11,
-    videoId: 102,
-    bullets: ["Моно- и полисахариды", "Жирные кислоты", "Мембраны и энергия"],
-    note: "Бесплатный пробный урок"
-  },
-  {
-    title: "Иммунология — «Т-лимфоциты»",
-    tag: "13 мин",
-    subjectId: 2,
-    chapterId: 21,
-    videoId: 201,
-    bullets: ["Дифференцировка Т-клеток", "MHC и распознавание", "Клинические примеры"],
-    note: "Бесплатный пробный урок"
-  }
+const includedSubjects = [
+  "Биохимия",
+  "Иммунология",
+  "Микробиология",
+  "Патология (патфиз и патан)",
+  "Онкология",
+  "Фармакология",
+  "Кардиология",
+  "Эндокринология",
+  "Нефрология",
+  "Нейросайнс (неврология)",
+  "Анестезиология",
+  "Психиатрия",
+  "ЛОР",
+  "Офтальмология",
+  "Респираторная",
+  "ЖКТ",
+  "Гематология",
+  "Репродуктивная",
+  "Дерматология",
+  "Скелетно-мышечная",
+  "Биоэтика",
+  "Биостатистика"
+];
+
+const systemSubjects = [
+  "Эмбриология",
+  "Анатомия",
+  "Физиология",
+  "Гистология",
+  "Педиатрия",
+  "Неонатология"
 ];
 
 const advantages = [
@@ -146,8 +150,8 @@ export default function LandingPage() {
             </button>
             <strong>Меню</strong>
           </div>
-          <button type="button" className="nav-anchor" onClick={() => onNavToSection("trial")}>
-            Пробники
+          <button type="button" className="nav-anchor" onClick={() => onNavToSection("curriculum")}>
+            Программа
           </button>
           <button type="button" className="nav-anchor" onClick={() => onNavToSection("advantages")}>
             Преимущества
@@ -211,33 +215,40 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section id="trial" className="landing-section">
-          <h2 className="landing-section-title">Три пробных урока</h2>
-          <p className="landing-section-intro">
-            Короткие демо с тем же плеером и защитой, что и в платной подписке. Зарегистрируйтесь или войдите, чтобы
-            открыть видео в личном кабинете.
-          </p>
-          <div className="landing-seed-grid">
-            {trialSeeds.map((seed) => {
-              const trialHref = token
-                ? routes.lessonVideo(seed.subjectId, seed.chapterId, seed.videoId)
-                : routes.registerTrial;
-              return (
-              <article key={seed.videoId} className="landing-seed-card card">
-                <span className="landing-seed-tag">{seed.tag}</span>
-                <h3>{seed.title}</h3>
-                <ul className="landing-seed-list">
-                  {seed.bullets.map((b) => (
-                    <li key={b}>{b}</li>
+        <section id="curriculum" className="landing-section">
+          <h2 className="landing-section-title">Облегчите себе обучение</h2>
+          <div className="landing-curriculum-intro">
+            <p>Серия видеоуроков поможет вам</p>
+            <p>не отставать от новшеств и укрепить базу знаний.</p>
+            <p>Вы изучите всё — от молекул до узких дисциплин.</p>
+          </div>
+          <div className="landing-curriculum-body">
+            <div className="landing-curriculum-lists card">
+              <div className="landing-curriculum-block">
+                <h3 className="landing-curriculum-heading">Что включено:</h3>
+                <ul className="landing-curriculum-list">
+                  {includedSubjects.map((subject) => (
+                    <li key={subject}>{subject}</li>
                   ))}
                 </ul>
-                <p className="landing-seed-note">{seed.note}</p>
-                <Link to={trialHref} className="btn-link landing-seed-cta">
-                  {token ? "Смотреть урок →" : "Зарегистрироваться →"}
-                </Link>
-              </article>
-            );
-            })}
+              </div>
+              <div className="landing-curriculum-block landing-curriculum-block-systems">
+                <h3 className="landing-curriculum-heading">Внутри систем:</h3>
+                <ul className="landing-curriculum-list landing-curriculum-list-compact">
+                  {systemSubjects.map((subject) => (
+                    <li key={subject}>{subject}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <figure className="landing-curriculum-figure">
+              <img
+                src="/curriculum-included.png"
+                alt="Список предметов: биохимия, иммунология, кардиология и другие дисциплины"
+                className="landing-curriculum-image"
+                loading="lazy"
+              />
+            </figure>
           </div>
         </section>
 
