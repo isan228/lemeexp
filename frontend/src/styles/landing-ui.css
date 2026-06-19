@@ -408,6 +408,12 @@
   border-left: 1px solid var(--lp-gray-light);
 }
 
+.landing-curriculum-expand-btn {
+  display: none;
+  margin: 16px auto 0;
+  min-width: 200px;
+}
+
 /* —— About & benefits —— */
 
 .landing-about-intro {
@@ -802,6 +808,18 @@ a.nav-muted:hover {
 
   .landing-curriculum-list {
     columns: 1;
+  }
+
+  .landing-curriculum-lists.is-collapsed .landing-curriculum-list li:nth-child(n + 4) {
+    display: none;
+  }
+
+  .landing-curriculum-lists.is-collapsed .landing-curriculum-block-systems {
+    display: none;
+  }
+
+  .landing-curriculum-expand-btn {
+    display: block;
   }
 
   .landing-curriculum-block-systems {

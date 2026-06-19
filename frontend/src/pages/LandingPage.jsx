@@ -115,6 +115,7 @@ export default function LandingPage() {
   const { token, profile, hydrated } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [openFaqIndex, setOpenFaqIndex] = useState(null);
+  const [curriculumExpanded, setCurriculumExpanded] = useState(false);
 
   function toggleFaq(index) {
     setOpenFaqIndex((prev) => (prev === index ? null : index));
@@ -263,7 +264,9 @@ export default function LandingPage() {
             <p>не отставать от новшеств и укрепить базу знаний.</p>
             <p>Вы изучите всё — от молекул до узких дисциплин.</p>
           </div>
-          <div className="landing-curriculum-lists card">
+          <div
+            className={`landing-curriculum-lists card${curriculumExpanded ? " is-expanded" : " is-collapsed"}`}
+          >
             <div className="landing-curriculum-block">
               <h3 className="landing-curriculum-heading">Что включено:</h3>
               <ul className="landing-curriculum-list">
@@ -281,6 +284,14 @@ export default function LandingPage() {
               </ul>
             </div>
           </div>
+          <button
+            type="button"
+            className="landing-curriculum-expand-btn btn-secondary"
+            aria-expanded={curriculumExpanded}
+            onClick={() => setCurriculumExpanded((v) => !v)}
+          >
+            {curriculumExpanded ? "Свернуть" : "Показать больше"}
+          </button>
         </section>
 
         <section id="about" className="landing-section">
