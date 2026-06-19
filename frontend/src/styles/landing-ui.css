@@ -140,7 +140,7 @@
   padding-top: 0;
 }
 
-/* —— Hero (full viewport) —— */
+/* —— Hero (full viewport, full-bleed background) —— */
 
 .landing-marketing .landing-hero-center {
   display: flex;
@@ -149,12 +149,25 @@
   justify-content: center;
   text-align: center;
   min-height: calc(100dvh - 72px);
-  width: calc(100% + 48px);
+  width: 100%;
   max-width: none;
-  margin: 0 -24px;
+  margin: 0;
   padding: 48px 32px 64px;
   position: relative;
   box-sizing: border-box;
+  background: transparent;
+  isolation: isolate;
+}
+
+.landing-marketing .landing-hero-center::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100vw;
   background: linear-gradient(
     165deg,
     rgba(25, 25, 112, 0.06) 0%,
@@ -173,15 +186,13 @@
   text-align: center;
   margin-left: auto;
   margin-right: auto;
-  background: linear-gradient(135deg, var(--lp-navy) 0%, var(--lp-blue) 55%, var(--lp-blue) 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: var(--lp-navy);
+  color: var(--lp-black);
+  background: none;
+  -webkit-text-fill-color: unset;
 }
 
 .landing-marketing .landing-lead-wide {
-  color: var(--lp-charcoal);
+  color: var(--lp-black);
   font-size: clamp(1.05rem, 2vw, 1.22rem);
   line-height: 1.65;
   margin-bottom: 36px;
@@ -767,8 +778,8 @@ a.nav-muted:hover {
 
   .landing-marketing .landing-hero-center {
     min-height: calc(100dvh - 64px);
-    width: calc(100% + 32px);
-    margin: 0 -16px;
+    width: 100%;
+    margin: 0;
     padding: 32px 20px 48px;
     text-align: center;
     align-items: center;
