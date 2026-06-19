@@ -286,7 +286,7 @@ export default function LandingPage() {
           </div>
           <button
             type="button"
-            className="landing-curriculum-expand-btn btn-secondary"
+            className="landing-curriculum-expand-btn"
             aria-expanded={curriculumExpanded}
             onClick={() => setCurriculumExpanded((v) => !v)}
           >
