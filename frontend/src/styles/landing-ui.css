@@ -214,29 +214,44 @@
   font-size: 0.95rem !important;
 }
 
-/* —— Sections —— */
+/* —— Sections (full-bleed backgrounds) —— */
 
 .landing-marketing .landing-section {
   padding: 56px 0;
   scroll-margin-top: 96px;
+  position: relative;
+  isolation: isolate;
+  background: transparent;
 }
 
-.landing-marketing .landing-section:nth-of-type(even) {
+.landing-marketing .landing-section::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100vw;
+  background: transparent;
+}
+
+.landing-marketing .landing-section:nth-of-type(even)::before {
   background: linear-gradient(
     180deg,
     rgba(125, 249, 255, 0.14) 0%,
     rgba(0, 150, 255, 0.06) 45%,
     var(--lp-white) 100%
   );
-  margin-left: -24px;
-  margin-right: -24px;
-  padding-left: 24px;
-  padding-right: 24px;
   border-top: 1px solid rgba(0, 150, 255, 0.12);
   border-bottom: 1px solid rgba(0, 150, 255, 0.12);
 }
 
-.landing-marketing #pricing.landing-section {
+.landing-marketing #curriculum.landing-section::before {
+  background: linear-gradient(180deg, var(--lp-white) 0%, rgba(125, 249, 255, 0.08) 100%);
+}
+
+.landing-marketing #pricing.landing-section::before {
   background: linear-gradient(135deg, var(--lp-navy) 0%, var(--lp-blue) 100%);
   border-top: none;
   border-bottom: none;
@@ -256,12 +271,12 @@
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
 }
 
+.landing-marketing #pricing.landing-section {
+  background: transparent;
+}
+
 .landing-marketing #curriculum.landing-section {
-  background: linear-gradient(180deg, var(--lp-white) 0%, rgba(125, 249, 255, 0.08) 100%);
-  margin-left: -24px;
-  margin-right: -24px;
-  padding-left: 24px;
-  padding-right: 24px;
+  background: transparent;
 }
 
 .landing-section-alt {
@@ -543,9 +558,25 @@
   margin: 48px 0 24px;
   padding: 40px 28px;
   border-radius: var(--lp-radius);
-  background: linear-gradient(135deg, var(--lp-navy) 0%, var(--lp-blue) 55%, rgba(125, 249, 255, 0.4) 100%);
+  background: transparent;
   color: var(--lp-white);
   text-align: center;
+  box-shadow: none;
+  position: relative;
+  isolation: isolate;
+}
+
+.landing-marketing .landing-cta-banner::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100vw;
+  border-radius: 0;
+  background: linear-gradient(135deg, var(--lp-navy) 0%, var(--lp-blue) 55%, rgba(125, 249, 255, 0.4) 100%);
   box-shadow: var(--med-shadow);
 }
 
@@ -807,15 +838,6 @@ a.nav-muted:hover {
     width: auto;
     min-width: 200px;
     text-align: center;
-  }
-
-  .landing-marketing .landing-section:nth-of-type(even),
-  .landing-marketing #curriculum.landing-section,
-  .landing-marketing #pricing.landing-section {
-    margin-left: -16px;
-    margin-right: -16px;
-    padding-left: 16px;
-    padding-right: 16px;
   }
 
   .landing-section {
