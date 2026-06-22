@@ -181,26 +181,8 @@ export default function LandingPage() {
         <button type="button" className="landing-drawer-overlay" aria-label="Закрыть меню" onClick={() => setMobileMenuOpen(false)} />
         <nav className="landing-nav-links" aria-label="Разделы страницы">
           <div className="landing-drawer-head">
-            <button type="button" className="landing-drawer-close" aria-label="Закрыть меню" onClick={() => setMobileMenuOpen(false)}>
-              ×
-            </button>
             <strong>Меню</strong>
           </div>
-          <button type="button" className="nav-anchor" onClick={() => onNavToSection("curriculum")}>
-            Программа
-          </button>
-          <button type="button" className="nav-anchor" onClick={() => onNavToSection("about")}>
-            О курсе
-          </button>
-          <button type="button" className="nav-anchor" onClick={() => onNavToSection("pricing")}>
-            Цены
-          </button>
-          <button type="button" className="nav-anchor" onClick={() => onNavToSection("faq")}>
-            FAQ
-          </button>
-          <button type="button" className="nav-anchor" onClick={() => onNavToSection("reviews")}>
-            Отзывы
-          </button>
           <div className="landing-drawer-actions">
             {!token && (
               <Link to={routes.registerTrial} className="btn-primary inline landing-register-btn" onClick={() => setMobileMenuOpen(false)}>
@@ -212,6 +194,23 @@ export default function LandingPage() {
                 Войти
               </Link>
             )}
+          </div>
+          <div className="landing-drawer-nav">
+            <button type="button" className="nav-anchor" onClick={() => onNavToSection("curriculum")}>
+              Программа
+            </button>
+            <button type="button" className="nav-anchor" onClick={() => onNavToSection("about")}>
+              О курсе
+            </button>
+            <button type="button" className="nav-anchor" onClick={() => onNavToSection("pricing")}>
+              Цены
+            </button>
+            <button type="button" className="nav-anchor" onClick={() => onNavToSection("faq")}>
+              FAQ
+            </button>
+            <button type="button" className="nav-anchor" onClick={() => onNavToSection("reviews")}>
+              Отзывы
+            </button>
           </div>
         </nav>
         <div className="landing-header-actions">

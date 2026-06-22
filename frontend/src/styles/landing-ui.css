@@ -756,6 +756,11 @@
   background: var(--lp-black);
 }
 
+.landing-header-mobile-open.landing-marketing .landing-burger {
+  border-color: var(--lp-blue);
+  background: var(--lp-white);
+}
+
 .landing-marketing .landing-drawer-overlay {
   background: rgba(13, 13, 13, 0.4);
 }
@@ -766,17 +771,11 @@
 }
 
 .landing-marketing .landing-drawer-head {
-  border-bottom: 1px solid var(--lp-gray-light);
+  border-bottom: none;
 }
 
 .landing-marketing .landing-drawer-head strong {
-  color: var(--lp-black);
-}
-
-.landing-marketing .landing-drawer-close {
-  border-color: var(--lp-gray-light);
-  background: var(--lp-white);
-  color: var(--lp-black);
+  color: var(--lp-slate);
 }
 
 .landing-header-actions .nav-muted,
@@ -923,12 +922,13 @@ a.nav-muted:hover {
   }
 
   .landing-marketing .landing-hero-center {
-    min-height: calc(100dvh - 64px);
+    min-height: auto;
     width: 100%;
-    margin: -14px 0 0;
-    padding: 32px 20px 48px;
+    margin: 0;
+    padding: 28px 20px 40px;
     text-align: center;
     align-items: center;
+    justify-content: flex-start;
   }
 
   .landing-marketing .landing-hero-center h1,
@@ -940,6 +940,8 @@ a.nav-muted:hover {
 
   .landing-marketing .landing-lead-wide {
     text-align: center;
+    margin-top: 20px;
+    margin-bottom: 24px;
   }
 
   .landing-marketing .landing-hero-cta {
