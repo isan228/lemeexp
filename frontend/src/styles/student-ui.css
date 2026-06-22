@@ -283,18 +283,18 @@ select:focus {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding: 0 4px;
-  border-radius: 10px 10px 6px 6px;
-  background: linear-gradient(180deg, rgba(220, 238, 254, 0.35) 0%, rgba(220, 238, 254, 0.08) 100%);
+  padding: 0;
+  border-radius: 0;
+  background: rgba(220, 238, 254, 0.35);
 }
 
 .home-dashboard-chart-bar {
   display: block;
   width: 100%;
-  min-height: 8px;
-  border-radius: 8px 8px 4px 4px;
-  background: linear-gradient(180deg, var(--med-primary-mid) 0%, var(--med-primary) 100%);
-  box-shadow: 0 4px 12px rgba(62, 105, 174, 0.22);
+  min-height: 4px;
+  border-radius: 0;
+  background: var(--med-primary);
+  box-shadow: none;
 }
 
 .home-dashboard-chart-value {
@@ -326,31 +326,74 @@ select:focus {
   font-size: 1.05rem;
 }
 
-.home-continue {
+.home-continue-play {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--med-space-5);
-  padding: var(--med-space-6);
+  gap: 16px;
   margin-bottom: var(--med-space-6);
-  background: linear-gradient(135deg, #ffffff 0%, #eef6ff 100%);
-  border-color: var(--med-primary-border);
+  padding: 16px 18px;
+  border-radius: var(--med-radius);
+  background: linear-gradient(135deg, #2f548f 0%, #3e69ae 48%, #0096ff 100%);
+  color: #ffffff;
+  text-decoration: none;
+  box-shadow: 0 8px 24px rgba(62, 105, 174, 0.28);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
-.home-continue-label {
-  margin: 0 0 6px;
+.home-continue-play:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(62, 105, 174, 0.34);
+  color: #ffffff;
+}
+
+.home-continue-play-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.home-continue-play-label {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--med-primary);
+  color: rgba(255, 255, 255, 0.82);
 }
 
-.home-continue h2 {
-  margin: 0 0 6px;
-  font-size: 1.25rem;
+.home-continue-play-title {
+  font-size: 1.05rem;
   font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+
+.home-continue-play-topic {
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.78);
+  line-height: 1.35;
+}
+
+.home-continue-play-btn {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  display: grid;
+  place-items: center;
+}
+
+.home-continue-play-triangle {
+  display: block;
+  width: 0;
+  height: 0;
+  margin-left: 3px;
+  border-style: solid;
+  border-width: 9px 0 9px 14px;
+  border-color: transparent transparent transparent #ffffff;
 }
 
 .home-stats {
@@ -666,11 +709,31 @@ select:focus {
   }
 
   .student-main {
-    padding-top: 12px;
+    padding-top: 8px;
+  }
+
+  .student-main:has(.home-dashboard) {
+    position: relative;
+  }
+
+  .student-main:has(.home-dashboard) .student-topbar {
+    margin-bottom: 0;
+  }
+
+  .student-main:has(.home-dashboard) .student-burger {
+    margin-bottom: 0;
   }
 
   .home-dashboard-head {
-    margin-bottom: 10px;
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    margin: 0;
+    z-index: 2;
+  }
+
+  .home-dashboard {
+    padding-top: 2px;
   }
 
   .home-dashboard-head-top {
@@ -755,8 +818,13 @@ select:focus {
   .home-dashboard-chart-bar-wrap {
     height: 68px;
     max-width: none;
-    padding: 0 2px;
-    border-radius: 6px 6px 4px 4px;
+    padding: 0;
+    border-radius: 0;
+  }
+
+  .home-dashboard-chart-bar {
+    border-radius: 0;
+    min-height: 3px;
   }
 
   .home-dashboard-chart-value {
@@ -768,14 +836,22 @@ select:focus {
     line-height: 1.1;
   }
 
-  .home-continue {
-    flex-direction: column;
-    align-items: stretch;
+  .home-continue-play {
+    padding: 14px 16px;
+    gap: 12px;
   }
 
-  .home-continue .btn-primary {
-    width: 100%;
-    text-align: center;
+  .home-continue-play-title {
+    font-size: 0.98rem;
+  }
+
+  .home-continue-play-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .home-continue-play-triangle {
+    border-width: 8px 0 8px 12px;
   }
 
   .profile-row {

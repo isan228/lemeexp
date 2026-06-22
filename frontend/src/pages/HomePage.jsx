@@ -70,6 +70,25 @@ export default function HomePage() {
         </div>
       </article>
 
+      {continueLesson ? (
+        <Link
+          to={continueLesson.href}
+          className="home-continue-play"
+          aria-label={`Продолжить урок: ${continueLesson.video.title}`}
+        >
+          <div className="home-continue-play-body">
+            <span className="home-continue-play-label">Продолжить урок</span>
+            <span className="home-continue-play-title">{continueLesson.video.title}</span>
+            <span className="home-continue-play-topic">
+              {continueLesson.subject.title} · {continueLesson.chapter.title}
+            </span>
+          </div>
+          <span className="home-continue-play-btn" aria-hidden="true">
+            <span className="home-continue-play-triangle" />
+          </span>
+        </Link>
+      ) : null}
+
       {!fullAccess ? (
         <article className="home-trial-banner card">
           <div>
@@ -78,21 +97,6 @@ export default function HomePage() {
           </div>
           <Link to={routes.payment(SUBSCRIPTION_PLAN.id)} className="btn-get-access">
             {GET_ACCESS_LABEL}
-          </Link>
-        </article>
-      ) : null}
-
-      {continueLesson ? (
-        <article className="home-continue card">
-          <div className="home-continue-body">
-            <p className="home-continue-label">Продолжить просмотр</p>
-            <h2>{continueLesson.video.title}</h2>
-            <p className="muted small">
-              {continueLesson.subject.title} · {continueLesson.chapter.title}
-            </p>
-          </div>
-          <Link to={continueLesson.href} className="btn-primary">
-            Продолжить
           </Link>
         </article>
       ) : null}
