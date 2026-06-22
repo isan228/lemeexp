@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
 import LockIcon from "../../components/LockIcon.jsx";
-import PageHeader from "../../components/PageHeader.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { SUBSCRIPTION_PLAN } from "../../config/billing.js";
 import { routes, GET_ACCESS_LABEL } from "../../config/site.js";
@@ -85,17 +84,25 @@ export default function VideosLesson() {
       : Number(videos.find((v) => !rowCompleted(v) && !v.locked)?.id || 0);
 
   const formatMinutes = (seconds) => `${Math.floor(Number(seconds || 0) / 60)} мин`;
+  const lessonsCount = videos.length;
 
   return (
-    <section className="lessons-flow lessons-flow-padded">
-      <nav className="breadcrumb" aria-label="Навигация">
-        <Link to={routes.learningLessons}>Предметы</Link>
-        <span className="bc-sep">/</span>
-        <Link to={routes.lessonSubject(subject.id)}>{subject.title}</Link>
-        <span className="bc-sep">/</span>
-        <span className="bc-current">{chapter.title}</span>
-      </nav>
-      <PageHeader kicker="Видео" title={chapter.title} intro="Выберите урок. Пробные доступны бесплатно, остальные — по подписке." />
+    <section className="lessons-flow lessons-flow-padded lessons-videos-page">
+      <header className="lessons-catalog-head">
+        <nav className="breadcrumb lessons-breadcrumb" aria-label="Навигация">
+          <Link to={routes.learningLessons}>Предметы</Link>
+          <span className="bc-sep">/</span>
+          <Link to={routes.lessonSubject(subject.id)}>{subject.title}</Link>
+          <span className="bc-sep">/</span>
+          <span className="bc-current">{chapter.title}</span>
+        </nav>
+        <h1 className="lessons-catalog-title">{chapter.title}</h1>
+        <p className="lessons-catalog-meta">
+          {lessonsCount} {lessonsCount === 1 ? "урок" : lessonsCount < 5 ? "урока" : "уроков"}
+          <span className="lessons-catalog-meta-sep">·</span>
+          {subject.title}
+        </p>
+      </header>
 
       <ul className="video-lesson-list">
         {videos.map((v, index) => {
