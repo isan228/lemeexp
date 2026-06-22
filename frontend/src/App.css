@@ -398,6 +398,14 @@ input:focus {
   z-index: 20;
 }
 
+.landing-marketing .landing-header-wide {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 60;
+}
+
 .landing-nav-links {
   display: flex;
   flex-wrap: wrap;
@@ -2254,6 +2262,15 @@ input:focus {
     z-index: 40;
     background: rgba(255, 255, 255, 0.96);
     border-bottom: 1px solid var(--med-border-soft);
+  }
+
+  .landing-marketing .landing-header-wide {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 60;
+    background: rgba(255, 255, 255, 0.92);
   }
 
   .landing-brand {

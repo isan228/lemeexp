@@ -53,9 +53,9 @@
   content: none;
 }
 
-/* —— Header —— */
+/* —— Header (fixed — always visible while scrolling) —— */
 
-.landing-marketing .landing-header {
+.landing.landing-marketing > .landing-header.landing-header-wide {
   position: fixed;
   top: 0;
   left: 0;
@@ -79,7 +79,6 @@
   margin: 0 auto;
   width: 100%;
   box-shadow: none;
-  position: static;
   box-sizing: border-box;
 }
 
@@ -304,7 +303,7 @@
 
 .landing-marketing .landing-section {
   padding: 56px 0;
-  scroll-margin-top: 96px;
+  scroll-margin-top: calc(var(--landing-header-offset) + 16px);
   position: relative;
   isolation: isolate;
   background: transparent;
@@ -999,8 +998,13 @@ a.nav-muted:hover {
     --landing-header-offset: 56px;
   }
 
-  .landing-marketing .landing-header {
+  .landing.landing-marketing > .landing-header.landing-header-wide {
     padding: 10px 16px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 60;
   }
 
   .landing-marketing .landing-header-wide {
