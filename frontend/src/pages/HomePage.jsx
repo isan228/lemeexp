@@ -101,22 +101,16 @@ export default function HomePage() {
         </article>
       ) : null}
 
-      <div className="home-quick card-grid">
-        <article className="card home-quick-card">
-          <h3>Уроки</h3>
-          <p className="muted">Предмет → глава → видеоурок</p>
-          <Link to={routes.learningLessons} className="btn-primary inline btn-study">
-            К урокам
-          </Link>
-        </article>
-        <article className="card home-quick-card">
-          <h3>Профиль</h3>
-          <p className="muted">Тариф и данные аккаунта</p>
-          <Link to={routes.learningProfile} className="btn-secondary inline">
-            Настройки
-          </Link>
-        </article>
-      </div>
+      <nav className="home-dashboard-links" aria-label="Быстрые действия">
+        <Link to={routes.learningLessons} className="home-dashboard-link card">
+          <span className="home-dashboard-link-label">Каталог уроков</span>
+          <span className="home-dashboard-link-arrow" aria-hidden="true">→</span>
+        </Link>
+        <Link to={routes.learningSupport} className="home-dashboard-link card">
+          <span className="home-dashboard-link-label">Вопросы к ментору</span>
+          <span className="home-dashboard-link-arrow" aria-hidden="true">→</span>
+        </Link>
+      </nav>
     </section>
   );
 }

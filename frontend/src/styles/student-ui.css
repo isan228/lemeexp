@@ -471,20 +471,46 @@ select:focus {
   color: var(--med-primary);
 }
 
-.home-quick-card {
+.home-dashboard-links {
   display: flex;
   flex-direction: column;
-  gap: var(--med-space-2);
-  padding: var(--med-space-5);
+  gap: 10px;
 }
 
-.home-quick-card h3 {
-  margin: 0;
+.home-dashboard-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  text-decoration: none;
+  color: var(--med-text);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 
-.home-quick-card p {
-  margin: 0;
-  flex: 1;
+.home-dashboard-link:hover {
+  border-color: var(--med-primary-border);
+  box-shadow: var(--med-shadow-sm);
+  transform: translateY(-1px);
+  color: var(--med-text);
+}
+
+.home-dashboard-link-label {
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.home-dashboard-link-arrow {
+  flex-shrink: 0;
+  font-size: 1.15rem;
+  color: var(--med-muted-light);
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.home-dashboard-link:hover .home-dashboard-link-arrow {
+  color: var(--med-primary);
+  transform: translateX(3px);
 }
 
 /* ----- Catalog cards ----- */
