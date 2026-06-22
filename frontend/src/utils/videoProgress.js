@@ -21,3 +21,15 @@ export function isLessonVideoCompleted(watchedSeconds, durationSeconds, videoCom
   if (d > 0) return w >= Math.max(1, d - 3);
   return w >= 600;
 }
+
+/** Доля просмотра урока в процентах (0–100) для прогресс-бара в каталоге. */
+export function getVideoWatchProgressPercent(watchedSeconds, durationSeconds, videoCompletedMap, rawVideoId) {
+  if (isLessonVideoCompleted(watchedSeconds, durationSeconds, videoCompletedMap, rawVideoId)) {
+    return 100;
+  }
+  const w = Math.max(0, Number(watchedSeconds) || 0);
+  if (w <= 0) return 0;
+  const d = Math.max(0, Number(durationSeconds) || 0);
+  if (d > 0) return Math.min(100, Math.round((w / d) * 100));
+  return Math.min(100, Math.round((w / 600) * 100));
+}

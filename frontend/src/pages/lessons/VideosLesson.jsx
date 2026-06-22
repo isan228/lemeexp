@@ -5,8 +5,34 @@ import PageHeader from "../../components/PageHeader.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { SUBSCRIPTION_PLAN } from "../../config/billing.js";
 import { routes, GET_ACCESS_LABEL } from "../../config/site.js";
-import { getVideoWatchedSeconds, isLessonVideoCompleted } from "../../utils/videoProgress.js";
+import {
+  getVideoWatchedSeconds,
+  getVideoWatchProgressPercent,
+  isLessonVideoCompleted
+} from "../../utils/videoProgress.js";
 import { isPlayableStream, isProcessingStream } from "../../utils/streamPath.js";
+
+function LessonPlayButton({ locked, ready }) {
+  if (locked) {
+    return (
+      <span className="video-lesson-play-btn is-locked" aria-hidden="true">
+        <LockIcon size={18} />
+      </span>
+    );
+  }
+  if (!ready) {
+    return (
+      <span className="video-lesson-play-btn is-pending" aria-hidden="true">
+        ⏳
+      </span>
+    );
+  }
+  return (
+    <span className="video-lesson-play-btn" aria-hidden="true">
+      <span className="video-lesson-play-triangle" />
+    </span>
+  );
+}
 
 export default function VideosLesson() {
   const { subjectId, chapterId } = useParams();
@@ -59,12 +85,6 @@ export default function VideosLesson() {
       : Number(videos.find((v) => !rowCompleted(v) && !v.locked)?.id || 0);
 
   const formatMinutes = (seconds) => `${Math.floor(Number(seconds || 0) / 60)} мин`;
-  const formatClock = (seconds) => {
-    const sec = Math.max(0, Number(seconds || 0));
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return `${m}:${String(s).padStart(2, "0")}`;
-  };
 
   return (
     <section className="lessons-flow lessons-flow-padded">
@@ -77,8 +97,8 @@ export default function VideosLesson() {
       </nav>
       <PageHeader kicker="Видео" title={chapter.title} intro="Выберите урок. Пробные доступны бесплатно, остальные — по подписке." />
 
-      <ul className="video-rows">
-        {videos.map((v) => {
+      <ul className="video-lesson-list">
+        {videos.map((v, index) => {
           const vId = Number(v.id);
           const locked = Boolean(v.locked);
           const ready = !locked && isPlayableStream(v.streamPath);
@@ -87,107 +107,94 @@ export default function VideosLesson() {
           const completed = rowCompleted(v);
           const hasPartialProgress = !completed && watchedSeconds > 0;
           const isNext = ready && vId === nextVideoId && !completed;
+          const progressPct = getVideoWatchProgressPercent(
+            watchedSeconds,
+            Number(v.duration) || 0,
+            videoCompleted,
+            v.id
+          );
           const watchHref = hasPartialProgress
             ? routes.lessonVideo(subject.id, chapter.id, v.id, { resume: true })
             : routes.lessonVideo(subject.id, chapter.id, v.id);
+          const lessonNum = String(index + 1).padStart(2, "0");
 
           const rowClass = [
             "card",
-            "video-row",
-            "video-row-youtube",
-            locked ? "video-row-locked" : "",
-            ready ? "" : " video-row-pending"
+            "video-lesson-item",
+            locked ? "is-locked" : "",
+            ready ? "" : "is-pending"
           ]
             .filter(Boolean)
             .join(" ");
 
+          const badges = (
+            <div className="video-lesson-badges">
+              {v.isTrial ? <span className="status-badge status-trial">Пробник</span> : null}
+              {completed ? <span className="status-badge status-done">Просмотрено</span> : null}
+              {hasPartialProgress ? (
+                <span className="status-badge status-stopped">{progressPct}%</span>
+              ) : null}
+              {isNext ? <span className="status-badge status-next">Следующее</span> : null}
+              {locked ? <span className="status-badge status-locked">По подписке</span> : null}
+              {!locked && !completed ? (
+                <span className="muted small video-lesson-duration">{formatMinutes(v.duration || 0)}</span>
+              ) : null}
+              {processing ? <span className="status-badge">Подготовка видео…</span> : null}
+              {!locked && !ready && !processing ? (
+                <span className="status-badge">Видео загружается</span>
+              ) : null}
+            </div>
+          );
+
+          const rowBody = (
+            <>
+              <span className="video-lesson-num">{lessonNum}</span>
+              <div className="video-lesson-main">
+                <strong className="video-lesson-title">{v.title}</strong>
+                <div
+                  className="video-lesson-progress-bar"
+                  role="progressbar"
+                  aria-valuenow={progressPct}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label={`Просмотрено ${progressPct}%`}
+                >
+                  {progressPct > 0 ? (
+                    <span className="video-lesson-progress-fill" style={{ width: `${progressPct}%` }} />
+                  ) : null}
+                </div>
+                {badges}
+              </div>
+              <LessonPlayButton locked={locked} ready={ready} />
+            </>
+          );
+
           return (
             <li key={v.id} className={rowClass}>
               {locked ? (
-                <Link to={subscribeHref} className="video-row-link video-row-link-locked">
-                  <div className="video-thumb video-thumb-locked" aria-hidden="true">
-                    <img
-                      src={`https://picsum.photos/seed/drm-lesson-${v.id}/640/360`}
-                      alt=""
-                      loading="lazy"
-                      className="video-thumb-img"
-                    />
-                    <span className="video-thumb-lock">
-                      <LockIcon size={20} />
-                    </span>
-                    <span className="video-thumb-duration">{formatClock(v.duration || 0)}</span>
-                  </div>
-                  <div className="video-meta">
-                    <strong>{v.title}</strong>
-                    <div className="muted small">{formatMinutes(v.duration || 0)}</div>
-                    <p className="video-row-locked-hint">Просмотр недоступен — нужна подписка</p>
-                    <div className="video-statuses">
-                      <span className="status-badge status-locked">По подписке</span>
-                    </div>
-                  </div>
+                <Link to={subscribeHref} className="video-lesson-link">
+                  {rowBody}
                 </Link>
               ) : ready ? (
-                <Link to={watchHref} className="video-row-link">
-                  <div className="video-thumb" aria-hidden="true">
-                    <img
-                      src={`https://picsum.photos/seed/drm-lesson-${v.id}/640/360`}
-                      alt={v.title}
-                      loading="lazy"
-                      className="video-thumb-img"
-                    />
-                    <span className="video-thumb-play">▶</span>
-                    <span className="video-thumb-duration">{formatClock(v.duration || 0)}</span>
-                  </div>
-                  <div className="video-meta">
-                    <strong>{v.title}</strong>
-                    <div className="muted small">{formatMinutes(v.duration || 0)}</div>
-                    <div className="video-statuses">
-                      {v.isTrial ? <span className="status-badge status-trial">Пробник</span> : null}
-                      {completed ? <span className="status-badge status-done">Просмотрено</span> : null}
-                      {hasPartialProgress ? (
-                        <span className="status-badge status-stopped">Остановились: {formatClock(watchedSeconds)}</span>
-                      ) : null}
-                      {isNext ? <span className="status-badge status-next">Следующее</span> : null}
-                    </div>
-                  </div>
+                <Link to={watchHref} className="video-lesson-link">
+                  {rowBody}
                 </Link>
               ) : (
-                <div className="video-row-link video-row-link-disabled">
-                  <div className="video-thumb" aria-hidden="true">
-                    <span className="video-thumb-play">⏳</span>
-                  </div>
-                  <div className="video-meta">
-                    <strong>{v.title}</strong>
-                    <div className="muted small">{formatMinutes(v.duration || 0)}</div>
-                    <span className="status-badge">
-                      {processing ? "Подготовка видео…" : "Видео загружается"}
-                    </span>
-                  </div>
-                </div>
+                <div className="video-lesson-link is-disabled">{rowBody}</div>
               )}
-              <div className="video-row-actions">
-                {locked ? (
+              {locked ? (
+                <div className="video-lesson-extra">
                   <Link to={subscribeHref} className="btn-get-access inline">
                     {GET_ACCESS_LABEL}
                   </Link>
-                ) : ready ? (
-                  <Link to={watchHref} className="btn-watch inline">
-                    {hasPartialProgress ? "Продолжить" : "Смотреть"}
-                  </Link>
-                ) : (
-                  <span className="btn-secondary inline" style={{ opacity: 0.7, cursor: "default" }}>
-                    {processing ? "Готовится" : "Скоро"}
-                  </span>
-                )}
-                {!locked ? (
-                  <Link
-                    to={routes.learningSupportLesson(v.id, v.title || "")}
-                    className="btn-secondary inline"
-                  >
+                </div>
+              ) : (
+                <div className="video-lesson-extra">
+                  <Link to={routes.learningSupportLesson(v.id, v.title || "")} className="video-lesson-support-link">
                     Вопросы к уроку
                   </Link>
-                ) : null}
-              </div>
+                </div>
+              )}
             </li>
           );
         })}
