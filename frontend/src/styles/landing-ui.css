@@ -55,12 +55,49 @@
 /* —— Header —— */
 
 .landing-marketing .landing-header {
-  background: var(--lp-white);
-  border-bottom: 1px solid var(--lp-gray-light);
+  padding: 14px 24px;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-bottom: 1px solid rgba(211, 211, 211, 0.65);
 }
 
-.landing-header-wide {
-  box-shadow: 0 1px 0 var(--lp-gray-light);
+.landing-marketing .landing-header-wide {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  max-width: 1160px;
+  margin: 0 auto;
+  width: 100%;
+  box-shadow: none;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  box-sizing: border-box;
+}
+
+.landing-marketing .landing-brand-row {
+  grid-column: 1;
+  justify-self: start;
+}
+
+.landing-marketing .landing-nav-links {
+  grid-column: 2;
+  justify-self: center;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  background: var(--lp-gray-bg);
+  border: 1px solid rgba(211, 211, 211, 0.7);
+  border-radius: 999px;
+}
+
+.landing-marketing .landing-header-actions {
+  grid-column: 3;
+  justify-self: end;
+  gap: 10px;
 }
 
 .landing-marketing .logo-text {
@@ -68,15 +105,54 @@
   font-weight: 700;
 }
 
-.landing-nav-links .nav-anchor {
+.landing-marketing .site-brand-text-only .logo-text {
+  font-size: 1.125rem;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.landing-marketing .landing-nav-links .nav-anchor {
   color: var(--lp-charcoal);
   font-weight: 600;
-  font-size: 15px;
+  font-size: 14px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  white-space: nowrap;
+  transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 
 .landing-marketing .nav-anchor:hover {
   color: var(--lp-blue);
-  background: var(--med-primary-weak);
+  background: var(--lp-white);
+  box-shadow: 0 1px 6px rgba(0, 150, 255, 0.12);
+}
+
+.landing-marketing .nav-anchor-accent {
+  color: var(--lp-blue);
+}
+
+.landing-marketing .nav-anchor-accent:hover {
+  color: var(--lp-navy);
+}
+
+.landing-marketing .nav-anchor-ghost {
+  color: var(--lp-slate);
+  font-weight: 500;
+}
+
+.landing-marketing .nav-anchor-ghost:hover {
+  color: var(--lp-charcoal);
+  background: transparent;
+  box-shadow: none;
+}
+
+.landing-marketing .landing-nav-links .nav-anchor-accent,
+.landing-marketing .landing-nav-links .nav-anchor-ghost {
+  display: none;
 }
 
 /* —— Buttons —— */
@@ -748,34 +824,35 @@
 }
 
 .landing-marketing .landing-burger {
-  border-color: var(--lp-gray-light);
-  background: var(--lp-white);
+  border: none;
+  background: transparent;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  transition: background 0.15s ease;
+}
+
+.landing-marketing .landing-burger:hover {
+  background: var(--lp-gray-bg);
 }
 
 .landing-marketing .landing-burger span {
   background: var(--lp-black);
+  width: 22px;
 }
 
 .landing-header-mobile-open.landing-marketing .landing-burger {
-  border-color: var(--lp-blue);
-  background: var(--lp-white);
+  background: var(--lp-gray-bg);
 }
 
 .landing-marketing .landing-drawer-overlay {
-  background: rgba(13, 13, 13, 0.4);
+  background: rgba(13, 13, 13, 0.45);
+  backdrop-filter: blur(4px);
 }
 
-.landing-marketing .landing-nav-links {
-  background: var(--lp-white);
-  border-left: 1px solid var(--lp-gray-light);
-}
-
-.landing-marketing .landing-drawer-head {
-  border-bottom: none;
-}
-
-.landing-marketing .landing-drawer-head strong {
-  color: var(--lp-slate);
+.landing-marketing .landing-register-btn {
+  padding: 9px 18px;
+  font-size: 14px;
 }
 
 .landing-header-actions .nav-muted,
@@ -912,13 +989,109 @@ a.nav-muted:hover {
 }
 
 @media (max-width: 820px) {
-  .landing-brand-row {
+  .landing-marketing .landing-header {
+    padding: 10px 16px;
+  }
+
+  .landing-marketing .landing-header-wide {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    max-width: none;
+    margin: 0;
+  }
+
+  .landing-marketing .landing-brand-row {
     width: 100%;
     justify-content: space-between;
   }
 
   .landing-brand-row .landing-burger {
     display: inline-flex;
+  }
+
+  .landing-marketing .landing-nav-links {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    width: 100%;
+    height: 100dvh;
+    max-width: none;
+    margin: 0;
+    padding: 88px 28px 32px;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 0;
+    background: rgba(255, 255, 255, 0.97);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: none;
+    border-radius: 0;
+    transform: translateY(-12px);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: transform 0.24s ease, opacity 0.24s ease, visibility 0.24s ease;
+    overflow-y: auto;
+  }
+
+  .landing-marketing .landing-header-mobile-open .landing-nav-links {
+    transform: translateY(0);
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  .landing-marketing .landing-drawer-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    width: 100%;
+    max-width: 400px;
+    margin: 0 auto;
+  }
+
+  .landing-marketing .landing-nav-links .nav-anchor-accent,
+  .landing-marketing .landing-nav-links .nav-anchor-ghost {
+    display: block;
+  }
+
+  .landing-marketing .landing-nav-links .nav-anchor {
+    width: 100%;
+    padding: 15px 4px;
+    font-size: 1.125rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    text-align: left;
+    border: none;
+    border-radius: 0;
+    border-bottom: 1px solid rgba(211, 211, 211, 0.55);
+    background: transparent;
+    box-shadow: none;
+    color: var(--lp-black);
+  }
+
+  .landing-marketing .landing-nav-links .nav-anchor:hover {
+    color: var(--lp-blue);
+    background: transparent;
+    box-shadow: none;
+    padding-left: 8px;
+  }
+
+  .landing-marketing .landing-nav-links .nav-anchor-accent {
+    margin-top: 12px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(211, 211, 211, 0.85);
+    border-bottom: 1px solid rgba(211, 211, 211, 0.55);
+    color: var(--lp-blue);
+  }
+
+  .landing-marketing .landing-nav-links .nav-anchor-ghost {
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--lp-slate);
+    border-bottom: none;
   }
 
   .landing-marketing .landing-hero-center {

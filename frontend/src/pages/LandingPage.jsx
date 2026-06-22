@@ -165,7 +165,7 @@ export default function LandingPage() {
     <div className="landing landing-marketing">
       <header className={`landing-header landing-header-wide ${mobileMenuOpen ? "landing-header-mobile-open" : ""}`}>
         <div className="landing-brand-row">
-          <SiteBrand />
+          <SiteBrand showLogo={false} />
           <button
             type="button"
             className="landing-burger"
@@ -180,9 +180,6 @@ export default function LandingPage() {
         </div>
         <button type="button" className="landing-drawer-overlay" aria-label="Закрыть меню" onClick={() => setMobileMenuOpen(false)} />
         <nav className="landing-nav-links" aria-label="Разделы страницы">
-          <div className="landing-drawer-head">
-            <strong>Меню</strong>
-          </div>
           <div className="landing-drawer-nav">
             <button type="button" className="nav-anchor" onClick={() => onNavToSection("curriculum")}>
               Программа
@@ -200,17 +197,17 @@ export default function LandingPage() {
               Отзывы
             </button>
             {!token && (
-              <Link to={routes.registerTrial} className="nav-anchor" onClick={() => setMobileMenuOpen(false)}>
-                Попробовать
-              </Link>
-            )}
-            {!token && (
-              <Link to={routes.login} className="nav-anchor" onClick={() => setMobileMenuOpen(false)}>
-                Войти
-              </Link>
+              <>
+                <Link to={routes.registerTrial} className="nav-anchor nav-anchor-accent" onClick={() => setMobileMenuOpen(false)}>
+                  Попробовать
+                </Link>
+                <Link to={routes.login} className="nav-anchor nav-anchor-ghost" onClick={() => setMobileMenuOpen(false)}>
+                  Войти
+                </Link>
+              </>
             )}
             {token && (
-              <Link to={routes.learningHome} className="nav-anchor" onClick={() => setMobileMenuOpen(false)}>
+              <Link to={routes.learningHome} className="nav-anchor nav-anchor-accent" onClick={() => setMobileMenuOpen(false)}>
                 Кабинет
               </Link>
             )}
