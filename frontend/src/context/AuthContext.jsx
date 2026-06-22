@@ -48,9 +48,7 @@ export function AuthProvider({ children }) {
     watchedSeconds: {},
     videoCompleted: {},
     watchStats: {
-      todaySeconds: 0,
-      yesterdaySeconds: 0,
-      weekSeconds: 0
+      last7Days: []
     }
   });
   const [hydrated] = useState(true);
@@ -248,9 +246,7 @@ export function AuthProvider({ children }) {
       watchedSeconds: {},
       videoCompleted: {},
       watchStats: {
-        todaySeconds: 0,
-        yesterdaySeconds: 0,
-        weekSeconds: 0
+        last7Days: []
       }
     });
   }, [setAuthState]);

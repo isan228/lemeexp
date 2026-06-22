@@ -1,8 +1,11 @@
 import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import pg from "pg";
 
-dotenv.config();
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(scriptDir, "..", ".env") });
 
 const { Pool } = pg;
 

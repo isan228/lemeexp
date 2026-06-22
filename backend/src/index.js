@@ -1201,26 +1201,39 @@ function watchDateKey(date = new Date()) {
   return date.toISOString().slice(0, 10);
 }
 
-function watchYesterdayKey() {
+function last7DaysStartKey() {
   const d = new Date();
-  d.setUTCDate(d.getUTCDate() - 1);
+  d.setUTCDate(d.getUTCDate() - 6);
   return watchDateKey(d);
 }
 
-function watchWeekStartKey() {
-  const d = new Date();
-  const diff = (d.getUTCDay() + 6) % 7;
-  d.setUTCDate(d.getUTCDate() - diff);
-  return watchDateKey(d);
+const WATCH_WEEKDAY_LABELS = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
+
+function buildLast7Days(byDate) {
+  const today = watchDateKey();
+  const days = [];
+  for (let i = 6; i >= 0; i -= 1) {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - i);
+    const date = watchDateKey(d);
+    days.push({
+      date,
+      label: date === today ? "Сег" : WATCH_WEEKDAY_LABELS[d.getUTCDay()],
+      seconds: Number(byDate[date]) || 0
+    });
+  }
+  return days;
 }
 
 function seedDemoWatchStats() {
-  const today = watchDateKey();
-  const yesterday = watchYesterdayKey();
-  memState.watchStatsByUser.set("1", {
-    [today]: 3720,
-    [yesterday]: 5400
-  });
+  const demoSeconds = [1800, 2400, 3600, 1200, 5400, 2700, 3720];
+  const byDate = {};
+  for (let i = 6; i >= 0; i -= 1) {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - i);
+    byDate[watchDateKey(d)] = demoSeconds[6 - i];
+  }
+  memState.watchStatsByUser.set("1", byDate);
 }
 
 seedDemoWatchStats();
@@ -1246,41 +1259,26 @@ async function addWatchTime(userId, deltaSeconds) {
 }
 
 async function fetchWatchStats(userId) {
-  const today = watchDateKey();
-  const yesterday = watchYesterdayKey();
-  const weekStart = watchWeekStartKey();
+  const rangeStart = last7DaysStartKey();
 
   if (!dbReady) {
     const byDate = memState.watchStatsByUser.get(String(userId)) || {};
-    let weekSeconds = 0;
-    for (const [date, seconds] of Object.entries(byDate)) {
-      if (date >= weekStart) weekSeconds += Number(seconds) || 0;
-    }
-    return {
-      todaySeconds: Number(byDate[today]) || 0,
-      yesterdaySeconds: Number(byDate[yesterday]) || 0,
-      weekSeconds
-    };
+    return { last7Days: buildLast7Days(byDate) };
   }
 
   const result = await pool.query(
     `select watch_date::text as watch_date, seconds
      from daily_watch_stats
      where user_id = $1 and watch_date >= $2::date`,
-    [userId, weekStart]
+    [userId, rangeStart]
   );
 
-  let todaySeconds = 0;
-  let yesterdaySeconds = 0;
-  let weekSeconds = 0;
+  const byDate = {};
   for (const row of result.rows) {
-    const sec = Number(row.seconds) || 0;
-    weekSeconds += sec;
-    if (row.watch_date === today) todaySeconds = sec;
-    if (row.watch_date === yesterday) yesterdaySeconds = sec;
+    byDate[row.watch_date] = Number(row.seconds) || 0;
   }
 
-  return { todaySeconds, yesterdaySeconds, weekSeconds };
+  return { last7Days: buildLast7Days(byDate) };
 }
 
 function watchDeltaSeconds(previousSeconds, nextSeconds) {

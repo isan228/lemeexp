@@ -17,3 +17,28 @@ export function watchHoursLabel(totalSeconds) {
   }
   return `${hours.toFixed(1).replace(".", ",")} ч`;
 }
+
+const WEEKDAY_LABELS = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
+
+export function emptyLast7Days() {
+  const today = new Date().toISOString().slice(0, 10);
+  const days = [];
+  for (let i = 6; i >= 0; i -= 1) {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - i);
+    const date = d.toISOString().slice(0, 10);
+    days.push({
+      date,
+      label: date === today ? "Сег" : WEEKDAY_LABELS[d.getUTCDay()],
+      seconds: 0
+    });
+  }
+  return days;
+}
+
+export function normalizeLast7Days(watchStats) {
+  if (Array.isArray(watchStats?.last7Days) && watchStats.last7Days.length === 7) {
+    return watchStats.last7Days;
+  }
+  return emptyLast7Days();
+}

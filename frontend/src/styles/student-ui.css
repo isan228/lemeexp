@@ -263,8 +263,8 @@ select:focus {
 
 .home-dashboard-charts {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
   align-items: end;
   flex: 1;
 }
@@ -279,13 +279,13 @@ select:focus {
 
 .home-dashboard-chart-bar-wrap {
   width: 100%;
-  max-width: 56px;
+  max-width: 40px;
   height: 120px;
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding: 0 6px;
-  border-radius: 12px 12px 8px 8px;
+  padding: 0 4px;
+  border-radius: 10px 10px 6px 6px;
   background: linear-gradient(180deg, rgba(220, 238, 254, 0.35) 0%, rgba(220, 238, 254, 0.08) 100%);
 }
 
@@ -671,20 +671,65 @@ select:focus {
   }
 
   .home-dashboard-panel {
-    grid-template-columns: 1fr;
-    gap: var(--med-space-5);
-    padding: var(--med-space-5);
+    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+    gap: 12px;
+    padding: 14px;
+    align-items: stretch;
+  }
+
+  .home-dashboard-progress-head {
+    margin-bottom: 4px;
+  }
+
+  .home-dashboard-progress h2,
+  .home-dashboard-watch-title {
+    font-size: 0.88rem;
+  }
+
+  .home-dashboard-progress-pct {
+    font-size: 1.2rem;
+  }
+
+  .home-dashboard-progress-meta {
+    margin-bottom: 10px;
+    font-size: 0.78rem;
+    line-height: 1.35;
+  }
+
+  .home-dashboard-progress-bar {
+    height: 10px;
   }
 
   .home-dashboard-watch {
-    padding-left: 0;
-    border-left: none;
-    padding-top: var(--med-space-5);
-    border-top: 1px solid var(--med-border-soft);
+    padding-left: 12px;
+    border-left: 1px solid var(--med-border-soft);
+    border-top: none;
+    padding-top: 0;
+    gap: 8px;
+  }
+
+  .home-dashboard-charts {
+    gap: 4px;
+  }
+
+  .home-dashboard-chart {
+    gap: 4px;
   }
 
   .home-dashboard-chart-bar-wrap {
-    height: 96px;
+    height: 68px;
+    max-width: none;
+    padding: 0 2px;
+    border-radius: 6px 6px 4px 4px;
+  }
+
+  .home-dashboard-chart-value {
+    display: none;
+  }
+
+  .home-dashboard-chart-label {
+    font-size: 0.62rem;
+    line-height: 1.1;
   }
 
   .home-continue {
