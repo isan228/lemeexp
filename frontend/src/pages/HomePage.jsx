@@ -20,13 +20,10 @@ export default function HomePage() {
   return (
     <section className="lessons-flow lessons-flow-padded home-dashboard">
       <header className="home-dashboard-head">
-        <p className="home-dashboard-kicker">Личный кабинет</p>
-        <h1 className="home-dashboard-name">{loginName}</h1>
-        <p className="home-dashboard-subtitle muted">
-          {fullAccess
-            ? "Ваша статистика обучения и прогресс по урокам."
-            : "У вас открыты пробные уроки. Оформите подписку для полного доступа."}
-        </p>
+        <div className="home-dashboard-head-top">
+          <p className="home-dashboard-kicker">Личный кабинет</p>
+          <h1 className="home-dashboard-name">{loginName}</h1>
+        </div>
       </header>
 
       <article className="home-dashboard-panel card">

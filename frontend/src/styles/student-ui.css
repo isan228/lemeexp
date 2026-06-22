@@ -119,7 +119,7 @@ select:focus {
 
 .sidebar-progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, var(--med-primary), var(--med-accent));
+  background: #16a34a;
   border-radius: inherit;
   transition: width 0.4s ease;
 }
@@ -172,6 +172,10 @@ select:focus {
   margin-bottom: var(--med-space-6);
 }
 
+.home-dashboard-head-top {
+  display: block;
+}
+
 .home-dashboard-kicker {
   margin: 0 0 8px;
   font-size: 11px;
@@ -188,11 +192,6 @@ select:focus {
   letter-spacing: -0.03em;
   color: var(--med-text);
   line-height: 1.15;
-}
-
-.home-dashboard-subtitle {
-  margin: 0;
-  max-width: 36rem;
 }
 
 .home-dashboard-panel {
@@ -249,7 +248,7 @@ select:focus {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--med-primary) 0%, var(--med-primary-mid) 100%);
+  background: #16a34a;
   transition: width 0.35s ease;
 }
 
@@ -670,6 +669,43 @@ select:focus {
     padding-top: 12px;
   }
 
+  .home-dashboard-head {
+    margin-bottom: 10px;
+  }
+
+  .home-dashboard-head-top {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+    text-align: right;
+  }
+
+  .home-dashboard-kicker {
+    margin: 0;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+  }
+
+  .home-dashboard-name {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .home-dashboard-name::before {
+    content: "·";
+    margin-right: 8px;
+    color: var(--med-muted-light);
+    font-weight: 400;
+  }
+
+  .home-dashboard-watch-title {
+    display: none;
+  }
+
   .home-dashboard-panel {
     grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
     gap: 12px;
@@ -705,7 +741,7 @@ select:focus {
     border-left: 1px solid var(--med-border-soft);
     border-top: none;
     padding-top: 0;
-    gap: 8px;
+    gap: 0;
   }
 
   .home-dashboard-charts {
