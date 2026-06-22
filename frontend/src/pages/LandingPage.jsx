@@ -183,18 +183,6 @@ export default function LandingPage() {
           <div className="landing-drawer-head">
             <strong>Меню</strong>
           </div>
-          <div className="landing-drawer-actions">
-            {!token && (
-              <Link to={routes.registerTrial} className="btn-primary inline landing-register-btn" onClick={() => setMobileMenuOpen(false)}>
-                Попробовать
-              </Link>
-            )}
-            {!token && (
-              <Link to={routes.login} className="btn-secondary inline landing-register-btn" onClick={() => setMobileMenuOpen(false)}>
-                Войти
-              </Link>
-            )}
-          </div>
           <div className="landing-drawer-nav">
             <button type="button" className="nav-anchor" onClick={() => onNavToSection("curriculum")}>
               Программа
@@ -211,6 +199,21 @@ export default function LandingPage() {
             <button type="button" className="nav-anchor" onClick={() => onNavToSection("reviews")}>
               Отзывы
             </button>
+            {!token && (
+              <Link to={routes.registerTrial} className="nav-anchor" onClick={() => setMobileMenuOpen(false)}>
+                Попробовать
+              </Link>
+            )}
+            {!token && (
+              <Link to={routes.login} className="nav-anchor" onClick={() => setMobileMenuOpen(false)}>
+                Войти
+              </Link>
+            )}
+            {token && (
+              <Link to={routes.learningHome} className="nav-anchor" onClick={() => setMobileMenuOpen(false)}>
+                Кабинет
+              </Link>
+            )}
           </div>
         </nav>
         <div className="landing-header-actions">

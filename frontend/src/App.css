@@ -461,7 +461,6 @@ input:focus {
 
 .landing-drawer-overlay,
 .landing-drawer-head,
-.landing-drawer-actions,
 .landing-drawer-nav {
   display: none;
 }
@@ -2331,6 +2330,12 @@ input:focus {
     font-weight: 600;
     color: var(--med-fg);
     box-shadow: var(--med-shadow-sm);
+    font-family: inherit;
+    font-size: inherit;
+    text-decoration: none;
+    text-align: left;
+    box-sizing: border-box;
+    cursor: pointer;
   }
 
   .nav-anchor:hover {
@@ -2347,15 +2352,6 @@ input:focus {
     display: block;
     opacity: 1;
     pointer-events: auto;
-  }
-
-  .landing-drawer-actions {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin: 0 0 16px;
-    padding: 0 0 16px;
-    border-bottom: 1px solid var(--med-border-soft);
   }
 
   .landing-drawer-nav {
@@ -2375,12 +2371,6 @@ input:focus {
 
   .landing-header-mobile-open .landing-burger span:nth-child(3) {
     transform: translateY(-7px) rotate(-45deg);
-  }
-
-  .landing-header-mobile-open .landing-register-btn,
-  .landing-header-mobile-open .nav-muted {
-    width: 100%;
-    text-align: center;
   }
 
   .landing-header-mobile-open .nav-muted {
