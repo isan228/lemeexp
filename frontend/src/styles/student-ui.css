@@ -738,10 +738,6 @@ select:focus {
     padding-top: 8px;
   }
 
-  .student-main:has(.home-dashboard) {
-    position: relative;
-  }
-
   .student-main:has(.home-dashboard) .student-topbar {
     margin-bottom: 0;
   }
@@ -751,24 +747,22 @@ select:focus {
   }
 
   .home-dashboard-head {
-    position: absolute;
-    top: 8px;
-    right: 12px;
-    margin: 0;
-    z-index: 2;
+    position: static;
+    margin: 10px 0 12px;
+    padding: 0;
   }
 
   .home-dashboard {
-    padding-top: 2px;
+    padding-top: 0;
   }
 
   .home-dashboard-head-top {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: flex-start;
     gap: 8px;
     flex-wrap: wrap;
-    text-align: right;
+    text-align: left;
   }
 
   .home-dashboard-kicker {
