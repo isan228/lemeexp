@@ -1011,6 +1011,11 @@ a.nav-muted:hover {
   }
 
   .landing-marketing .landing-nav-links {
+    display: none;
+  }
+
+  .landing-marketing .landing-header-mobile-open .landing-nav-links {
+    display: flex;
     position: fixed;
     inset: 0;
     z-index: 50;
@@ -1028,18 +1033,23 @@ a.nav-muted:hover {
     -webkit-backdrop-filter: blur(24px);
     border: none;
     border-radius: 0;
-    transform: translateY(-12px);
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transition: transform 0.24s ease, opacity 0.24s ease, visibility 0.24s ease;
+    transform: none;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
     overflow-y: auto;
   }
 
-  .landing-marketing .landing-header-mobile-open .landing-nav-links {
-    transform: translateY(0);
+  .landing-marketing .landing-drawer-overlay {
+    display: none;
+  }
+
+  .landing-marketing .landing-header-mobile-open .landing-drawer-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 45;
     opacity: 1;
-    visibility: visible;
     pointer-events: auto;
   }
 

@@ -138,18 +138,16 @@ export default function LandingPage() {
 
   useEffect(() => {
     if (typeof document === "undefined") return;
-    const prevBodyOverflow = document.body.style.overflow;
-    const prevHtmlOverflow = document.documentElement.style.overflow;
     if (mobileMenuOpen) {
       document.body.style.overflow = "hidden";
       document.documentElement.style.overflow = "hidden";
     } else {
-      document.body.style.overflow = prevBodyOverflow || "";
-      document.documentElement.style.overflow = prevHtmlOverflow || "";
+      document.body.style.overflow = "";
+      document.documentElement.style.overflow = "";
     }
     return () => {
-      document.body.style.overflow = prevBodyOverflow || "";
-      document.documentElement.style.overflow = prevHtmlOverflow || "";
+      document.body.style.overflow = "";
+      document.documentElement.style.overflow = "";
     };
   }, [mobileMenuOpen]);
 
@@ -178,7 +176,14 @@ export default function LandingPage() {
             <span />
           </button>
         </div>
-        <button type="button" className="landing-drawer-overlay" aria-label="Закрыть меню" onClick={() => setMobileMenuOpen(false)} />
+        <button
+          type="button"
+          className="landing-drawer-overlay"
+          aria-label="Закрыть меню"
+          aria-hidden={!mobileMenuOpen}
+          tabIndex={mobileMenuOpen ? 0 : -1}
+          onClick={() => setMobileMenuOpen(false)}
+        />
         <nav className="landing-nav-links" aria-label="Разделы страницы">
           <div className="landing-drawer-nav">
             <button type="button" className="nav-anchor" onClick={() => onNavToSection("curriculum")}>
