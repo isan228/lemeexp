@@ -13,6 +13,7 @@
   --lp-white: #ffffff;
   --lp-radius: 12px;
   --lp-radius-sm: 8px;
+  --landing-header-offset: 68px;
 
   --med-text: var(--lp-black);
   --med-text-secondary: var(--lp-slate);
@@ -55,11 +56,18 @@
 /* —— Header —— */
 
 .landing-marketing .landing-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 60;
+  width: 100%;
   padding: 14px 24px;
-  background: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
   border-bottom: 1px solid rgba(211, 211, 211, 0.65);
+  box-sizing: border-box;
 }
 
 .landing-marketing .landing-header-wide {
@@ -71,9 +79,7 @@
   margin: 0 auto;
   width: 100%;
   box-shadow: none;
-  position: sticky;
-  top: 0;
-  z-index: 40;
+  position: static;
   box-sizing: border-box;
 }
 
@@ -214,7 +220,7 @@
 }
 
 .landing-marketing .landing-main-wide {
-  padding-top: 0;
+  padding-top: var(--landing-header-offset);
   font-size: 1.02rem;
 }
 
@@ -226,10 +232,10 @@
   align-items: center;
   justify-content: center;
   text-align: center;
-  min-height: calc(100dvh - 72px);
+  min-height: calc(100dvh - var(--landing-header-offset));
   width: 100%;
   max-width: none;
-  margin: -14px 0 0;
+  margin: 0;
   padding: 48px 32px 64px;
   position: relative;
   box-sizing: border-box;
@@ -989,6 +995,10 @@ a.nav-muted:hover {
 }
 
 @media (max-width: 820px) {
+  .landing-marketing {
+    --landing-header-offset: 56px;
+  }
+
   .landing-marketing .landing-header {
     padding: 10px 16px;
   }
@@ -1023,7 +1033,7 @@ a.nav-muted:hover {
     height: 100dvh;
     max-width: none;
     margin: 0;
-    padding: 88px 28px 32px;
+    padding: calc(var(--landing-header-offset) + 12px) 28px 32px;
     flex-direction: column;
     align-items: stretch;
     justify-content: flex-start;
