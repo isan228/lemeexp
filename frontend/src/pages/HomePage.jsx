@@ -51,15 +51,18 @@ export default function HomePage() {
           <h3 className="home-dashboard-watch-title">7 дней</h3>
           <div className="home-dashboard-charts">
             {last7Days.map((day) => {
-              const height = Math.max(8, Math.round((day.seconds / chartMax) * 100));
+              const hasWatchTime = day.seconds > 0;
+              const height = hasWatchTime ? Math.max(4, Math.round((day.seconds / chartMax) * 100)) : 0;
               return (
                 <div key={day.date} className="home-dashboard-chart">
                   <div className="home-dashboard-chart-bar-wrap">
-                    <span
-                      className="home-dashboard-chart-bar"
-                      style={{ height: `${height}%` }}
-                      title={`${day.label}: ${watchHoursLabel(day.seconds)}`}
-                    />
+                    {hasWatchTime ? (
+                      <span
+                        className="home-dashboard-chart-bar"
+                        style={{ height: `${height}%` }}
+                        title={`${day.label}: ${watchHoursLabel(day.seconds)}`}
+                      />
+                    ) : null}
                   </div>
                   <span className="home-dashboard-chart-value">{watchHoursLabel(day.seconds)}</span>
                   <span className="home-dashboard-chart-label">{day.label}</span>

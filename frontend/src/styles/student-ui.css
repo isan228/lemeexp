@@ -291,7 +291,7 @@ select:focus {
 .home-dashboard-chart-bar {
   display: block;
   width: 100%;
-  min-height: 4px;
+  min-height: 0;
   border-radius: 0;
   background: var(--med-primary);
   box-shadow: none;
@@ -844,7 +844,7 @@ select:focus {
 
   .home-dashboard-chart-bar {
     border-radius: 0;
-    min-height: 3px;
+    min-height: 0;
   }
 
   .home-dashboard-chart-value {
