@@ -1,35 +1,93 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
-import PageHeader from "../components/PageHeader.jsx";
 import { SUBSCRIPTION_PLAN } from "../config/billing.js";
 import { routes, GET_ACCESS_LABEL } from "../config/site.js";
-import { countCatalogStats, findContinueLesson } from "../utils/continueLesson.js";
+import { findContinueLesson } from "../utils/continueLesson.js";
 import { hasFullAccess } from "../utils/subscription.js";
+import { watchHoursLabel } from "../utils/watchTime.js";
+
+const WATCH_PERIODS = [
+  { key: "todaySeconds", label: "Сегодня" },
+  { key: "yesterdaySeconds", label: "Вчера" },
+  { key: "weekSeconds", label: "За неделю" }
+];
 
 export default function HomePage() {
-  const { progress, chapters, profile, catalogLoading } = useAuth();
+  const { progress, chapters, profile } = useAuth();
   const continueLesson = findContinueLesson(chapters, progress.lastVideoId);
-  const stats = countCatalogStats(chapters);
-  const pct = Math.min(100, Math.max(0, Number(progress.percentage) || 0));
-  const name = profile?.nickname || profile?.email?.split("@")[0] || "студент";
+  const completed = progress.completedCount ?? 0;
+  const total = progress.totalVideos ?? 0;
+  const pct = total ? Math.min(100, Math.max(0, Number(progress.percentage) || 0)) : 0;
+  const loginName = profile?.nickname || profile?.email?.split("@")[0] || "студент";
   const fullAccess = hasFullAccess(profile);
+  const watchStats = progress.watchStats || {
+    todaySeconds: 0,
+    yesterdaySeconds: 0,
+    weekSeconds: 0
+  };
+  const chartMax = Math.max(
+    watchStats.todaySeconds,
+    watchStats.yesterdaySeconds,
+    watchStats.weekSeconds,
+    1
+  );
 
   return (
-    <section className="lessons-flow lessons-flow-padded">
-      <PageHeader
-        kicker="Личный кабинет"
-        title={`Здравствуйте, ${name}`}
-        intro={
-          fullAccess
-            ? "Продолжайте обучение с того места, где остановились."
-            : "У вас открыты пробные уроки. Оформите подписку, чтобы смотреть весь каталог."
-        }
-        actions={
-          <Link to={routes.learningLessons} className="btn-primary btn-study">
-            К урокам
-          </Link>
-        }
-      />
+    <section className="lessons-flow lessons-flow-padded home-dashboard">
+      <header className="home-dashboard-head">
+        <p className="home-dashboard-kicker">Личный кабинет</p>
+        <h1 className="home-dashboard-name">{loginName}</h1>
+        <p className="home-dashboard-subtitle muted">
+          {fullAccess
+            ? "Ваша статистика обучения и прогресс по урокам."
+            : "У вас открыты пробные уроки. Оформите подписку для полного доступа."}
+        </p>
+      </header>
+
+      <article className="home-dashboard-panel card">
+        <div className="home-dashboard-progress">
+          <div className="home-dashboard-progress-head">
+            <h2>Статистика</h2>
+            <span className="home-dashboard-progress-pct">{pct}%</span>
+          </div>
+          <p className="home-dashboard-progress-meta">
+            Просмотрено <strong>{completed}</strong> из <strong>{total}</strong> уроков
+          </p>
+          <div
+            className="home-dashboard-progress-bar"
+            role="progressbar"
+            aria-valuenow={pct}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={`Пройдено ${completed} из ${total} уроков`}
+          >
+            <span className="home-dashboard-progress-bar-fill" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+
+        <div className="home-dashboard-watch" aria-label="Время просмотра">
+          <h3 className="home-dashboard-watch-title">Время просмотра</h3>
+          <div className="home-dashboard-charts">
+            {WATCH_PERIODS.map((period) => {
+              const seconds = watchStats[period.key] ?? 0;
+              const height = Math.max(8, Math.round((seconds / chartMax) * 100));
+              return (
+                <div key={period.key} className="home-dashboard-chart">
+                  <div className="home-dashboard-chart-bar-wrap">
+                    <span
+                      className="home-dashboard-chart-bar"
+                      style={{ height: `${height}%` }}
+                      title={watchHoursLabel(seconds)}
+                    />
+                  </div>
+                  <span className="home-dashboard-chart-value">{watchHoursLabel(seconds)}</span>
+                  <span className="home-dashboard-chart-label">{period.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </article>
 
       {!fullAccess ? (
         <article className="home-trial-banner card">
@@ -37,9 +95,9 @@ export default function HomePage() {
             <h2>Пробный доступ</h2>
             <p className="muted small">Смотрите бесплатные уроки или оформите подписку на 1 месяц.</p>
           </div>
-            <Link to={routes.payment(SUBSCRIPTION_PLAN.id)} className="btn-get-access">
-              {GET_ACCESS_LABEL}
-            </Link>
+          <Link to={routes.payment(SUBSCRIPTION_PLAN.id)} className="btn-get-access">
+            {GET_ACCESS_LABEL}
+          </Link>
         </article>
       ) : null}
 
@@ -58,47 +116,12 @@ export default function HomePage() {
         </article>
       ) : null}
 
-      <div className="home-stats">
-        <article className="home-stat card">
-          <div className="home-progress-ring" style={{ "--pct": pct }} aria-hidden="true">
-            <span>{pct}%</span>
-          </div>
-          <div>
-            <h3>Прогресс</h3>
-            <p className="muted small">
-              {progress.completedCount ?? 0} из {progress.totalVideos ?? 0} уроков
-            </p>
-          </div>
-        </article>
-        <article className="home-stat card">
-          <div className="home-stat-icon home-stat-icon-catalog" aria-hidden="true" />
-          <div>
-            <h3>Каталог</h3>
-            <p className="muted small">
-              {catalogLoading
-                ? "Загрузка…"
-                : `${stats.subjects} предм. · ${stats.chapters} глав · ${stats.videos} уроков`}
-            </p>
-          </div>
-        </article>
-        <article className="home-stat card">
-          <div className="home-stat-icon home-stat-icon-support" aria-hidden="true" />
-          <div>
-            <h3>Поддержка</h3>
-            <p className="muted small">Вопросы по урокам и технические проблемы</p>
-            <Link to={routes.learningSupport} className="btn-link">
-              Написать →
-            </Link>
-          </div>
-        </article>
-      </div>
-
       <div className="home-quick card-grid">
         <article className="card home-quick-card">
           <h3>Уроки</h3>
           <p className="muted">Предмет → глава → видеоурок</p>
-          <Link to={routes.learningLessons} className="btn-secondary inline">
-            Открыть каталог
+          <Link to={routes.learningLessons} className="btn-primary inline btn-study">
+            К урокам
           </Link>
         </article>
         <article className="card home-quick-card">

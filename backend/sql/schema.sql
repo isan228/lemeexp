@@ -90,6 +90,14 @@ create table if not exists refresh_tokens (
 create index if not exists idx_courses_order on courses("order");
 create index if not exists idx_subtopics_course_order on subtopics(course_id, "order");
 create index if not exists idx_videos_subtopic_order on videos(subtopic_id, "order");
+create table if not exists daily_watch_stats (
+  user_id bigint not null references users(id) on delete cascade,
+  watch_date date not null,
+  seconds int not null default 0,
+  primary key (user_id, watch_date)
+);
+
+create index if not exists idx_daily_watch_user_date on daily_watch_stats(user_id, watch_date desc);
 create index if not exists idx_progress_user on progress(user_id);
 create index if not exists idx_sessions_user on sessions(user_id);
 create index if not exists idx_refresh_tokens_user on refresh_tokens(user_id);

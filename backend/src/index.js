@@ -77,6 +77,8 @@ const memState = {
   progressByUser: new Map([
     [1, { lastVideoId: 102, watchedSeconds: { 101: 860, 102: 530 }, videoCompleted: { 101: true, 102: false } }]
   ]),
+  /** @type {Map<string, Record<string, number>>} userId => { 'YYYY-MM-DD': seconds } */
+  watchStatsByUser: new Map(),
   /** @type {Array<{ id: number; title: string; slug: string | null; body: string; published: boolean; createdAt: string; updatedAt: string }>} */
   news: [],
   /** @type {Array<{ id: number; userId: number; senderRole: "admin" | "student"; text: string; createdAt: string }>} */
@@ -1195,6 +1197,99 @@ function countVideosInChapterTree(tree) {
   );
 }
 
+function watchDateKey(date = new Date()) {
+  return date.toISOString().slice(0, 10);
+}
+
+function watchYesterdayKey() {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - 1);
+  return watchDateKey(d);
+}
+
+function watchWeekStartKey() {
+  const d = new Date();
+  const diff = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - diff);
+  return watchDateKey(d);
+}
+
+function seedDemoWatchStats() {
+  const today = watchDateKey();
+  const yesterday = watchYesterdayKey();
+  memState.watchStatsByUser.set("1", {
+    [today]: 3720,
+    [yesterday]: 5400
+  });
+}
+
+seedDemoWatchStats();
+
+async function addWatchTime(userId, deltaSeconds) {
+  const delta = Math.max(0, Math.floor(Number(deltaSeconds) || 0));
+  if (delta <= 0) return;
+  const today = watchDateKey();
+  if (!dbReady) {
+    const key = String(userId);
+    const byDate = memState.watchStatsByUser.get(key) || {};
+    byDate[today] = (byDate[today] || 0) + delta;
+    memState.watchStatsByUser.set(key, byDate);
+    return;
+  }
+  await pool.query(
+    `insert into daily_watch_stats (user_id, watch_date, seconds)
+     values ($1, $2::date, $3)
+     on conflict (user_id, watch_date) do update
+     set seconds = daily_watch_stats.seconds + excluded.seconds`,
+    [userId, today, delta]
+  );
+}
+
+async function fetchWatchStats(userId) {
+  const today = watchDateKey();
+  const yesterday = watchYesterdayKey();
+  const weekStart = watchWeekStartKey();
+
+  if (!dbReady) {
+    const byDate = memState.watchStatsByUser.get(String(userId)) || {};
+    let weekSeconds = 0;
+    for (const [date, seconds] of Object.entries(byDate)) {
+      if (date >= weekStart) weekSeconds += Number(seconds) || 0;
+    }
+    return {
+      todaySeconds: Number(byDate[today]) || 0,
+      yesterdaySeconds: Number(byDate[yesterday]) || 0,
+      weekSeconds
+    };
+  }
+
+  const result = await pool.query(
+    `select watch_date::text as watch_date, seconds
+     from daily_watch_stats
+     where user_id = $1 and watch_date >= $2::date`,
+    [userId, weekStart]
+  );
+
+  let todaySeconds = 0;
+  let yesterdaySeconds = 0;
+  let weekSeconds = 0;
+  for (const row of result.rows) {
+    const sec = Number(row.seconds) || 0;
+    weekSeconds += sec;
+    if (row.watch_date === today) todaySeconds = sec;
+    if (row.watch_date === yesterday) yesterdaySeconds = sec;
+  }
+
+  return { todaySeconds, yesterdaySeconds, weekSeconds };
+}
+
+function watchDeltaSeconds(previousSeconds, nextSeconds) {
+  const prev = Math.max(0, Math.floor(Number(previousSeconds) || 0));
+  const next = Math.max(0, Math.floor(Number(nextSeconds) || 0));
+  if (next <= prev) return 0;
+  return Math.min(next - prev, 300);
+}
+
 async function fetchProgress(userId) {
   if (!dbReady) {
     const base = memState.progressByUser.get(userId) || {
@@ -1245,12 +1340,22 @@ async function saveProgress(userId, videoId, watchedSeconds, completed) {
       videoCompleted: {}
     };
     if (!userState.videoCompleted) userState.videoCompleted = {};
+    const delta = watchDeltaSeconds(userState.watchedSeconds[videoId], watchedSeconds);
+    if (delta > 0) await addWatchTime(userId, delta);
     userState.lastVideoId = videoId;
     userState.watchedSeconds[videoId] = watchedSeconds;
     userState.videoCompleted[videoId] = Boolean(completed);
     memState.progressByUser.set(userId, userState);
     return;
   }
+
+  const prevResult = await pool.query(
+    `select watched_seconds from progress where user_id = $1 and video_id = $2`,
+    [userId, videoId]
+  );
+  const previousSeconds = prevResult.rows[0]?.watched_seconds ?? 0;
+  const delta = watchDeltaSeconds(previousSeconds, watchedSeconds);
+  if (delta > 0) await addWatchTime(userId, delta);
 
   await pool.query(
     `insert into progress (user_id, video_id, watched_seconds, completed, updated_at)
@@ -3233,13 +3338,16 @@ app.get("/progress", auth, async (req, res) => {
         : Object.values(progress.videoCompleted || {}).filter(Boolean).length ||
           Object.values(progress.watchedSeconds).filter((sec) => sec >= 600).length;
 
+    const watchStats = await fetchWatchStats(req.user.userId);
+
     res.json({
       lastVideoId: progress.lastVideoId,
       completedCount,
       totalVideos: progress.totalVideos,
       percentage: progress.totalVideos ? Math.round((completedCount / progress.totalVideos) * 100) : 0,
       watchedSeconds: progress.watchedSeconds,
-      videoCompleted: progress.videoCompleted || {}
+      videoCompleted: progress.videoCompleted || {},
+      watchStats
     });
   } catch (error) {
     res.status(500).json({ message: "Failed to load progress", error: error.message });

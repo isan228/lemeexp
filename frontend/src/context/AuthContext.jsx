@@ -46,7 +46,12 @@ export function AuthProvider({ children }) {
     totalVideos: 0,
     lastVideoId: null,
     watchedSeconds: {},
-    videoCompleted: {}
+    videoCompleted: {},
+    watchStats: {
+      todaySeconds: 0,
+      yesterdaySeconds: 0,
+      weekSeconds: 0
+    }
   });
   const [hydrated] = useState(true);
   const [catalogLoading, setCatalogLoading] = useState(() => Boolean(bootstrap.token));
@@ -241,7 +246,12 @@ export function AuthProvider({ children }) {
       totalVideos: 0,
       lastVideoId: null,
       watchedSeconds: {},
-      videoCompleted: {}
+      videoCompleted: {},
+      watchStats: {
+        todaySeconds: 0,
+        yesterdaySeconds: 0,
+        weekSeconds: 0
+      }
     });
   }, [setAuthState]);
 
