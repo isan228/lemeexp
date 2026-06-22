@@ -58,18 +58,16 @@ export default function StudentLayout() {
 
   useEffect(() => {
     if (typeof document === "undefined") return;
-    const prevBodyOverflow = document.body.style.overflow;
-    const prevHtmlOverflow = document.documentElement.style.overflow;
     if (menuOpen) {
       document.body.style.overflow = "hidden";
       document.documentElement.style.overflow = "hidden";
     } else {
-      document.body.style.overflow = prevBodyOverflow || "";
-      document.documentElement.style.overflow = prevHtmlOverflow || "";
+      document.body.style.overflow = "";
+      document.documentElement.style.overflow = "";
     }
     return () => {
-      document.body.style.overflow = prevBodyOverflow || "";
-      document.documentElement.style.overflow = prevHtmlOverflow || "";
+      document.body.style.overflow = "";
+      document.documentElement.style.overflow = "";
     };
   }, [menuOpen]);
 
@@ -95,7 +93,9 @@ export default function StudentLayout() {
                 <p className="sidebar-user">{profile?.nickname || profile?.email || "—"}</p>
               </div>
               <button type="button" className="student-drawer-close" onClick={() => setMenuOpen(false)} aria-label="Закрыть меню">
-                ×
+                <span />
+                <span />
+                <span />
               </button>
             </div>
             <div className="sidebar-progress" aria-label={`Прогресс ${pct}%`}>
