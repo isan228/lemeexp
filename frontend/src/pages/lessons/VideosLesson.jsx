@@ -194,13 +194,7 @@ export default function VideosLesson() {
                     {GET_ACCESS_LABEL}
                   </Link>
                 </div>
-              ) : (
-                <div className="video-lesson-extra">
-                  <Link to={routes.learningSupportLesson(v.id, v.title || "")} className="video-lesson-support-link">
-                    Вопросы к уроку
-                  </Link>
-                </div>
-              )}
+              ) : null}
             </li>
           );
         })}
