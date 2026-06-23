@@ -123,56 +123,55 @@ export default function VideosLesson() {
           const watchHref = hasPartialProgress
             ? routes.lessonVideo(subject.id, chapter.id, v.id, { resume: true })
             : routes.lessonVideo(subject.id, chapter.id, v.id);
-          const lessonNum = String(index + 1).padStart(2, "0");
-
           const rowClass = [
             "card",
             "video-lesson-item",
             locked ? "is-locked" : "",
-            ready ? "" : "is-pending"
+            ready ? "" : "is-pending",
+            completed ? "is-complete" : "",
+            hasPartialProgress ? "has-progress" : ""
           ]
             .filter(Boolean)
             .join(" ");
 
-          const badges = (
-            <div className="video-lesson-badges">
-              {v.isTrial ? <span className="status-badge status-trial">Пробник</span> : null}
-              {completed ? <span className="status-badge status-done">Просмотрено</span> : null}
-              {hasPartialProgress ? (
-                <span className="status-badge status-stopped">{progressPct}%</span>
-              ) : null}
-              {isNext ? <span className="status-badge status-next">Следующее</span> : null}
-              {locked ? <span className="status-badge status-locked">По подписке</span> : null}
-              {!locked && !completed ? (
-                <span className="muted small video-lesson-duration">{formatMinutes(v.duration || 0)}</span>
-              ) : null}
-              {processing ? <span className="status-badge">Подготовка видео…</span> : null}
-              {!locked && !ready && !processing ? (
-                <span className="status-badge">Видео загружается</span>
-              ) : null}
-            </div>
-          );
+          const labelText = (() => {
+            if (locked) return "По подписке";
+            if (completed) return "Просмотрено";
+            if (hasPartialProgress) return "Продолжить урок";
+            if (isNext) return "Следующий урок";
+            if (processing) return "Подготовка видео";
+            if (!ready) return "Загрузка";
+            return "Урок";
+          })();
 
           const rowBody = (
             <>
-              <span className="video-lesson-num">{lessonNum}</span>
-              <div className="video-lesson-main">
-                <strong className="video-lesson-title">{v.title}</strong>
-                <div
-                  className="video-lesson-progress-bar"
-                  role="progressbar"
-                  aria-valuenow={progressPct}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-label={`Просмотрено ${progressPct}%`}
-                >
-                  {progressPct > 0 ? (
-                    <span className="video-lesson-progress-fill" style={{ width: `${progressPct}%` }} />
-                  ) : null}
+              <span
+                className="video-lesson-progress-fill"
+                style={{ width: `${progressPct}%` }}
+                aria-hidden="true"
+              />
+              <div
+                className="video-lesson-content"
+                role="progressbar"
+                aria-valuenow={progressPct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={`${v.title}, просмотрено ${progressPct}%`}
+              >
+                <div className="video-lesson-body">
+                  <span className="video-lesson-label">{labelText}</span>
+                  <strong className="video-lesson-title">
+                    {index + 1}. {v.title}
+                  </strong>
+                  <span className="video-lesson-meta">
+                    {subject.title} · {chapter.title}
+                    {v.isTrial ? " · Пробник" : null}
+                    {!locked && ready && !completed ? ` · ${formatMinutes(v.duration)}` : null}
+                  </span>
                 </div>
-                {badges}
+                <LessonPlayButton locked={locked} ready={ready} />
               </div>
-              <LessonPlayButton locked={locked} ready={ready} />
             </>
           );
 
