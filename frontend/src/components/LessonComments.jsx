@@ -13,12 +13,13 @@ function repliesLabel(count) {
 
 function ThumbUpIcon({ filled }) {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="yt-comment-thumb-icon">
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="yt-comment-thumb-icon" fill="none">
       <path
-        d="M7.5 20.5V10.2L4.2 6.9a1 1 0 0 1-.2-.6V4.8A1 1 0 0 1 5 3.8h3.4c.4 0 .8.2 1 .6l1.1 2.2h6.8c.6 0 1 .4 1 1 0 .1 0 .3-.1.4l-1.7 4.1a1.6 1.6 0 0 1-1.4.9H11v7.5H7.5z"
+        d="M7 10v12M7 10l4-6 1.5 1L16 12h4v6a2 2 0 0 1-2 2H7"
         fill={filled ? "currentColor" : "none"}
         stroke="currentColor"
-        strokeWidth="1.5"
+        strokeWidth="1.75"
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
     </svg>
@@ -27,12 +28,13 @@ function ThumbUpIcon({ filled }) {
 
 function ThumbDownIcon({ filled }) {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="yt-comment-thumb-icon">
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="yt-comment-thumb-icon" fill="none">
       <path
-        d="M16.5 3.5v10.3l3.3 3.3c.1.2.2.4.2.6v1.5a1 1 0 0 1-1 1h-3.4a1 1 0 0 1-1-.6l-1.1-2.2H7.7a1 1 0 0 1-1-1c0-.1 0-.3.1-.4l1.7-4.1a1.6 1.6 0 0 1 1.4-.9H13V3.5h3.5z"
+        d="M17 14V2M17 14l-4 6-1.5-1L8 12H4V6a2 2 0 0 1 2-2h11"
         fill={filled ? "currentColor" : "none"}
         stroke="currentColor"
-        strokeWidth="1.5"
+        strokeWidth="1.75"
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
     </svg>
@@ -201,26 +203,31 @@ function CommentNode({
 
         {!comment.deleted ? (
           <div className="yt-comment-toolbar">
-            <button
-              type="button"
-              className={`yt-comment-tool-btn${comment.likedByMe ? " is-active" : ""}`}
-              onClick={() => void toggleLike()}
-              disabled={likeBusy}
-              aria-pressed={comment.likedByMe}
-            >
-              <ThumbUpIcon filled={comment.likedByMe} />
-              {comment.likeCount > 0 ? <span>{comment.likeCount}</span> : null}
-            </button>
-            <button
-              type="button"
-              className={`yt-comment-tool-btn yt-comment-tool-dislike${comment.dislikedByMe ? " is-active" : ""}`}
-              onClick={() => void toggleDislike()}
-              disabled={dislikeBusy}
-              aria-pressed={comment.dislikedByMe}
-            >
-              <ThumbDownIcon filled={comment.dislikedByMe} />
-              {comment.dislikeCount > 0 ? <span>{comment.dislikeCount}</span> : null}
-            </button>
+            <div className="yt-comment-reactions">
+              <button
+                type="button"
+                className={`yt-comment-icon-btn${comment.likedByMe ? " is-active" : ""}`}
+                onClick={() => void toggleLike()}
+                disabled={likeBusy}
+                aria-pressed={comment.likedByMe}
+                aria-label={comment.likedByMe ? "Убрать лайк" : "Поставить лайк"}
+              >
+                <ThumbUpIcon filled={comment.likedByMe} />
+              </button>
+              {comment.likeCount > 0 ? (
+                <span className="yt-comment-reaction-count">{comment.likeCount}</span>
+              ) : null}
+              <button
+                type="button"
+                className={`yt-comment-icon-btn yt-comment-icon-btn-dislike${comment.dislikedByMe ? " is-active" : ""}`}
+                onClick={() => void toggleDislike()}
+                disabled={dislikeBusy}
+                aria-pressed={comment.dislikedByMe}
+                aria-label={comment.dislikedByMe ? "Убрать дизлайк" : "Поставить дизлайк"}
+              >
+                <ThumbDownIcon filled={comment.dislikedByMe} />
+              </button>
+            </div>
             <button
               type="button"
               className="yt-comment-text-btn"

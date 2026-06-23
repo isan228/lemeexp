@@ -1491,40 +1491,66 @@ input:focus {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
-  margin-top: 2px;
+  gap: 8px;
+  margin-top: 4px;
 }
 
-.yt-comment-tool-btn {
+.yt-comment-reactions {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  min-height: 32px;
-  padding: 0 10px;
-  border: none;
-  border-radius: 999px;
-  background: transparent;
-  color: #606060;
-  font-size: 0.78rem;
-  font-weight: 600;
-  cursor: pointer;
+  gap: 2px;
+  min-height: 36px;
 }
 
-.yt-comment-tool-btn:hover {
+.yt-comment-icon-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #606060;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.yt-comment-icon-btn:hover:not(:disabled) {
   background: #f2f2f2;
 }
 
-.yt-comment-tool-btn.is-active {
+.yt-comment-icon-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.yt-comment-icon-btn.is-active {
   color: #065fd4;
 }
 
-.yt-comment-tool-dislike.is-active {
+.yt-comment-icon-btn-dislike.is-active {
   color: #606060;
 }
 
+.yt-comment-reaction-count {
+  min-width: 18px;
+  padding: 0 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1;
+  color: #606060;
+  text-align: center;
+  user-select: none;
+}
+
 .yt-comment-thumb-icon {
-  width: 18px;
-  height: 18px;
+  display: block;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
 }
 
 .yt-comment-text-btn {
