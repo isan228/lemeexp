@@ -1,7 +1,8 @@
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useCallback, useMemo } from "react";
-import LockIcon from "../../components/LockIcon.jsx";
+import LessonComments from "../../components/LessonComments.jsx";
 import LessonPlayer from "../../components/LessonPlayer.jsx";
+import LessonVideoNav from "../../components/LessonVideoNav.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { SUBSCRIPTION_PLAN } from "../../config/billing.js";
 import { routes, GET_ACCESS_LABEL } from "../../config/site.js";
@@ -134,61 +135,22 @@ export default function VideoLessonPage() {
         <p className="subtitle student-page-intro">Смотрите урок и продолжайте обучение в удобном темпе.</p>
       </header>
 
-      <div className="watch-layout">
-        <div className="watch-main">
-          <LessonPlayer
-            {...playerProps}
-            apiRequest={apiRequest}
-            onSavePosition={onSavePosition}
-          />
-        </div>
-        <aside className="watch-sidebar card">
-          <h3>Следующие уроки</h3>
-          <ul className="watch-list">
-            {chapterVideos.map((item) => {
-              const active = Number(item.id) === vid;
-              const itemHref = item.locked
-                ? routes.payment(SUBSCRIPTION_PLAN.id)
-                : routes.lessonVideo(subject.id, chapter.id, item.id);
-              return (
-                <li key={item.id}>
-                  <Link
-                    to={itemHref}
-                    className={[
-                      "watch-item",
-                      active ? "active" : "",
-                      item.locked ? "watch-item-locked" : ""
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                    onClick={(e) => {
-                      if (active) e.preventDefault();
-                    }}
-                  >
-                    <span className={`watch-item-thumb${item.locked ? " watch-item-thumb-locked" : ""}`} aria-hidden="true">
-                      <img
-                        src={`https://picsum.photos/seed/drm-lesson-${item.id}/160/90`}
-                        alt={item.title}
-                        loading="lazy"
-                        className="watch-item-thumb-img"
-                      />
-                      <span className="watch-item-thumb-play">
-                        {item.locked ? <LockIcon size={14} /> : "▶"}
-                      </span>
-                    </span>
-                    <span className="watch-item-meta">
-                      <strong>{item.title}</strong>
-                      <span>
-                        {item.locked ? "По подписке" : `${Math.floor(Number(item.duration || 0) / 60)} мин`}
-                      </span>
-                    </span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </aside>
+      <div className="watch-main">
+        <LessonPlayer
+          {...playerProps}
+          apiRequest={apiRequest}
+          onSavePosition={onSavePosition}
+        />
       </div>
+
+      <LessonVideoNav
+        subjectId={subject.id}
+        chapterId={chapter.id}
+        videos={chapterVideos}
+        currentVideoId={vid}
+      />
+
+      <LessonComments videoId={vid} videoTitle={video.title} />
 
       <p className="back-row">
         <Link to={routes.lessonChapter(subject.id, chapter.id)}>← К списку видео</Link>
