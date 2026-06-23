@@ -14,16 +14,20 @@ function CommentComposer({ value, onChange, onSubmit, submitting, onCancel, subm
       }}
     >
       <div className="reddit-comment-input-row">
-        <span className="lesson-comment-avatar">{(profile?.nickname || "Вы").slice(0, 1).toUpperCase()}</span>
-        <textarea
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          rows={2}
-          maxLength={2000}
-          placeholder={placeholder}
-          className="admin-textarea"
-          autoFocus={Boolean(onCancel)}
-        />
+        <span className={`reddit-comment-avatar${profile?.subscriptionType === "admin" ? " is-admin" : ""}`}>
+          {(profile?.nickname || "Вы").slice(0, 1).toUpperCase()}
+        </span>
+        <div className="reddit-composer-field">
+          <textarea
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            rows={onCancel ? 2 : 3}
+            maxLength={2000}
+            placeholder={placeholder}
+            className="reddit-comment-textarea"
+            autoFocus={Boolean(onCancel)}
+          />
+        </div>
       </div>
       <div className="reddit-comment-form-actions">
         {onCancel ? (
@@ -109,7 +113,7 @@ function CommentNode({
   }
 
   return (
-    <article className="reddit-comment" style={{ "--comment-depth": depth }}>
+    <article className={`reddit-comment${depth > 0 ? " is-reply" : ""}`} style={{ "--comment-depth": depth }}>
       <div className="reddit-comment-vote" aria-label="Лайки">
         <button
           type="button"
@@ -119,16 +123,23 @@ function CommentNode({
           aria-pressed={comment.likedByMe}
           aria-label={comment.likedByMe ? "Убрать лайк" : "Поставить лайк"}
         >
-          ▲
+          <svg viewBox="0 0 20 20" aria-hidden="true" className="reddit-vote-icon">
+            <path d="M10 4.5 4 12.5h4.5V16h3v-3.5H16L10 4.5z" />
+          </svg>
         </button>
-        <span className="reddit-vote-count">{comment.likeCount}</span>
+        <span className={`reddit-vote-count${comment.likeCount > 0 ? " has-votes" : ""}`}>{comment.likeCount}</span>
       </div>
 
       <div className="reddit-comment-main">
         <header className="reddit-comment-meta">
-          <strong className="reddit-comment-author">{comment.author?.nickname || "Пользователь"}</strong>
-          {comment.author?.isAdmin ? <span className="lesson-comment-badge">Автор</span> : null}
-          <span className="reddit-comment-time">{formatCommentTime(comment.createdAt)}</span>
+          <span className={`reddit-comment-avatar sm${comment.author?.isAdmin ? " is-admin" : ""}`}>
+            {(comment.author?.nickname || "П").slice(0, 1).toUpperCase()}
+          </span>
+          <div className="reddit-comment-meta-text">
+            <strong className="reddit-comment-author">{comment.author?.nickname || "Пользователь"}</strong>
+            {comment.author?.isAdmin ? <span className="reddit-author-badge">Автор курса</span> : null}
+            <span className="reddit-comment-time">{formatCommentTime(comment.createdAt)}</span>
+          </div>
         </header>
 
         <div className={`reddit-comment-text${comment.deleted ? " is-deleted" : ""}`}>
@@ -259,24 +270,36 @@ export default function LessonComments({ videoId, videoTitle = "" }) {
 
   return (
     <article className="card watch-comments-card reddit-comments-card">
-      <header className="watch-comments-head">
-        <h2>Комментарии</h2>
-        {videoTitle ? <p className="muted small">«{videoTitle}»</p> : null}
+      <header className="watch-comments-head reddit-comments-head">
+        <div className="reddit-comments-head-main">
+          <h2>Комментарии</h2>
+          {videoTitle ? <p className="reddit-comments-subtitle">{videoTitle}</p> : null}
+        </div>
+        {!loading ? <span className="reddit-comments-count">{comments.length}</span> : null}
       </header>
 
-      <CommentComposer
+      <div className="reddit-composer-shell">
+        <CommentComposer
         value={text}
         onChange={setText}
         onSubmit={() => void submitComment()}
         submitting={sending}
         submitLabel="Комментировать"
         placeholder="Что думаете об этом уроке?"
-      />
+        />
+      </div>
 
       {loading ? (
-        <p className="muted">Загрузка комментариев…</p>
+        <div className="reddit-comments-loading" aria-live="polite">
+          <span className="loading-spinner" aria-hidden="true" />
+          <span>Загрузка комментариев…</span>
+        </div>
       ) : tree.length === 0 ? (
-        <p className="muted reddit-comments-empty">Пока нет комментариев. Начните обсуждение.</p>
+        <div className="reddit-comments-empty">
+          <span className="reddit-comments-empty-icon" aria-hidden="true">💬</span>
+          <p>Пока нет комментариев</p>
+          <span className="muted small">Будьте первым — задайте вопрос или поделитесь мыслями.</span>
+        </div>
       ) : (
         <div className="reddit-comments-thread">
           {tree.map((comment) => (
@@ -295,7 +318,7 @@ export default function LessonComments({ videoId, videoTitle = "" }) {
         </div>
       )}
 
-      {error ? <p className="form-error">{error}</p> : null}
+      {error ? <p className="form-error reddit-comments-error">{error}</p> : null}
     </article>
   );
 }
