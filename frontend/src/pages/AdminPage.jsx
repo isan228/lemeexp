@@ -100,7 +100,6 @@ export default function AdminPage() {
   const [newCourseTitle, setNewCourseTitle] = useState("");
   const [newSubtopicTitle, setNewSubtopicTitle] = useState("");
   const [newVideoTitle, setNewVideoTitle] = useState("");
-  const [newVideoDurationMin, setNewVideoDurationMin] = useState("");
   const [catalogError, setCatalogError] = useState("");
   const [catalogSaving, setCatalogSaving] = useState(false);
   const [editingCourseId, setEditingCourseId] = useState(null);
@@ -109,7 +108,6 @@ export default function AdminPage() {
   const [editSubtopicTitle, setEditSubtopicTitle] = useState("");
   const [editingVideoId, setEditingVideoId] = useState(null);
   const [editVideoTitle, setEditVideoTitle] = useState("");
-  const [editVideoDurationMin, setEditVideoDurationMin] = useState("");
   const [catalogGlobalSearch, setCatalogGlobalSearch] = useState("");
   const [courseSearch, setCourseSearch] = useState("");
   const [subtopicSearch, setSubtopicSearch] = useState("");
@@ -1010,8 +1008,6 @@ export default function AdminPage() {
   async function createVideo() {
     const title = newVideoTitle.trim();
     if (!title || !selectedSubtopic) return;
-    const minutes = Number(newVideoDurationMin);
-    const durationSec = Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes * 60) : 0;
     setCatalogError("");
     await apiRequest("/admin/videos", {
       method: "POST",
@@ -1019,12 +1015,10 @@ export default function AdminPage() {
       body: JSON.stringify({
         subtopicId: selectedSubtopic,
         title,
-        duration: durationSec,
         streamPath: ""
       })
     });
     setNewVideoTitle("");
-    setNewVideoDurationMin("");
     await loadAdminCatalog();
     showToast(`Урок «${title}» создан — загрузите mp4`);
   }
@@ -1080,7 +1074,6 @@ export default function AdminPage() {
     setEditSubtopicTitle("");
     setEditingVideoId(null);
     setEditVideoTitle("");
-    setEditVideoDurationMin("");
   }
 
   function startEditCourse(course) {
@@ -1099,8 +1092,6 @@ export default function AdminPage() {
     cancelCatalogEdit();
     setEditingVideoId(video.id);
     setEditVideoTitle(video.title);
-    const minutes = Number(video.duration || 0) > 0 ? String(Math.round(Number(video.duration) / 60)) : "";
-    setEditVideoDurationMin(minutes);
   }
 
   async function saveCourseEdit() {
@@ -1158,15 +1149,13 @@ export default function AdminPage() {
   async function saveVideoEdit() {
     const title = editVideoTitle.trim();
     if (!title || !editingVideoId) return;
-    const minutes = Number(editVideoDurationMin);
-    const durationSec = Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes * 60) : 0;
     setCatalogSaving(true);
     setCatalogError("");
     try {
       const res = await apiRequest(`/admin/videos/${editingVideoId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, duration: durationSec })
+        body: JSON.stringify({ title })
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -1864,18 +1853,6 @@ export default function AdminPage() {
                           disabled={!selectedSubtopic}
                         />
                       </div>
-                      <div className="adm-field">
-                        <label htmlFor="lesson-min">Мин</label>
-                        <input
-                          id="lesson-min"
-                          type="number"
-                          min={1}
-                          value={newVideoDurationMin}
-                          onChange={(e) => setNewVideoDurationMin(e.target.value)}
-                          placeholder="15"
-                          disabled={!selectedSubtopic}
-                        />
-                      </div>
                       <button type="submit" className="adm-btn adm-btn-primary" disabled={!selectedSubtopic || !newVideoTitle.trim()}>
                         + Урок
                       </button>
@@ -1915,17 +1892,6 @@ export default function AdminPage() {
                                       autoFocus
                                     />
                                   </div>
-                                  <div className="adm-field">
-                                    <label htmlFor={`edit-min-${v.id}`}>Мин</label>
-                                    <input
-                                      id={`edit-min-${v.id}`}
-                                      type="number"
-                                      min={1}
-                                      value={editVideoDurationMin}
-                                      onChange={(e) => setEditVideoDurationMin(e.target.value)}
-                                      disabled={catalogSaving}
-                                    />
-                                  </div>
                                 </div>
                                 <div className="adm-list-edit-actions">
                                   <button type="submit" className="adm-btn adm-btn-primary adm-btn-sm" disabled={catalogSaving || !editVideoTitle.trim()}>
@@ -1942,6 +1908,9 @@ export default function AdminPage() {
                                   <strong>{v.title}</strong>
                                   <div className="adm-lesson-meta">
                                     {formatLessonDuration(v.duration)}
+                                    {Number(v.duration || 0) <= 0 ? (
+                                      <span className="adm-badge pending"> Длительность после загрузки</span>
+                                    ) : null}
                                     {v.isTrial ? <span className="adm-badge trial"> Пробник</span> : null}
                                     {isPlayableStream(v.streamPath) ? (
                                       <span className="adm-badge ok"> Готово (защищённый HLS)</span>

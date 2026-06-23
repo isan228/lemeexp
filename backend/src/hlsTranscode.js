@@ -42,6 +42,47 @@ function runFfmpeg(args, cwd) {
   });
 }
 
+function runFfprobe(args) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn("ffprobe", args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    proc.stdout.on("data", (chunk) => {
+      stdout += String(chunk);
+    });
+    proc.stderr.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
+    proc.on("error", (err) => {
+      if (err.code === "ENOENT") {
+        reject(new Error("ffprobe не установлен на сервере"));
+        return;
+      }
+      reject(err);
+    });
+    proc.on("close", (code) => {
+      if (code === 0) resolve(stdout);
+      else reject(new Error(stderr.trim() || `ffprobe exited with code ${code}`));
+    });
+  });
+}
+
+/** Длительность видео/аудио в секундах (mp4, m3u8 и др.). */
+export async function probeVideoDurationSec(mediaPath) {
+  const stdout = await runFfprobe([
+    "-v",
+    "error",
+    "-show_entries",
+    "format=duration",
+    "-of",
+    "default=noprint_wrappers=1:nokey=1",
+    mediaPath
+  ]);
+  const seconds = Number(String(stdout).trim());
+  if (!Number.isFinite(seconds) || seconds <= 0) return 0;
+  return Math.max(1, Math.round(seconds));
+}
+
 /** MP4 → AES-128 HLS (сегменты на диске, ключ только через API). */
 export async function packageVideoToHls(videoId, inputMp4Path) {
   const outDir = getHlsDir(videoId);

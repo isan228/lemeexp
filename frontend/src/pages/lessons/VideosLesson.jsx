@@ -83,7 +83,13 @@ export default function VideosLesson() {
       ? Number(videos[stoppedIndex + 1].id)
       : Number(videos.find((v) => !rowCompleted(v) && !v.locked)?.id || 0);
 
-  const formatMinutes = (seconds) => `${Math.floor(Number(seconds || 0) / 60)} мин`;
+  const formatDurationLabel = (seconds) => {
+    const total = Number(seconds || 0);
+    if (total <= 0) return null;
+    const min = Math.floor(total / 60);
+    const sec = total % 60;
+    return sec > 0 ? `${min} мин ${sec} сек` : `${min} мин`;
+  };
   const lessonsCount = videos.length;
 
   return (
@@ -167,7 +173,9 @@ export default function VideosLesson() {
                   <span className="video-lesson-meta">
                     {subject.title} · {chapter.title}
                     {v.isTrial ? " · Пробник" : null}
-                    {!locked && ready && !completed ? ` · ${formatMinutes(v.duration)}` : null}
+                    {!locked && ready && !completed && formatDurationLabel(v.duration)
+                      ? ` · ${formatDurationLabel(v.duration)}`
+                      : null}
                   </span>
                 </div>
                 <LessonPlayButton locked={locked} ready={ready} />

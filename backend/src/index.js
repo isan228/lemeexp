@@ -28,6 +28,7 @@ import {
   hlsRoot,
   isHlsReady,
   packageVideoToHls,
+  probeVideoDurationSec,
   safeSegmentName
 } from "./hlsTranscode.js";
 import { createReadStream, mkdirSync } from "node:fs";
@@ -2188,14 +2189,21 @@ app.post("/admin/videos/:videoId/upload", auth, requireAdmin, upload.single("fil
   if (!req.file) return res.status(400).json({ message: "Missing file" });
 
   const streamPath = `upload:${req.file.filename}`;
+  const inputPath = path.join(uploadsDir, req.file.filename);
+  let durationSec = 0;
+  try {
+    durationSec = await probeVideoDurationSec(inputPath);
+  } catch (error) {
+    console.warn(`[upload] Video ${videoId} duration probe failed:`, error.message);
+  }
+
   const updated = await pool.query(
-    `update videos set stream_path = $2 where id = $1
+    `update videos set stream_path = $2, duration = $3 where id = $1
      returning id, subtopic_id, title, duration, stream_path, "order"`,
-    [videoId, streamPath]
+    [videoId, streamPath, durationSec]
   );
   if (!updated.rows[0]) return res.status(404).json({ message: "Video not found" });
 
-  const inputPath = path.join(uploadsDir, req.file.filename);
   void queueHlsPackaging(videoId, inputPath, req.file.filename);
 
   res.json({
@@ -3419,13 +3427,28 @@ async function queueHlsPackaging(videoId, inputPath, sourceFilename) {
   if (hlsPackaging.has(videoId)) return hlsPackaging.get(videoId);
   const job = (async () => {
     try {
+      let durationSec = 0;
+      try {
+        durationSec = await probeVideoDurationSec(inputPath);
+      } catch (error) {
+        console.warn(`[hls] Video ${videoId} duration probe failed:`, error.message);
+      }
+
       await packageVideoToHls(videoId, inputPath);
       const outDir = getHlsDir(videoId);
       if (sourceFilename) {
         await writeFile(path.join(outDir, "source.txt"), sourceFilename, "utf8");
       }
       if (dbReady) {
-        await pool.query(`update videos set stream_path = $2 where id = $1`, [videoId, `hls:${videoId}`]);
+        if (durationSec > 0) {
+          await pool.query(`update videos set stream_path = $2, duration = $3 where id = $1`, [
+            videoId,
+            `hls:${videoId}`,
+            durationSec
+          ]);
+        } else {
+          await pool.query(`update videos set stream_path = $2 where id = $1`, [videoId, `hls:${videoId}`]);
+        }
       }
       console.log(`[hls] Video ${videoId} ready (AES-128)`);
     } catch (error) {
@@ -3575,6 +3598,30 @@ app.use((err, req, res, next) => {
   return next(err);
 });
 
+async function backfillVideoDurations() {
+  if (!pool) return;
+  const result = await pool.query(
+    `select id, stream_path from videos where coalesce(duration, 0) <= 0`
+  );
+  for (const row of result.rows) {
+    let mediaPath = await resolveSourceMp4ForVideo(row.id, row.stream_path || "");
+    if (!mediaPath && isProtectedHlsStreamPath(row.stream_path) && (await isHlsReady(row.id))) {
+      mediaPath = path.join(getHlsDir(row.id), "index.m3u8");
+    }
+    if (!mediaPath) continue;
+    try {
+      await access(mediaPath);
+      const durationSec = await probeVideoDurationSec(mediaPath);
+      if (durationSec > 0) {
+        await pool.query(`update videos set duration = $2 where id = $1`, [row.id, durationSec]);
+        console.log(`[duration] Video ${row.id}: ${durationSec}s`);
+      }
+    } catch (error) {
+      console.warn(`[duration] Video ${row.id} backfill failed:`, error.message);
+    }
+  }
+}
+
 async function migrateUploadVideosToHls() {
   if (!pool) return;
   const result = await pool.query(`select id, stream_path from videos where stream_path like 'upload:%'`);
@@ -3662,6 +3709,7 @@ async function start() {
       await seedDemoData();
       dbReady = true;
       await migrateUploadVideosToHls();
+      await backfillVideoDurations();
       console.log("PostgreSQL connected");
     } catch (error) {
       dbReady = false;
