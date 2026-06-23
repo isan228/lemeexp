@@ -277,8 +277,7 @@ function LessonPlayerInner({
   if (!Number.isFinite(numericVideoId)) return null;
 
   return (
-    <section className="card player-card">
-      <h3>Сейчас: {videoTitle}</h3>
+    <div className="lesson-player-shell">
       {playError ? (
         <p className="player-error" role="alert">
           {playError}
@@ -298,7 +297,7 @@ function LessonPlayerInner({
           onEnded={onEndedSave}
         />
       </div>
-    </section>
+    </div>
   );
 }
 
