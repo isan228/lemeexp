@@ -31,6 +31,7 @@ import {
   probeVideoDurationSec,
   safeSegmentName
 } from "./hlsTranscode.js";
+import { ensureVideoCommentsTables, registerVideoCommentRoutes } from "./videoComments.js";
 import { createReadStream, mkdirSync } from "node:fs";
 import { access, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
 import crypto from "node:crypto";
@@ -84,6 +85,10 @@ const memState = {
   news: [],
   /** @type {Array<{ id: number; userId: number; senderRole: "admin" | "student"; text: string; createdAt: string }>} */
   supportMessages: [],
+  /** @type {Array<{ id: number; videoId: number; userId: number; parentId: number | null; text: string; deletedAt: string | null; createdAt: string }>} */
+  videoComments: [],
+  /** @type {Array<{ commentId: number; userId: number }>} */
+  videoCommentLikes: [],
   /** @type {Map<string, string>} key: `${userId}:${role}` => ISO timestamp */
   supportLastRead: new Map(),
   /** @type {Array<{ id: number; code: string; discountType: string; discountValue: number; maxUses: number | null; usesCount: number; expiresAt: string | null; active: boolean; createdAt: string; updatedAt: string }>} */
@@ -98,6 +103,7 @@ const memState = {
 
 let memNewsNextId = 1;
 let memSupportMessageNextId = 1;
+const memVideoCommentNextIdRef = { current: 1 };
 let memPromoNextId = 1;
 let memSecurityAlertNextId = 1;
 
@@ -946,6 +952,33 @@ function getVideoTitleById(videoId) {
     }
   }
   return null;
+}
+
+function resolveCommentAuthor(userId) {
+  const id = Number(userId);
+  if (id === adminUser.id) {
+    return { id: adminUser.id, nickname: adminUser.nickname, isAdmin: true };
+  }
+  if (id === demoUser.id) {
+    return { id: demoUser.id, nickname: demoUser.nickname, isAdmin: false };
+  }
+  const memUser = getMemRegisteredUserById(id);
+  if (memUser) {
+    return {
+      id: memUser.id,
+      nickname: memUser.nickname,
+      isAdmin: memUser.subscriptionType === "admin"
+    };
+  }
+  return { id, nickname: "Пользователь", isAdmin: false };
+}
+
+async function videoExists(videoId) {
+  const vid = Number(videoId);
+  if (!Number.isFinite(vid)) return false;
+  if (!dbReady) return Boolean(getVideoTitleById(vid));
+  const result = await pool.query(`select id from videos where id = $1 limit 1`, [vid]);
+  return Boolean(result.rows[0]);
 }
 
 async function ensureSupportReadsTable() {
@@ -3260,6 +3293,20 @@ app.get("/support/unread", auth, async (req, res) => {
   }
 });
 
+registerVideoCommentRoutes(app, {
+  pool,
+  get dbReady() {
+    return dbReady;
+  },
+  memState,
+  memVideoCommentNextIdRef,
+  auth,
+  requireAdmin,
+  resolveCommentAuthor,
+  getUserRecordById,
+  videoExists
+});
+
 app.post("/auth/refresh", async (req, res) => {
   const parsed = refreshSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: "Invalid payload" });
@@ -3690,6 +3737,11 @@ async function start() {
         await ensureSupportReadsTable();
       } catch (e) {
         console.error("Таблица support_reads — пропуск (проверьте миграцию):", e.message);
+      }
+      try {
+        await ensureVideoCommentsTables(pool);
+      } catch (e) {
+        console.error("Таблица video_comments — пропуск (проверьте миграцию):", e.message);
       }
       try {
         await ensurePaymentsTable();

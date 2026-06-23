@@ -128,6 +128,26 @@ create table if not exists support_messages (
 create index if not exists idx_support_messages_user_created on support_messages (user_id, created_at asc);
 create index if not exists idx_support_messages_user_video_created on support_messages (user_id, video_id, created_at asc);
 
+create table if not exists video_comments (
+  id bigserial primary key,
+  video_id bigint not null references videos(id) on delete cascade,
+  user_id bigint not null references users(id) on delete cascade,
+  parent_id bigint references video_comments(id) on delete cascade,
+  text text not null,
+  deleted_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_video_comments_video_created on video_comments (video_id, created_at asc);
+create index if not exists idx_video_comments_parent on video_comments (parent_id);
+
+create table if not exists video_comment_likes (
+  comment_id bigint not null references video_comments(id) on delete cascade,
+  user_id bigint not null references users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (comment_id, user_id)
+);
+
 create table if not exists support_reads (
   user_id bigint not null references users(id) on delete cascade,
   reader_role text not null check (reader_role in ('admin', 'student')),
