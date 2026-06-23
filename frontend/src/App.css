@@ -1491,82 +1491,102 @@ input:focus {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   margin-top: 4px;
+}
+
+.yt-comments-section .yt-comment-toolbar button {
+  box-sizing: border-box;
+  margin: 0;
+  font: inherit;
+  line-height: 0;
+  text-align: center;
 }
 
 .yt-comment-reactions {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  min-height: 36px;
+  height: 40px;
+  margin-right: 4px;
 }
 
-.yt-comment-icon-btn {
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
-  color: #606060;
+.yt-vote-btn {
+  all: unset;
+  box-sizing: border-box;
+  width: 40px;
+  height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  border-radius: 50%;
+  color: #606060;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
 
-.yt-comment-icon-btn:hover:not(:disabled) {
-  background: #f2f2f2;
+.yt-vote-btn:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.05);
 }
 
-.yt-comment-icon-btn:disabled {
-  opacity: 0.5;
+.yt-vote-btn:disabled {
+  opacity: 0.45;
   cursor: default;
 }
 
-.yt-comment-icon-btn.is-active {
+.yt-vote-btn.is-active {
   color: #065fd4;
 }
 
-.yt-comment-icon-btn-dislike.is-active {
+.yt-vote-btn-down.is-active {
   color: #606060;
 }
 
-.yt-comment-reaction-count {
-  min-width: 18px;
-  padding: 0 4px;
-  font-size: 0.78rem;
-  font-weight: 600;
+.yt-vote-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  width: 28px;
+  height: 40px;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1;
   color: #606060;
-  text-align: center;
   user-select: none;
-}
-
-.yt-comment-thumb-icon {
-  display: block;
-  width: 20px;
-  height: 20px;
   flex-shrink: 0;
 }
 
-.yt-comment-text-btn {
-  border: none;
-  background: transparent;
-  min-height: 32px;
+.yt-vote-count.is-empty {
+  width: 8px;
+  min-width: 8px;
+}
+
+.yt-vote-svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+}
+
+.yt-comments-section .yt-comment-text-btn {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
   padding: 0 12px;
   border-radius: 999px;
   color: #606060;
-  font-size: 0.78rem;
+  font-size: 12px;
   font-weight: 600;
+  line-height: 1.2;
   cursor: pointer;
 }
 
 .yt-comment-text-btn:hover {
-  background: #f2f2f2;
+  background: rgba(0, 0, 0, 0.05);
 }
 
 .yt-comment-text-danger:hover {

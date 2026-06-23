@@ -13,14 +13,11 @@ function repliesLabel(count) {
 
 function ThumbUpIcon({ filled }) {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="yt-comment-thumb-icon" fill="none">
+    <svg viewBox="0 0 24 24" className="yt-vote-svg" aria-hidden="true">
       <path
-        d="M7 10v12M7 10l4-6 1.5 1L16 12h4v6a2 2 0 0 1-2 2H7"
-        fill={filled ? "currentColor" : "none"}
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"
+        fill="currentColor"
+        opacity={filled ? 1 : 0.72}
       />
     </svg>
   );
@@ -28,14 +25,11 @@ function ThumbUpIcon({ filled }) {
 
 function ThumbDownIcon({ filled }) {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="yt-comment-thumb-icon" fill="none">
+    <svg viewBox="0 0 24 24" className="yt-vote-svg" aria-hidden="true">
       <path
-        d="M17 14V2M17 14l-4 6-1.5-1L8 12H4V6a2 2 0 0 1 2-2h11"
-        fill={filled ? "currentColor" : "none"}
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.37-.36.59-.86.59-1.41V9h3.5c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"
+        fill="currentColor"
+        opacity={filled ? 1 : 0.72}
       />
     </svg>
   );
@@ -206,7 +200,7 @@ function CommentNode({
             <div className="yt-comment-reactions">
               <button
                 type="button"
-                className={`yt-comment-icon-btn${comment.likedByMe ? " is-active" : ""}`}
+                className={`yt-vote-btn${comment.likedByMe ? " is-active" : ""}`}
                 onClick={() => void toggleLike()}
                 disabled={likeBusy}
                 aria-pressed={comment.likedByMe}
@@ -214,12 +208,12 @@ function CommentNode({
               >
                 <ThumbUpIcon filled={comment.likedByMe} />
               </button>
-              {comment.likeCount > 0 ? (
-                <span className="yt-comment-reaction-count">{comment.likeCount}</span>
-              ) : null}
+              <span className={`yt-vote-count${comment.likeCount > 0 ? "" : " is-empty"}`}>
+                {comment.likeCount > 0 ? comment.likeCount : ""}
+              </span>
               <button
                 type="button"
-                className={`yt-comment-icon-btn yt-comment-icon-btn-dislike${comment.dislikedByMe ? " is-active" : ""}`}
+                className={`yt-vote-btn yt-vote-btn-down${comment.dislikedByMe ? " is-active" : ""}`}
                 onClick={() => void toggleDislike()}
                 disabled={dislikeBusy}
                 aria-pressed={comment.dislikedByMe}
