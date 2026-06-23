@@ -34,6 +34,14 @@ export async function ensureVideoCommentsTables(pool) {
       primary key (comment_id, user_id)
     )
   `);
+  await pool.query(`
+    create table if not exists video_comment_dislikes (
+      comment_id bigint not null references video_comments(id) on delete cascade,
+      user_id bigint not null references users(id) on delete cascade,
+      created_at timestamptz not null default now(),
+      primary key (comment_id, user_id)
+    )
+  `);
 }
 
 function isAdminUser(user) {
@@ -54,7 +62,9 @@ function mapMemComment(row, memState, currentUserId, resolveCommentAuthor) {
     createdAt: row.createdAt,
     author: mapMemAuthor(row.userId, resolveCommentAuthor),
     likeCount: countMemLikes(memState, row.id),
-    likedByMe: memLikedByUser(memState, row.id, currentUserId)
+    likedByMe: memLikedByUser(memState, row.id, currentUserId),
+    dislikeCount: countMemDislikes(memState, row.id),
+    dislikedByMe: memDislikedByUser(memState, row.id, currentUserId)
   };
 }
 
@@ -64,6 +74,35 @@ function countMemLikes(memState, commentId) {
 
 function memLikedByUser(memState, commentId, userId) {
   return memState.videoCommentLikes.some((l) => l.commentId === commentId && l.userId === userId);
+}
+
+function countMemDislikes(memState, commentId) {
+  return memState.videoCommentDislikes.filter((d) => d.commentId === commentId).length;
+}
+
+function memDislikedByUser(memState, commentId, userId) {
+  return memState.videoCommentDislikes.some((d) => d.commentId === commentId && d.userId === userId);
+}
+
+function clearMemDislike(memState, commentId, userId) {
+  const idx = memState.videoCommentDislikes.findIndex(
+    (d) => d.commentId === commentId && d.userId === userId
+  );
+  if (idx >= 0) memState.videoCommentDislikes.splice(idx, 1);
+}
+
+function clearMemLike(memState, commentId, userId) {
+  const idx = memState.videoCommentLikes.findIndex((l) => l.commentId === commentId && l.userId === userId);
+  if (idx >= 0) memState.videoCommentLikes.splice(idx, 1);
+}
+
+function memReactionPayload(memState, commentId, userId) {
+  return {
+    likeCount: countMemLikes(memState, commentId),
+    likedByMe: memLikedByUser(memState, commentId, userId),
+    dislikeCount: countMemDislikes(memState, commentId),
+    dislikedByMe: memDislikedByUser(memState, commentId, userId)
+  };
 }
 
 export function registerVideoCommentRoutes(app, deps) {
@@ -110,7 +149,9 @@ export function registerVideoCommentRoutes(app, deps) {
                 u.nickname as "authorNickname",
                 (u.subscription_type = 'admin') as "authorIsAdmin",
                 coalesce(lc.cnt, 0)::int as "likeCount",
-                (my_like.user_id is not null) as "likedByMe"
+                (my_like.user_id is not null) as "likedByMe",
+                coalesce(dc.cnt, 0)::int as "dislikeCount",
+                (my_dislike.user_id is not null) as "dislikedByMe"
          from video_comments c
          join users u on u.id = c.user_id
          left join lateral (
@@ -118,8 +159,15 @@ export function registerVideoCommentRoutes(app, deps) {
            from video_comment_likes l
            where l.comment_id = c.id
          ) lc on true
+         left join lateral (
+           select count(*)::int as cnt
+           from video_comment_dislikes d
+           where d.comment_id = c.id
+         ) dc on true
          left join video_comment_likes my_like
            on my_like.comment_id = c.id and my_like.user_id = $2
+         left join video_comment_dislikes my_dislike
+           on my_dislike.comment_id = c.id and my_dislike.user_id = $2
          where c.video_id = $1
          order by c.created_at asc, c.id asc`,
         [videoId, currentUserId]
@@ -138,7 +186,9 @@ export function registerVideoCommentRoutes(app, deps) {
           isAdmin: Boolean(row.authorIsAdmin)
         },
         likeCount: row.likeCount,
-        likedByMe: Boolean(row.likedByMe)
+        likedByMe: Boolean(row.likedByMe),
+        dislikeCount: row.dislikeCount,
+        dislikedByMe: Boolean(row.dislikedByMe)
       }));
 
       return res.json({ comments });
@@ -222,7 +272,9 @@ export function registerVideoCommentRoutes(app, deps) {
           isAdmin: isAdminUser(author)
         },
         likeCount: 0,
-        likedByMe: false
+        likedByMe: false,
+        dislikeCount: 0,
+        dislikedByMe: false
       });
     } catch (error) {
       return res.status(500).json({ message: "Failed to create comment", error: error.message });
@@ -243,15 +295,16 @@ export function registerVideoCommentRoutes(app, deps) {
         const idx = memState.videoCommentLikes.findIndex(
           (l) => l.commentId === commentId && l.userId === currentUserId
         );
-        let liked;
         if (idx >= 0) {
           memState.videoCommentLikes.splice(idx, 1);
-          liked = false;
         } else {
+          clearMemDislike(memState, commentId, currentUserId);
           memState.videoCommentLikes.push({ commentId, userId: currentUserId });
-          liked = true;
         }
-        return res.json({ liked, likeCount: countMemLikes(memState, commentId) });
+        return res.json({
+          liked: memLikedByUser(memState, commentId, currentUserId),
+          ...memReactionPayload(memState, commentId, currentUserId)
+        });
       }
 
       const commentResult = await pool.query(`select id from video_comments where id = $1 limit 1`, [commentId]);
@@ -261,27 +314,110 @@ export function registerVideoCommentRoutes(app, deps) {
         `select 1 from video_comment_likes where comment_id = $1 and user_id = $2 limit 1`,
         [commentId, currentUserId]
       );
-      let liked;
       if (existing.rows[0]) {
         await pool.query(`delete from video_comment_likes where comment_id = $1 and user_id = $2`, [
           commentId,
           currentUserId
         ]);
-        liked = false;
       } else {
+        await pool.query(`delete from video_comment_dislikes where comment_id = $1 and user_id = $2`, [
+          commentId,
+          currentUserId
+        ]);
         await pool.query(`insert into video_comment_likes (comment_id, user_id) values ($1, $2)`, [
           commentId,
           currentUserId
         ]);
-        liked = true;
       }
-      const countResult = await pool.query(
-        `select count(*)::int as total from video_comment_likes where comment_id = $1`,
-        [commentId]
+
+      const counts = await pool.query(
+        `select
+           (select count(*)::int from video_comment_likes where comment_id = $1) as "likeCount",
+           (select count(*)::int from video_comment_dislikes where comment_id = $1) as "dislikeCount",
+           exists(select 1 from video_comment_likes where comment_id = $1 and user_id = $2) as "likedByMe",
+           exists(select 1 from video_comment_dislikes where comment_id = $1 and user_id = $2) as "dislikedByMe"`,
+        [commentId, currentUserId]
       );
-      return res.json({ liked, likeCount: countResult.rows[0]?.total || 0 });
+      const row = counts.rows[0];
+      return res.json({
+        liked: Boolean(row.likedByMe),
+        likeCount: row.likeCount,
+        likedByMe: Boolean(row.likedByMe),
+        dislikeCount: row.dislikeCount,
+        dislikedByMe: Boolean(row.dislikedByMe)
+      });
     } catch (error) {
       return res.status(500).json({ message: "Failed to toggle like", error: error.message });
+    }
+  });
+
+  app.post("/video-comments/:commentId/dislike", auth, async (req, res) => {
+    try {
+      const commentId = Number(req.params.commentId);
+      const currentUserId = Number(req.user.userId);
+      if (!Number.isFinite(commentId)) {
+        return res.status(400).json({ message: "Invalid commentId" });
+      }
+
+      if (!isDbReady()) {
+        const comment = memState.videoComments.find((c) => c.id === commentId);
+        if (!comment) return res.status(404).json({ message: "Comment not found" });
+        const idx = memState.videoCommentDislikes.findIndex(
+          (d) => d.commentId === commentId && d.userId === currentUserId
+        );
+        if (idx >= 0) {
+          memState.videoCommentDislikes.splice(idx, 1);
+        } else {
+          clearMemLike(memState, commentId, currentUserId);
+          memState.videoCommentDislikes.push({ commentId, userId: currentUserId });
+        }
+        return res.json({
+          disliked: memDislikedByUser(memState, commentId, currentUserId),
+          ...memReactionPayload(memState, commentId, currentUserId)
+        });
+      }
+
+      const commentResult = await pool.query(`select id from video_comments where id = $1 limit 1`, [commentId]);
+      if (!commentResult.rows[0]) return res.status(404).json({ message: "Comment not found" });
+
+      const existing = await pool.query(
+        `select 1 from video_comment_dislikes where comment_id = $1 and user_id = $2 limit 1`,
+        [commentId, currentUserId]
+      );
+      if (existing.rows[0]) {
+        await pool.query(`delete from video_comment_dislikes where comment_id = $1 and user_id = $2`, [
+          commentId,
+          currentUserId
+        ]);
+      } else {
+        await pool.query(`delete from video_comment_likes where comment_id = $1 and user_id = $2`, [
+          commentId,
+          currentUserId
+        ]);
+        await pool.query(`insert into video_comment_dislikes (comment_id, user_id) values ($1, $2)`, [
+          commentId,
+          currentUserId
+        ]);
+      }
+
+      const counts = await pool.query(
+        `select
+           (select count(*)::int from video_comment_likes where comment_id = $1) as "likeCount",
+           (select count(*)::int from video_comment_dislikes where comment_id = $1) as "dislikeCount",
+           exists(select 1 from video_comment_likes where comment_id = $1 and user_id = $2) as "likedByMe",
+           exists(select 1 from video_comment_dislikes where comment_id = $1 and user_id = $2) as "dislikedByMe"`,
+        [commentId, currentUserId]
+      );
+      const row = counts.rows[0];
+      return res.json({
+        disliked: Boolean(row.dislikedByMe),
+        likeCount: row.likeCount,
+        likedByMe: Boolean(row.likedByMe),
+        dislikeCount: row.dislikeCount,
+        dislikedByMe: Boolean(row.dislikedByMe)
+      });
+    } catch (error) {
+      return res.status(500).json({ message: "Failed to toggle dislike", error: error.message });
     }
   });
 

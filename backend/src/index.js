@@ -89,6 +89,8 @@ const memState = {
   videoComments: [],
   /** @type {Array<{ commentId: number; userId: number }>} */
   videoCommentLikes: [],
+  /** @type {Array<{ commentId: number; userId: number }>} */
+  videoCommentDislikes: [],
   /** @type {Map<string, string>} key: `${userId}:${role}` => ISO timestamp */
   supportLastRead: new Map(),
   /** @type {Array<{ id: number; code: string; discountType: string; discountValue: number; maxUses: number | null; usesCount: number; expiresAt: string | null; active: boolean; createdAt: string; updatedAt: string }>} */
