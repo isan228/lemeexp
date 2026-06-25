@@ -33,3 +33,19 @@ export function getVideoWatchProgressPercent(watchedSeconds, durationSeconds, vi
   if (d > 0) return Math.min(100, Math.round((w / d) * 100));
   return Math.min(100, Math.round((w / 600) * 100));
 }
+
+/** Сводный прогресс главы по всем видео (среднее по урокам, 0–100). */
+export function getChapterWatchProgressPercent(videos, watchedSecondsMap, videoCompletedMap) {
+  const list = Array.isArray(videos) ? videos : [];
+  if (list.length === 0) return 0;
+  let sum = 0;
+  for (const v of list) {
+    sum += getVideoWatchProgressPercent(
+      getVideoWatchedSeconds(watchedSecondsMap, v.id),
+      Number(v.duration) || 0,
+      videoCompletedMap,
+      v.id
+    );
+  }
+  return Math.round(sum / list.length);
+}

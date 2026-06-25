@@ -2,12 +2,15 @@ import { Link, useParams } from "react-router-dom";
 import PageHeader from "../../components/PageHeader.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { routes } from "../../config/site.js";
+import { getChapterWatchProgressPercent } from "../../utils/videoProgress.js";
 
 export default function ChaptersList() {
   const { subjectId } = useParams();
   const id = Number(subjectId);
-  const { chapters, catalogLoading } = useAuth();
+  const { chapters, catalogLoading, progress } = useAuth();
   const subject = chapters.find((c) => Number(c.id) === id);
+  const watched = progress?.watchedSeconds || {};
+  const videoCompleted = progress?.videoCompleted || {};
 
   if (catalogLoading) {
     return (
@@ -42,20 +45,52 @@ export default function ChaptersList() {
       </nav>
       <PageHeader kicker="Главы" title={subject.title} intro="Выберите главу, чтобы открыть список видео." />
       <ul className="chapter-link-list">
-        {(subject.subtopics || []).map((ch, index) => (
-          <li key={ch.id}>
-            <Link to={routes.lessonChapter(subject.id, ch.id)} className="chapter-row card">
-              <span className="chapter-row-num">{index + 1}</span>
-              <span className="chapter-row-body">
-                <span className="chapter-title">{ch.title}</span>
-                <span className="muted small">{ch.videos?.length || 0} видео</span>
-              </span>
-              <span className="chapter-row-arrow" aria-hidden="true">
-                →
-              </span>
-            </Link>
-          </li>
-        ))}
+        {(subject.subtopics || []).map((ch, index) => {
+          const videosN = ch.videos?.length || 0;
+          const progressPct = getChapterWatchProgressPercent(ch.videos, watched, videoCompleted);
+          const completed = progressPct >= 100 && videosN > 0;
+          const hasPartialProgress = progressPct > 0 && !completed;
+          const rowClass = [
+            "chapter-item",
+            "card",
+            completed ? "is-complete" : "",
+            hasPartialProgress ? "has-progress" : ""
+          ]
+            .filter(Boolean)
+            .join(" ");
+
+          return (
+            <li key={ch.id} className={rowClass}>
+              <Link to={routes.lessonChapter(subject.id, ch.id)} className="chapter-row">
+                <span
+                  className="video-lesson-progress-fill"
+                  style={{ width: `${progressPct}%` }}
+                  aria-hidden="true"
+                />
+                <div
+                  className="chapter-row-inner"
+                  role="progressbar"
+                  aria-valuenow={progressPct}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label={`${ch.title}, просмотрено ${progressPct}%`}
+                >
+                  <span className="chapter-row-num">{index + 1}</span>
+                  <span className="chapter-row-body">
+                    <span className="chapter-title">{ch.title}</span>
+                    <span className="muted small">
+                      {videosN} {videosN === 1 ? "видео" : "видео"}
+                      {progressPct > 0 ? ` · ${progressPct}%` : ""}
+                    </span>
+                  </span>
+                  <span className="chapter-row-arrow" aria-hidden="true">
+                    →
+                  </span>
+                </div>
+              </Link>
+            </li>
+          );
+        })}
       </ul>
       {(subject.subtopics || []).length === 0 && (
         <div className="empty-state card">
