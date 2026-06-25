@@ -7,6 +7,7 @@ import { routes } from "../config/site.js";
 const NAV = [
   { to: routes.learningHome, end: true, icon: "home", label: "Главная" },
   { to: routes.learningLessons, icon: "lessons", label: "Уроки" },
+  { to: routes.learningLeaderboard, icon: "leaderboard", label: "Рейтинг" },
   { to: routes.learningProfile, icon: "profile", label: "Профиль" },
   { to: routes.learningSupport, icon: "support", label: "Поддержка" }
 ];

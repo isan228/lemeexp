@@ -8,6 +8,7 @@ import LoginPage from "./pages/LoginPage.jsx";
 import PaymentPage from "./pages/PaymentStubPage.jsx";
 import PaymentSuccessPage from "./pages/PaymentSuccessPage.jsx";
 import ProfilePage from "./pages/ProfilePage.jsx";
+import LeaderboardPage from "./pages/LeaderboardPage.jsx";
 import RegisterPage from "./pages/RegisterPage.jsx";
 import SupportPage from "./pages/SupportPage.jsx";
 import LessonsRoutes from "./pages/lessons/LessonsRoutes.jsx";
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="home" element={<HomePage />} />
           <Route path="lessons/*" element={<LessonsRoutes />} />
           <Route path="profile" element={<ProfilePage />} />
+          <Route path="leaderboard" element={<LeaderboardPage />} />
           <Route path="support" element={<SupportPage />} />
         </Route>
       </Route>

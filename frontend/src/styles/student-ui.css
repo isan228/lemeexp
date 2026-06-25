@@ -1149,6 +1149,15 @@ select:focus {
   color: var(--med-primary);
 }
 
+.leaderboard-page-rank {
+  margin: 0 0 var(--med-space-4);
+  font-size: 0.95rem;
+}
+
+.profile-leaderboard .profile-leaderboard-list {
+  margin-top: 0;
+}
+
 .profile-leaderboard-loading,
 .profile-leaderboard-empty,
 .profile-leaderboard-hint {

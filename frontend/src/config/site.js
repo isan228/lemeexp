@@ -26,6 +26,7 @@ export const routes = {
   learningHome: "/learning/home",
   learningLessons: "/learning/lessons",
   learningProfile: "/learning/profile",
+  learningLeaderboard: "/learning/leaderboard",
   learningSupport: "/learning/support",
   learningSupportLesson(videoId, videoTitle) {
     const params = new URLSearchParams({ videoId: String(videoId) });
