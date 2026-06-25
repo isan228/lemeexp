@@ -143,11 +143,20 @@ export default function VideosLesson() {
           const labelText = (() => {
             if (locked) return "По подписке";
             if (completed) return "Просмотрено";
-            if (hasPartialProgress) return "Продолжить урок";
-            if (isNext) return "Следующий урок";
-            if (processing) return "Подготовка видео";
+            if (hasPartialProgress) return "Продолжить";
+            if (isNext) return "Следующий";
+            if (processing) return "Подготовка";
             if (!ready) return "Загрузка";
             return "Урок";
+          })();
+
+          const labelTone = (() => {
+            if (locked) return "locked";
+            if (completed) return "complete";
+            if (hasPartialProgress) return "progress";
+            if (isNext) return "next";
+            if (processing || !ready) return "pending";
+            return "default";
           })();
 
           const rowBody = (
@@ -166,17 +175,34 @@ export default function VideosLesson() {
                 aria-label={`${v.title}, просмотрено ${progressPct}%`}
               >
                 <div className="video-lesson-body">
-                  <span className="video-lesson-label">{labelText}</span>
-                  <strong className="video-lesson-title">
-                    {index + 1}. {v.title}
-                  </strong>
-                  <span className="video-lesson-meta">
-                    {subject.title} · {chapter.title}
-                    {v.isTrial ? " · Пробник" : null}
-                    {!locked && ready && !completed && formatDurationLabel(v.duration)
-                      ? ` · ${formatDurationLabel(v.duration)}`
-                      : null}
-                  </span>
+                  <span className={`video-lesson-label is-${labelTone}`}>{labelText}</span>
+                  <h3 className="video-lesson-title">
+                    <span className="video-lesson-num">{index + 1}.</span>
+                    <span className="video-lesson-title-text">{v.title}</span>
+                  </h3>
+                  <p className="video-lesson-meta">
+                    <span className="video-lesson-meta-subject">{subject.title}</span>
+                    <span className="video-lesson-meta-sep" aria-hidden="true">
+                      ·
+                    </span>
+                    <span className="video-lesson-meta-chapter">{chapter.title}</span>
+                    {v.isTrial ? (
+                      <>
+                        <span className="video-lesson-meta-sep" aria-hidden="true">
+                          ·
+                        </span>
+                        <span className="video-lesson-meta-trial">Пробник</span>
+                      </>
+                    ) : null}
+                    {!locked && ready && !completed && formatDurationLabel(v.duration) ? (
+                      <>
+                        <span className="video-lesson-meta-sep" aria-hidden="true">
+                          ·
+                        </span>
+                        <span className="video-lesson-meta-duration">{formatDurationLabel(v.duration)}</span>
+                      </>
+                    ) : null}
+                  </p>
                 </div>
                 <LessonPlayButton locked={locked} ready={ready} />
               </div>
