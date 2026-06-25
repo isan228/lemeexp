@@ -1144,6 +1144,98 @@ select:focus {
   color: var(--med-primary);
 }
 
+/* ----- Weekly leaderboard ----- */
+.profile-leaderboard-you strong {
+  color: var(--med-primary);
+}
+
+.profile-leaderboard-loading,
+.profile-leaderboard-empty,
+.profile-leaderboard-hint {
+  margin: 0;
+}
+
+.profile-leaderboard-list {
+  list-style: none;
+  margin: var(--med-space-4) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.profile-leaderboard-item,
+.profile-leaderboard-self {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--med-radius-sm);
+  border: 1px solid var(--med-border-soft);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.profile-leaderboard-self {
+  margin-top: var(--med-space-4);
+  border-color: rgba(62, 105, 174, 0.28);
+  background: rgba(62, 105, 174, 0.08);
+}
+
+.profile-leaderboard-item.is-you {
+  border-color: rgba(62, 105, 174, 0.35);
+  background: rgba(62, 105, 174, 0.1);
+  box-shadow: inset 3px 0 0 var(--med-primary);
+}
+
+.profile-leaderboard-item.is-top-1 .profile-leaderboard-rank {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.profile-leaderboard-item.is-top-2 .profile-leaderboard-rank {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.profile-leaderboard-item.is-top-3 .profile-leaderboard-rank {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
+.profile-leaderboard-rank {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--med-primary-weak);
+  color: var(--med-primary);
+  font-size: 13px;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+}
+
+.profile-leaderboard-name {
+  font-weight: 600;
+  color: var(--med-text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-leaderboard-time {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--med-text-secondary);
+  white-space: nowrap;
+}
+
+.profile-leaderboard-item.is-you .profile-leaderboard-time,
+.profile-leaderboard-self .profile-leaderboard-time {
+  color: var(--med-primary-hover);
+}
+
 /* legacy profile dl (App.css) — keep row helper for any older markup */
 .profile-dl-v2 {
   flex: 1;

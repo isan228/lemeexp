@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { SUBSCRIPTION_PLAN } from "../config/billing.js";
@@ -41,7 +42,7 @@ function daysUntilExpiry(iso) {
 }
 
 export default function ProfilePage() {
-  const { profile, progress, chapters } = useAuth();
+  const { profile, progress, chapters, apiRequest } = useAuth();
   const fullAccess = hasFullAccess(profile);
   const subscriptionType = profile?.subscriptionType || "free";
   const plan = fullAccess ? PLAN_LABELS[subscriptionType] || subscriptionType : PLAN_LABELS.free;
@@ -58,6 +59,32 @@ export default function ProfilePage() {
   const weekWatched = sumLast7DaysSeconds(progress.watchStats);
   const dailyRecord = getDailyWatchRecord(progress.watchStats);
   const continueLesson = findContinueLesson(chapters, progress.lastVideoId);
+  const [leaderboard, setLeaderboard] = useState(null);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiRequest("/leaderboard/weekly?limit=10");
+        if (!cancelled && res.ok) {
+          setLeaderboard(await res.json());
+        }
+      } finally {
+        if (!cancelled) setLeaderboardLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiRequest]);
+
+  const currentInLeaderboard = leaderboard?.entries?.some((entry) => entry.isCurrentUser) ?? false;
+  const showSeparateRank =
+    leaderboard?.currentUser &&
+    !currentInLeaderboard &&
+    leaderboard.currentUser.rank != null &&
+    leaderboard.currentUser.seconds > 0;
 
   return (
     <section className="lessons-flow lessons-flow-padded profile-page">
@@ -154,6 +181,61 @@ export default function ProfilePage() {
               {continueLesson.subject.title} · {continueLesson.chapter.title}
             </span>
           </Link>
+        ) : null}
+      </article>
+
+      <article className="profile-panel card profile-leaderboard">
+        <div className="profile-panel-head">
+          <h2>Рейтинг за неделю</h2>
+          {leaderboard?.currentUser?.rank ? (
+            <span className="profile-leaderboard-you muted small">
+              Ваше место: <strong>#{leaderboard.currentUser.rank}</strong>
+            </span>
+          ) : null}
+        </div>
+        <p className="profile-panel-meta muted">Кто больше всех смотрел уроки за последние 7 дней.</p>
+
+        {leaderboardLoading ? (
+          <div className="profile-leaderboard-loading muted small">Загрузка рейтинга…</div>
+        ) : leaderboard?.entries?.length ? (
+          <ol className="profile-leaderboard-list">
+            {leaderboard.entries.map((entry) => (
+              <li
+                key={entry.userId}
+                className={`profile-leaderboard-item${entry.isCurrentUser ? " is-you" : ""}${
+                  entry.rank <= 3 ? ` is-top-${entry.rank}` : ""
+                }`}
+              >
+                <span className="profile-leaderboard-rank" aria-hidden="true">
+                  {entry.rank}
+                </span>
+                <span className="profile-leaderboard-name">
+                  {entry.isCurrentUser ? "Вы" : entry.nickname}
+                </span>
+                <span className="profile-leaderboard-time">{formatWatchDuration(entry.seconds)}</span>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="muted small profile-leaderboard-empty">
+            Пока никто не смотрел уроки на этой неделе. Будьте первым!
+          </p>
+        )}
+
+        {showSeparateRank ? (
+          <div className="profile-leaderboard-self card">
+            <span className="profile-leaderboard-rank">#{leaderboard.currentUser.rank}</span>
+            <span className="profile-leaderboard-name">Вы</span>
+            <span className="profile-leaderboard-time">
+              {formatWatchDuration(leaderboard.currentUser.seconds)}
+            </span>
+          </div>
+        ) : null}
+
+        {!leaderboardLoading && leaderboard?.currentUser?.rank == null ? (
+          <p className="profile-leaderboard-hint muted small">
+            Вы пока не в рейтинге — начните смотреть уроки, чтобы попасть в таблицу.
+          </p>
         ) : null}
       </article>
 

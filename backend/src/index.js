@@ -122,6 +122,13 @@ const demoUser = {
   examDate: "2026-11-14"
 };
 
+/** Демо-участники рейтинга (только без PostgreSQL). */
+const MEM_LEADERBOARD_DEMO = [
+  { id: 9001, nickname: "Алина М.", weekSeconds: 21_600 },
+  { id: 9002, nickname: "Дмитрий К.", weekSeconds: 18_420 },
+  { id: 9003, nickname: "Елена В.", weekSeconds: 16_200 }
+];
+
 const adminUser = {
   id: 999,
   email: adminEmail,
@@ -1349,6 +1356,136 @@ async function fetchWatchStats(userId) {
   }
 
   return { last7Days: buildLast7Days(byDate), dailyRecord };
+}
+
+function sumWeekWatchSeconds(byDate) {
+  const rangeStart = last7DaysStartKey();
+  let sum = 0;
+  for (const [date, rawSeconds] of Object.entries(byDate || {})) {
+    if (date >= rangeStart) sum += Math.max(0, Number(rawSeconds) || 0);
+  }
+  return sum;
+}
+
+function buildLeaderboardResponse(rows, currentUserId, limit) {
+  const ranked = rows
+    .filter((row) => row.seconds > 0)
+    .sort(
+      (a, b) =>
+        b.seconds - a.seconds || String(a.nickname).localeCompare(String(b.nickname), "ru")
+    )
+    .map((row, index) => ({
+      rank: index + 1,
+      userId: row.id,
+      nickname: row.nickname,
+      seconds: row.seconds,
+      isCurrentUser: Number(row.id) === Number(currentUserId)
+    }));
+
+  const currentRow = ranked.find((row) => row.isCurrentUser) || null;
+  const entries = ranked.slice(0, limit).map((row) => ({
+    rank: row.rank,
+    userId: row.userId,
+    nickname: row.nickname,
+    seconds: row.seconds,
+    isCurrentUser: row.isCurrentUser
+  }));
+
+  return {
+    entries,
+    currentUser: currentRow || {
+      rank: null,
+      userId: Number(currentUserId),
+      nickname: null,
+      seconds: 0,
+      isCurrentUser: true
+    }
+  };
+}
+
+async function fetchWeeklyLeaderboard(currentUserId, limit = 10) {
+  const safeLimit = Math.min(50, Math.max(1, Math.floor(Number(limit) || 10)));
+  const rangeStart = last7DaysStartKey();
+
+  if (!dbReady) {
+    const rows = [];
+    const seen = new Set();
+
+    for (const user of [demoUser, ...memRegisteredUsersById.values()]) {
+      if (user.subscriptionType === "admin" || user.banned) continue;
+      const seconds = sumWeekWatchSeconds(memState.watchStatsByUser.get(String(user.id)) || {});
+      rows.push({ id: user.id, nickname: user.nickname, seconds });
+      seen.add(Number(user.id));
+    }
+
+    for (const demo of MEM_LEADERBOARD_DEMO) {
+      if (seen.has(demo.id)) continue;
+      rows.push({ id: demo.id, nickname: demo.nickname, seconds: demo.weekSeconds });
+    }
+
+    const payload = buildLeaderboardResponse(rows, currentUserId, safeLimit);
+    if (!payload.currentUser.nickname) {
+      const user = await getUserRecordById(currentUserId);
+      payload.currentUser.nickname = user?.nickname || "Вы";
+    }
+    return payload;
+  }
+
+  const result = await pool.query(
+    `with weekly as (
+       select u.id, u.nickname, sum(d.seconds)::int as seconds
+       from daily_watch_stats d
+       join users u on u.id = d.user_id
+       where d.watch_date >= $1::date
+         and coalesce(u.banned, false) = false
+         and u.subscription_type <> 'admin'
+       group by u.id, u.nickname
+       having sum(d.seconds) > 0
+     ),
+     ranked as (
+       select id, nickname, seconds,
+         row_number() over (order by seconds desc, nickname asc) as rank
+       from weekly
+     )
+     select id, nickname, seconds, rank
+     from ranked
+     where rank <= $2 or id = $3
+     order by rank`,
+    [rangeStart, safeLimit, currentUserId]
+  );
+
+  const allRows = result.rows.map((row) => ({
+    id: row.id,
+    nickname: row.nickname,
+    seconds: Number(row.seconds) || 0,
+    rank: Number(row.rank) || 0
+  }));
+
+  const ranked = allRows
+    .sort((a, b) => a.rank - b.rank)
+    .map((row) => ({
+      rank: row.rank,
+      userId: row.id,
+      nickname: row.nickname,
+      seconds: row.seconds,
+      isCurrentUser: Number(row.id) === Number(currentUserId)
+    }));
+
+  const entries = ranked.filter((row) => row.rank <= safeLimit);
+  let currentUser = ranked.find((row) => row.isCurrentUser) || null;
+
+  if (!currentUser) {
+    const user = await getUserRecordById(currentUserId);
+    currentUser = {
+      rank: null,
+      userId: Number(currentUserId),
+      nickname: user?.nickname || "Вы",
+      seconds: 0,
+      isCurrentUser: true
+    };
+  }
+
+  return { entries, currentUser };
 }
 
 function watchDeltaSeconds(previousSeconds, nextSeconds) {
@@ -3440,6 +3577,16 @@ app.get("/progress", auth, async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: "Failed to load progress", error: error.message });
+  }
+});
+
+app.get("/leaderboard/weekly", auth, async (req, res) => {
+  try {
+    const limit = Number(req.query.limit) || 10;
+    const payload = await fetchWeeklyLeaderboard(req.user.userId, limit);
+    res.json(payload);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to load leaderboard", error: error.message });
   }
 });
 
