@@ -1144,6 +1144,16 @@ select:focus {
   color: var(--med-primary);
 }
 
+.support-page .support-chat-card {
+  margin-bottom: 0;
+}
+
+.support-quick-links {
+  margin-top: var(--med-space-5);
+  padding-top: 0;
+  border-top: none;
+}
+
 /* ----- Weekly leaderboard ----- */
 .profile-leaderboard-you strong {
   color: var(--med-primary);

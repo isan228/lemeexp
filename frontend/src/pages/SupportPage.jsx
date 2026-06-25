@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import PageHeader from "../components/PageHeader.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { routes } from "../config/site.js";
 import { findVideoById } from "../utils/continueLesson.js";
+
+const QUICK_LINKS = [
+  { to: routes.learningHome, label: "Главная кабинета" },
+  { to: routes.learningLessons, label: "Каталог уроков" },
+  { to: routes.learningLeaderboard, label: "Рейтинг за неделю" },
+  { to: routes.learningProfile, label: "Профиль" }
+];
 
 export default function SupportPage() {
   const [searchParams] = useSearchParams();
@@ -93,15 +101,16 @@ export default function SupportPage() {
   }
 
   return (
-    <section className="lessons-flow lessons-flow-padded">
-      <header className="student-page-head">
-        <p className="student-page-kicker">Помощь</p>
-        <h1>{videoId ? "Вопросы к уроку" : "Чат с админом"}</h1>
-        <p className="subtitle student-page-intro">
-          {videoId
+    <section className="lessons-flow lessons-flow-padded support-page">
+      <PageHeader
+        kicker="Помощь"
+        title={videoId ? "Вопросы к уроку" : "Чат с админом"}
+        intro={
+          videoId
             ? `Задайте вопрос по уроку${lessonLabel ? ` «${lessonLabel}»` : ""}.`
-            : "Пишите вопросы по урокам и доступу. Админ видит сообщения в своей панели."}
-        </p>
+            : "Пишите вопросы по урокам и доступу. Админ видит сообщения в своей панели."
+        }
+      >
         {videoId ? (
           <p className="back-row support-back-links">
             {lessonHref ? (
@@ -110,7 +119,7 @@ export default function SupportPage() {
             <Link to={routes.learningSupport}>← Общий чат</Link>
           </p>
         ) : null}
-      </header>
+      </PageHeader>
 
       <article className="card support-chat-card">
         {videoId ? (
@@ -135,7 +144,10 @@ export default function SupportPage() {
         ) : null}
 
         {loading ? (
-          <p className="muted">Загрузка переписки…</p>
+          <div className="loading-block">
+            <div className="loading-spinner" aria-hidden="true" />
+            <p className="muted">Загрузка переписки…</p>
+          </div>
         ) : (
           <div className={videoId ? "lesson-comments-list" : "support-chat-list"} ref={listRef}>
             {messages.length === 0 ? (
@@ -195,6 +207,17 @@ export default function SupportPage() {
           </form>
         ) : null}
       </article>
+
+      {!videoId ? (
+        <nav className="profile-quick-links support-quick-links" aria-label="Быстрые действия">
+          {QUICK_LINKS.map((item) => (
+            <Link key={item.to} to={item.to} className="profile-quick-link">
+              <span>{item.label}</span>
+              <span aria-hidden="true">→</span>
+            </Link>
+          ))}
+        </nav>
+      ) : null}
     </section>
   );
 }
