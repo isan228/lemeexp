@@ -27,7 +27,7 @@ export default function SubjectsIndex() {
         </div>
       ) : (
         <>
-          <div className="subject-grid">
+          <ul className="chapter-link-list">
             {chapters.map((subject, index) => {
               const chaptersN = subject.subtopics?.length || 0;
               const videosN = subjectVideoCount(subject);
@@ -35,7 +35,7 @@ export default function SubjectsIndex() {
               const completed = progressPct >= 100 && videosN > 0;
               const hasPartialProgress = progressPct > 0 && !completed;
               const rowClass = [
-                "subject-item",
+                "chapter-item",
                 "card",
                 completed ? "is-complete" : "",
                 hasPartialProgress ? "has-progress" : ""
@@ -44,37 +44,39 @@ export default function SubjectsIndex() {
                 .join(" ");
 
               return (
-                <div key={subject.id} className={rowClass}>
-                  <Link to={routes.lessonSubject(subject.id)} className="subject-card">
+                <li key={subject.id} className={rowClass}>
+                  <Link to={routes.lessonSubject(subject.id)} className="chapter-row">
                     <span
                       className="video-lesson-progress-fill"
                       style={{ width: `${progressPct}%` }}
                       aria-hidden="true"
                     />
                     <div
-                      className="subject-card-inner"
+                      className="chapter-row-inner"
                       role="progressbar"
                       aria-valuenow={progressPct}
                       aria-valuemin={0}
                       aria-valuemax={100}
                       aria-label={`${subject.title}, просмотрено ${progressPct}%`}
                     >
-                      <span className="subject-card-num">{String(index + 1).padStart(2, "0")}</span>
-                      <h3>{subject.title}</h3>
-                      <p className="muted small">
-                        {chaptersN} {chaptersN === 1 ? "глава" : "глав"} · {videosN}{" "}
-                        {videosN === 1 ? "урок" : "уроков"}
-                        {progressPct > 0 ? ` · ${progressPct}%` : ""}
-                      </p>
-                      <span className="subject-card-arrow" aria-hidden="true">
+                      <span className="chapter-row-num">{index + 1}</span>
+                      <span className="chapter-row-body">
+                        <span className="chapter-title">{subject.title}</span>
+                        <span className="muted small">
+                          {chaptersN} {chaptersN === 1 ? "глава" : "глав"} · {videosN}{" "}
+                          {videosN === 1 ? "урок" : "уроков"}
+                          {progressPct > 0 ? ` · ${progressPct}%` : ""}
+                        </span>
+                      </span>
+                      <span className="chapter-row-arrow" aria-hidden="true">
                         →
                       </span>
                     </div>
                   </Link>
-                </div>
+                </li>
               );
             })}
-          </div>
+          </ul>
           {chapters.length === 0 && (
             <div className="empty-state card">
               <p>Каталог пока пуст.</p>
