@@ -1261,6 +1261,39 @@ function buildLast7Days(byDate) {
   return days;
 }
 
+function findDailyWatchRecord(byDate) {
+  let bestDate = null;
+  let bestSeconds = 0;
+  for (const [date, rawSeconds] of Object.entries(byDate || {})) {
+    const seconds = Math.max(0, Number(rawSeconds) || 0);
+    if (seconds > bestSeconds) {
+      bestSeconds = seconds;
+      bestDate = date;
+    }
+  }
+  if (!bestDate || bestSeconds <= 0) return null;
+  return { date: bestDate, seconds: bestSeconds };
+}
+
+async function fetchDailyWatchRecord(userId) {
+  if (!dbReady) {
+    return findDailyWatchRecord(memState.watchStatsByUser.get(String(userId)) || {});
+  }
+  const result = await pool.query(
+    `select watch_date::text as watch_date, seconds
+     from daily_watch_stats
+     where user_id = $1
+     order by seconds desc, watch_date desc
+     limit 1`,
+    [userId]
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  const seconds = Math.max(0, Number(row.seconds) || 0);
+  if (seconds <= 0) return null;
+  return { date: row.watch_date, seconds };
+}
+
 function seedDemoWatchStats() {
   const demoSeconds = [1800, 2400, 3600, 1200, 5400, 2700, 3720];
   const byDate = {};
@@ -1296,10 +1329,11 @@ async function addWatchTime(userId, deltaSeconds) {
 
 async function fetchWatchStats(userId) {
   const rangeStart = last7DaysStartKey();
+  const dailyRecord = await fetchDailyWatchRecord(userId);
 
   if (!dbReady) {
     const byDate = memState.watchStatsByUser.get(String(userId)) || {};
-    return { last7Days: buildLast7Days(byDate) };
+    return { last7Days: buildLast7Days(byDate), dailyRecord };
   }
 
   const result = await pool.query(
@@ -1314,7 +1348,7 @@ async function fetchWatchStats(userId) {
     byDate[row.watch_date] = Number(row.seconds) || 0;
   }
 
-  return { last7Days: buildLast7Days(byDate) };
+  return { last7Days: buildLast7Days(byDate), dailyRecord };
 }
 
 function watchDeltaSeconds(previousSeconds, nextSeconds) {

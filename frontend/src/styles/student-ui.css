@@ -903,7 +903,7 @@ select:focus {
 
 .profile-stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: var(--med-space-4);
 }
 
@@ -933,6 +933,10 @@ select:focus {
   font-size: 0.82rem;
   line-height: 1.35;
   color: var(--med-text-secondary);
+}
+
+.profile-stat-sublabel {
+  color: var(--med-muted-light);
 }
 
 .profile-panel {

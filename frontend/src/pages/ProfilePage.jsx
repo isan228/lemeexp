@@ -4,7 +4,7 @@ import { SUBSCRIPTION_PLAN } from "../config/billing.js";
 import { routes, GET_ACCESS_LABEL } from "../config/site.js";
 import { countCatalogStats, findContinueLesson } from "../utils/continueLesson.js";
 import { formatSubscriptionExpiry, hasFullAccess } from "../utils/subscription.js";
-import { formatWatchDuration, normalizeLast7Days } from "../utils/watchTime.js";
+import { formatWatchDuration, formatWatchDateRu, getDailyWatchRecord, normalizeLast7Days } from "../utils/watchTime.js";
 
 const PLAN_LABELS = {
   free: "Пробный доступ",
@@ -56,6 +56,7 @@ export default function ProfilePage() {
   const catalog = countCatalogStats(chapters);
   const totalWatched = sumWatchedSeconds(progress.watchedSeconds);
   const weekWatched = sumLast7DaysSeconds(progress.watchStats);
+  const dailyRecord = getDailyWatchRecord(progress.watchStats);
   const continueLesson = findContinueLesson(chapters, progress.lastVideoId);
 
   return (
@@ -107,6 +108,17 @@ export default function ProfilePage() {
         <article className="profile-stat card">
           <span className="profile-stat-value">{formatWatchDuration(weekWatched)}</span>
           <span className="profile-stat-label">Просмотр за 7 дней</span>
+        </article>
+        <article className="profile-stat card">
+          <span className="profile-stat-value">
+            {dailyRecord ? formatWatchDuration(dailyRecord.seconds) : "—"}
+          </span>
+          <span className="profile-stat-label">
+            Рекорд за день
+            {dailyRecord ? (
+              <span className="profile-stat-sublabel"> · {formatWatchDateRu(dailyRecord.date)}</span>
+            ) : null}
+          </span>
         </article>
       </div>
 

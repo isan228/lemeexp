@@ -42,3 +42,26 @@ export function normalizeLast7Days(watchStats) {
   }
   return emptyLast7Days();
 }
+
+/** Рекорд просмотра за один день (с бэка или максимум из last7Days). */
+export function getDailyWatchRecord(watchStats) {
+  const record = watchStats?.dailyRecord;
+  if (record?.date && Number(record.seconds) > 0) {
+    return { date: record.date, seconds: Math.max(0, Number(record.seconds) || 0) };
+  }
+  let best = { date: null, seconds: 0 };
+  for (const day of normalizeLast7Days(watchStats)) {
+    const seconds = Math.max(0, Number(day.seconds) || 0);
+    if (seconds > best.seconds) {
+      best = { date: day.date, seconds };
+    }
+  }
+  return best.seconds > 0 ? best : null;
+}
+
+export function formatWatchDateRu(isoDate) {
+  if (!isoDate) return null;
+  const date = new Date(`${isoDate}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+}
