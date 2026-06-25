@@ -49,3 +49,9 @@ export function getChapterWatchProgressPercent(videos, watchedSecondsMap, videoC
   }
   return Math.round(sum / list.length);
 }
+
+/** Сводный прогресс предмета по всем видео (среднее по урокам, 0–100). */
+export function getSubjectWatchProgressPercent(subject, watchedSecondsMap, videoCompletedMap) {
+  const videos = (subject?.subtopics || []).flatMap((ch) => ch.videos || []);
+  return getChapterWatchProgressPercent(videos, watchedSecondsMap, videoCompletedMap);
+}
