@@ -5,12 +5,49 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { routes } from "../config/site.js";
 import { findVideoById } from "../utils/continueLesson.js";
 
-const QUICK_LINKS = [
-  { to: routes.learningHome, label: "Главная кабинета" },
-  { to: routes.learningLessons, label: "Каталог уроков" },
-  { to: routes.learningLeaderboard, label: "Рейтинг за неделю" },
-  { to: routes.learningProfile, label: "Профиль" }
-];
+function formatMessageTime(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("ru-RU", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function ChatMessage({ message, profile, showLessonTag }) {
+  const mine = message.senderRole !== "admin";
+  const name = mine ? profile?.nickname || "Вы" : "Ментор";
+  const initial = (mine ? profile?.nickname || "Вы" : "M").slice(0, 1).toUpperCase();
+
+  return (
+    <div className={`support-chat-row${mine ? " is-mine" : " is-theirs"}`}>
+      {!mine ? (
+        <span className="support-chat-avatar is-mentor" aria-hidden="true">
+          {initial}
+        </span>
+      ) : null}
+      <div className="support-chat-bubble">
+        <div className="support-chat-bubble-head">
+          <strong>{name}</strong>
+          <time dateTime={message.createdAt}>{formatMessageTime(message.createdAt)}</time>
+        </div>
+        {showLessonTag && (message.videoTitle || message.videoId) ? (
+          <span className="support-chat-lesson-tag">
+            Урок: {message.videoTitle || `#${message.videoId}`}
+          </span>
+        ) : null}
+        <p className="support-chat-text">{message.text}</p>
+      </div>
+      {mine ? (
+        <span className="support-chat-avatar is-you" aria-hidden="true">
+          {initial}
+        </span>
+      ) : null}
+    </div>
+  );
+}
 
 export default function SupportPage() {
   const [searchParams] = useSearchParams();
@@ -73,7 +110,7 @@ export default function SupportPage() {
     const el = listRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [messages]);
+  }, [messages, loading]);
 
   async function sendMessage(e) {
     e.preventDefault();
@@ -100,15 +137,19 @@ export default function SupportPage() {
     }
   }
 
+  const placeholder = videoId
+    ? "Задайте вопрос по этому уроку…"
+    : "Напишите сообщение ментору…";
+
   return (
     <section className="lessons-flow lessons-flow-padded support-page">
       <PageHeader
         kicker="Помощь"
-        title={videoId ? "Вопросы к уроку" : "Чат с админом"}
+        title={videoId ? "Вопросы к уроку" : "Чат с ментором"}
         intro={
           videoId
             ? `Задайте вопрос по уроку${lessonLabel ? ` «${lessonLabel}»` : ""}.`
-            : "Пишите вопросы по урокам и доступу. Админ видит сообщения в своей панели."
+            : "Вопросы по урокам, доступу и подготовке к экзаменам."
         }
       >
         {videoId ? (
@@ -121,103 +162,87 @@ export default function SupportPage() {
         ) : null}
       </PageHeader>
 
-      <article className="card support-chat-card">
-        {videoId ? (
-          <form className="lesson-comment-form" onSubmit={sendMessage}>
-            <div className="lesson-comment-input-row">
-              <span className="lesson-comment-avatar">{(profile?.nickname || "Вы").slice(0, 1).toUpperCase()}</span>
-              <textarea
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                rows={2}
-                maxLength={2000}
-                placeholder="Добавьте вопрос к этому уроку..."
-                className="admin-textarea"
+      <article className="card support-chat-shell">
+        <header className="support-chat-toolbar">
+          <div className="support-chat-toolbar-main">
+            <span className="support-chat-toolbar-dot" aria-hidden="true" />
+            <div>
+              <strong className="support-chat-toolbar-title">Let me explain · Поддержка</strong>
+              <p className="support-chat-toolbar-sub muted small">Обычно отвечаем в течение дня</p>
+            </div>
+          </div>
+          {videoId && lessonLabel ? (
+            <span className="support-chat-toolbar-lesson">{lessonLabel}</span>
+          ) : null}
+        </header>
+
+        <div className="support-chat-messages" ref={listRef} aria-live="polite">
+          {loading ? (
+            <div className="support-chat-state">
+              <div className="loading-spinner" aria-hidden="true" />
+              <p className="muted">Загрузка переписки…</p>
+            </div>
+          ) : messages.length === 0 ? (
+            <div className="support-chat-state support-chat-empty">
+              <span className="support-chat-empty-icon" aria-hidden="true" />
+              <p>
+                {videoId
+                  ? "Пока нет вопросов по этому уроку."
+                  : "Диалог пока пуст — напишите первым."}
+              </p>
+              <p className="muted small">
+                {videoId
+                  ? "Опишите, что было непонятно в видео."
+                  : "Спросите про урок, доступ или подготовку к USMLE."}
+              </p>
+            </div>
+          ) : (
+            messages.map((m) => (
+              <ChatMessage
+                key={m.id}
+                message={m}
+                profile={profile}
+                showLessonTag={!videoId}
               />
-            </div>
-            <div className="lesson-comment-actions">
-              <button type="submit" className="btn-primary" disabled={sending || !text.trim()}>
-                {sending ? "Отправка…" : "Опубликовать"}
-              </button>
-            </div>
-          </form>
-        ) : null}
+            ))
+          )}
+        </div>
 
-        {loading ? (
-          <div className="loading-block">
-            <div className="loading-spinner" aria-hidden="true" />
-            <p className="muted">Загрузка переписки…</p>
-          </div>
-        ) : (
-          <div className={videoId ? "lesson-comments-list" : "support-chat-list"} ref={listRef}>
-            {messages.length === 0 ? (
-              <p className="muted">{videoId ? "Пока нет комментариев. Задайте первый вопрос." : "Пока сообщений нет. Начните диалог."}</p>
-            ) : (
-              messages.map((m) => {
-                const mine = m.senderRole !== "admin";
-                if (videoId) {
-                  return (
-                    <div key={m.id} className="lesson-comment-item">
-                      <span className={`lesson-comment-avatar ${mine ? "" : "admin"}`}>
-                        {(mine ? profile?.nickname || "Вы" : "A").slice(0, 1).toUpperCase()}
-                      </span>
-                      <div className="lesson-comment-body">
-                        <div className="lesson-comment-meta">
-                          <strong>{mine ? profile?.nickname || "Вы" : "Админ"}</strong>
-                          {!mine ? <span className="lesson-comment-badge">Автор</span> : null}
-                          <span>{new Date(m.createdAt).toLocaleString("ru-RU")}</span>
-                        </div>
-                        <p>{m.text}</p>
-                      </div>
-                    </div>
-                  );
-                }
-                return (
-                  <div key={m.id} className={mine ? "support-msg support-msg-mine" : "support-msg support-msg-admin"}>
-                    <div className="support-msg-meta">
-                      <strong>{mine ? profile?.nickname || "Вы" : "Админ"}</strong>
-                      <span>{new Date(m.createdAt).toLocaleString("ru-RU")}</span>
-                    </div>
-                    {m.videoTitle || m.videoId ? (
-                      <div className="muted small">Урок: {m.videoTitle || `#${m.videoId}`}</div>
-                    ) : null}
-                    <p>{m.text}</p>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        )}
+        {error ? <p className="form-error support-chat-error">{error}</p> : null}
 
-        {error && <p className="form-error">{error}</p>}
-
-        {!videoId ? (
-          <form className="support-chat-form" onSubmit={sendMessage}>
+        <form className="support-chat-composer" onSubmit={sendMessage}>
+          <div className="support-chat-composer-row">
+            <span className="support-chat-avatar is-you support-chat-composer-avatar" aria-hidden="true">
+              {(profile?.nickname || "Вы").slice(0, 1).toUpperCase()}
+            </span>
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
-              rows={3}
+              rows={1}
               maxLength={2000}
-              placeholder="Введите сообщение"
-              className="admin-textarea"
+              placeholder={placeholder}
+              className="support-chat-input"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  if (!sending && text.trim()) {
+                    void sendMessage(e);
+                  }
+                }
+              }}
             />
-            <button type="submit" className="btn-primary" disabled={sending || !text.trim()}>
-              {sending ? "Отправка…" : "Отправить"}
+            <button
+              type="submit"
+              className="support-chat-send"
+              disabled={sending || !text.trim()}
+              aria-label={sending ? "Отправка…" : "Отправить"}
+            >
+              {sending ? "…" : "↑"}
             </button>
-          </form>
-        ) : null}
+          </div>
+          <p className="support-chat-composer-hint muted small">Enter — отправить, Shift+Enter — новая строка</p>
+        </form>
       </article>
-
-      {!videoId ? (
-        <nav className="profile-quick-links support-quick-links" aria-label="Быстрые действия">
-          {QUICK_LINKS.map((item) => (
-            <Link key={item.to} to={item.to} className="profile-quick-link">
-              <span>{item.label}</span>
-              <span aria-hidden="true">→</span>
-            </Link>
-          ))}
-        </nav>
-      ) : null}
     </section>
   );
 }

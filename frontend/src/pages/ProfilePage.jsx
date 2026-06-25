@@ -212,25 +212,6 @@ export default function ProfilePage() {
               <dd className="profile-id">{profile?.id ?? "—"}</dd>
             </div>
           </dl>
-
-          <nav className="profile-quick-links" aria-label="Быстрые действия">
-            <Link to={routes.learningHome} className="profile-quick-link">
-              <span>Главная кабинета</span>
-              <span aria-hidden="true">→</span>
-            </Link>
-            <Link to={routes.learningLessons} className="profile-quick-link">
-              <span>Каталог уроков</span>
-              <span aria-hidden="true">→</span>
-            </Link>
-            <Link to={routes.learningLeaderboard} className="profile-quick-link">
-              <span>Рейтинг за неделю</span>
-              <span aria-hidden="true">→</span>
-            </Link>
-            <Link to={routes.learningSupport} className="profile-quick-link">
-              <span>Вопросы ментору</span>
-              <span aria-hidden="true">→</span>
-            </Link>
-          </nav>
         </article>
       </div>
     </section>
