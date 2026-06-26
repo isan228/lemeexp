@@ -118,6 +118,10 @@ export default function AdminPage() {
   const [usersError, setUsersError] = useState("");
   const [usersLoading, setUsersLoading] = useState(false);
   const [userSearch, setUserSearch] = useState("");
+  const [userSubscriptionFilter, setUserSubscriptionFilter] = useState("all");
+  const [userSortOrder, setUserSortOrder] = useState("newest");
+  const [userPeriodFrom, setUserPeriodFrom] = useState("");
+  const [userPeriodTo, setUserPeriodTo] = useState("");
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [newUserNickname, setNewUserNickname] = useState("");
@@ -384,10 +388,47 @@ export default function AdminPage() {
     [newsList, newsSearch]
   );
 
-  const filteredUsers = useMemo(
-    () => filterAssociative(users, userSearch, (u) => [u.email, u.nickname, String(u.id)]),
-    [users, userSearch]
-  );
+  const filteredUsers = useMemo(() => {
+    let list = filterAssociative(users, userSearch, (u) => [u.email, u.nickname, String(u.id)]);
+
+    if (userSubscriptionFilter !== "all") {
+      list = list.filter((u) => u.subscriptionType === userSubscriptionFilter);
+    }
+
+    if (userPeriodFrom) {
+      const fromMs = new Date(`${userPeriodFrom}T00:00:00`).getTime();
+      list = list.filter((u) => {
+        if (!u.createdAt) return false;
+        const createdMs = new Date(u.createdAt).getTime();
+        return !Number.isNaN(createdMs) && createdMs >= fromMs;
+      });
+    }
+
+    if (userPeriodTo) {
+      const toMs = new Date(`${userPeriodTo}T23:59:59.999`).getTime();
+      list = list.filter((u) => {
+        if (!u.createdAt) return false;
+        const createdMs = new Date(u.createdAt).getTime();
+        return !Number.isNaN(createdMs) && createdMs <= toMs;
+      });
+    }
+
+    return list.slice().sort((a, b) => {
+      const aMs = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bMs = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      const aValid = a.createdAt && !Number.isNaN(aMs);
+      const bValid = b.createdAt && !Number.isNaN(bMs);
+
+      if (aValid && bValid && aMs !== bMs) {
+        return userSortOrder === "newest" ? bMs - aMs : aMs - bMs;
+      }
+      if (aValid !== bValid) return aValid ? -1 : 1;
+      return userSortOrder === "newest" ? b.id - a.id : a.id - b.id;
+    });
+  }, [users, userSearch, userSubscriptionFilter, userSortOrder, userPeriodFrom, userPeriodTo]);
+
+  const userFiltersActive =
+    userSubscriptionFilter !== "all" || Boolean(userPeriodFrom) || Boolean(userPeriodTo);
 
   const multiDeviceUsersCount = useMemo(
     () => users.filter((u) => u.subscriptionType !== "admin" && u.multiDevice).length,
@@ -2363,7 +2404,12 @@ export default function AdminPage() {
               </section>
 
               <section className="adm-card" style={{ padding: 20 }}>
-                <h2 style={{ margin: "0 0 16px", fontSize: "1rem" }}>Все пользователи</h2>
+                <div className="adm-users-list-head">
+                  <h2 style={{ margin: 0, fontSize: "1rem" }}>Все пользователи</h2>
+                  <span className="adm-users-list-count muted small">
+                    Показано {filteredUsers.length} из {users.length}
+                  </span>
+                </div>
                 <AdminSearchBox
                   id="user-search"
                   value={userSearch}
@@ -2372,8 +2418,68 @@ export default function AdminPage() {
                   onPick={pickUserSearch}
                   placeholder="Поиск по email, нику или ID…"
                   ariaLabel="Поиск пользователей"
-                  style={{ marginBottom: 16 }}
+                  style={{ marginBottom: 12 }}
                 />
+                <div className="adm-users-filters">
+                  <div className="adm-field adm-users-filter-field">
+                    <label htmlFor="user-filter-subscription">Тариф</label>
+                    <select
+                      id="user-filter-subscription"
+                      value={userSubscriptionFilter}
+                      onChange={(e) => setUserSubscriptionFilter(e.target.value)}
+                    >
+                      <option value="all">Все тарифы</option>
+                      <option value="free">Free</option>
+                      <option value="basic">Basic</option>
+                      <option value="premium">Pro</option>
+                      <option value="mentor">Mentor</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+                  <div className="adm-field adm-users-filter-field">
+                    <label htmlFor="user-filter-sort">Сортировка</label>
+                    <select
+                      id="user-filter-sort"
+                      value={userSortOrder}
+                      onChange={(e) => setUserSortOrder(e.target.value)}
+                    >
+                      <option value="newest">Сначала новые</option>
+                      <option value="oldest">Сначала старые</option>
+                    </select>
+                  </div>
+                  <div className="adm-field adm-users-filter-field">
+                    <label htmlFor="user-filter-from">Регистрация с</label>
+                    <input
+                      id="user-filter-from"
+                      type="date"
+                      value={userPeriodFrom}
+                      onChange={(e) => setUserPeriodFrom(e.target.value)}
+                    />
+                  </div>
+                  <div className="adm-field adm-users-filter-field">
+                    <label htmlFor="user-filter-to">Регистрация по</label>
+                    <input
+                      id="user-filter-to"
+                      type="date"
+                      value={userPeriodTo}
+                      onChange={(e) => setUserPeriodTo(e.target.value)}
+                      min={userPeriodFrom || undefined}
+                    />
+                  </div>
+                  {userFiltersActive ? (
+                    <button
+                      type="button"
+                      className="adm-btn adm-btn-ghost adm-btn-sm adm-users-filter-reset"
+                      onClick={() => {
+                        setUserSubscriptionFilter("all");
+                        setUserPeriodFrom("");
+                        setUserPeriodTo("");
+                      }}
+                    >
+                      Сбросить фильтры
+                    </button>
+                  ) : null}
+                </div>
                 {usersLoading ? (
                   <div className="adm-loading-block">
                     <span className="adm-spinner" />
@@ -2398,7 +2504,9 @@ export default function AdminPage() {
                         {filteredUsers.length === 0 ? (
                           <tr>
                             <td colSpan={8} style={{ textAlign: "center", color: "var(--adm-text-muted)" }}>
-                              {userSearch.trim() ? "Ничего не найдено" : "Нет пользователей"}
+                              {userSearch.trim() || userFiltersActive
+                                ? "Ничего не найдено"
+                                : "Нет пользователей"}
                             </td>
                           </tr>
                         ) : (

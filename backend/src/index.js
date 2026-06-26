@@ -2636,7 +2636,12 @@ app.get("/admin/users", auth, requireAdmin, async (_req, res) => {
         if (rows.some((r) => r.id === u.id)) continue;
         rows.push(mapUserRow(u));
       }
-      rows.sort((a, b) => a.id - b.id);
+      rows.sort((a, b) => {
+        const aMs = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bMs = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        if (aMs !== bMs) return bMs - aMs;
+        return b.id - a.id;
+      });
       return res.json(rows);
     }
 
@@ -2656,7 +2661,7 @@ app.get("/admin/users", auth, requireAdmin, async (_req, res) => {
          from sessions
          group by user_id
        ) s on s.user_id = u.id
-       order by u.id`
+       order by u.created_at desc nulls last, u.id desc`
     );
     res.json(r.rows);
   } catch (error) {

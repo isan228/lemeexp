@@ -476,6 +476,50 @@
   white-space: nowrap;
 }
 
+.adm-users-list-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.adm-users-list-count {
+  white-space: nowrap;
+}
+
+.adm-users-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--adm-border);
+}
+
+.adm-users-filter-field label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--adm-text-muted);
+}
+
+.adm-users-filter-field select,
+.adm-users-filter-field input[type="date"] {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--adm-border);
+  background: var(--adm-surface);
+  font: inherit;
+}
+
+.adm-users-filter-reset {
+  align-self: end;
+}
+
 .adm-form {
   display: flex;
   flex-direction: column;
