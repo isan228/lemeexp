@@ -25,6 +25,7 @@ export const routes = {
   },
   learningHome: "/learning/home",
   learningLessons: "/learning/lessons",
+  learningFavorites: "/learning/favorites",
   learningProfile: "/learning/profile",
   learningLeaderboard: "/learning/leaderboard",
   learningSupport: "/learning/support",

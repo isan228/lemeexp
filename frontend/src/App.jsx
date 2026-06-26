@@ -7,6 +7,7 @@ import LandingPage from "./pages/LandingPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import PaymentPage from "./pages/PaymentStubPage.jsx";
 import PaymentSuccessPage from "./pages/PaymentSuccessPage.jsx";
+import FavoritesPage from "./pages/FavoritesPage.jsx";
 import ProfilePage from "./pages/ProfilePage.jsx";
 import LeaderboardPage from "./pages/LeaderboardPage.jsx";
 import RegisterPage from "./pages/RegisterPage.jsx";
@@ -29,6 +30,7 @@ export default function App() {
           <Route index element={<Navigate to="home" replace />} />
           <Route path="home" element={<HomePage />} />
           <Route path="lessons/*" element={<LessonsRoutes />} />
+          <Route path="favorites" element={<FavoritesPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="leaderboard" element={<LeaderboardPage />} />
           <Route path="support" element={<SupportPage />} />

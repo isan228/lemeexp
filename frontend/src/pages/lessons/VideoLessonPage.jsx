@@ -3,6 +3,7 @@ import { useCallback, useMemo } from "react";
 import LessonComments from "../../components/LessonComments.jsx";
 import LessonPlayer from "../../components/LessonPlayer.jsx";
 import LessonVideoNav from "../../components/LessonVideoNav.jsx";
+import FavoriteButton from "../../components/FavoriteButton.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { SUBSCRIPTION_PLAN } from "../../config/billing.js";
 import { routes, GET_ACCESS_LABEL } from "../../config/site.js";
@@ -157,7 +158,10 @@ export default function VideoLessonPage() {
           ← К списку уроков
         </Link>
         <div className="lesson-watch-title-block">
-          {lessonNumber ? <span className="lesson-watch-num">Урок {lessonNumber}</span> : null}
+          <div className="lesson-watch-title-row">
+            {lessonNumber ? <span className="lesson-watch-num">Урок {lessonNumber}</span> : null}
+            <FavoriteButton videoId={vid} showLabel size="md" />
+          </div>
           <h1 className="lesson-watch-title">{video.title}</h1>
           <div className="lesson-watch-meta">
             <span>{subject.title}</span>

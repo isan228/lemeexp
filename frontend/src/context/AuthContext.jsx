@@ -53,6 +53,12 @@ export function AuthProvider({ children }) {
   });
   const [hydrated] = useState(true);
   const [catalogLoading, setCatalogLoading] = useState(() => Boolean(bootstrap.token));
+  const [favoriteItems, setFavoriteItems] = useState([]);
+
+  const applyFavorites = useCallback((items) => {
+    const list = Array.isArray(items) ? items : [];
+    setFavoriteItems(list);
+  }, []);
 
   const updateProfile = useCallback((nextProfile) => {
     setProfile(nextProfile || null);
@@ -128,6 +134,20 @@ export function AuthProvider({ children }) {
   const chaptersRef = useRef([]);
   chaptersRef.current = chapters;
 
+  const loadFavorites = useCallback(async () => {
+    if (!tokenRef.current) {
+      applyFavorites([]);
+      return;
+    }
+    const res = await apiRequest("/favorites", {}, false);
+    if (!res.ok) return;
+    const data = await res.json();
+    const items = Array.isArray(data.items)
+      ? data.items
+      : (data.videoIds || []).map((videoId) => ({ videoId, createdAt: null }));
+    applyFavorites(items);
+  }, [apiRequest, applyFavorites]);
+
   const loadCatalog = useCallback(async () => {
     if (!tokenRef.current) {
       setCatalogLoading(false);
@@ -136,9 +156,10 @@ export function AuthProvider({ children }) {
     const isInitialLoad = chaptersRef.current.length === 0;
     if (isInitialLoad) setCatalogLoading(true);
     try {
-      const [chaptersRes, progressRes] = await Promise.all([
+      const [chaptersRes, progressRes, favoritesRes] = await Promise.all([
         apiRequest("/chapters", {}, false),
-        apiRequest("/progress", {}, false)
+        apiRequest("/progress", {}, false),
+        apiRequest("/favorites", {}, false)
       ]);
       if (chaptersRes.ok) {
         setChapters(await chaptersRes.json());
@@ -146,10 +167,17 @@ export function AuthProvider({ children }) {
       if (progressRes.ok) {
         setProgress(await progressRes.json());
       }
+      if (favoritesRes.ok) {
+        const data = await favoritesRes.json();
+        const items = Array.isArray(data.items)
+          ? data.items
+          : (data.videoIds || []).map((videoId) => ({ videoId, createdAt: null }));
+        applyFavorites(items);
+      }
     } finally {
       setCatalogLoading(false);
     }
-  }, [apiRequest]);
+  }, [apiRequest, applyFavorites]);
 
   const refreshProgress = useCallback(async () => {
     if (!tokenRef.current) return;
@@ -174,20 +202,30 @@ export function AuthProvider({ children }) {
       const authData = await loginRes.json();
       setAuthState(authData.token, authData.refreshToken, authData.profile);
 
-      const [chaptersRes, progressRes] = await Promise.all([
+      const [chaptersRes, progressRes, favoritesRes] = await Promise.all([
         fetch(`${apiBase}/chapters`, {
           headers: { Authorization: `Bearer ${authData.token}` }
         }),
         fetch(`${apiBase}/progress`, {
           headers: { Authorization: `Bearer ${authData.token}` }
+        }),
+        fetch(`${apiBase}/favorites`, {
+          headers: { Authorization: `Bearer ${authData.token}` }
         })
       ]);
       if (chaptersRes.ok) setChapters(await chaptersRes.json());
       if (progressRes.ok) setProgress(await progressRes.json());
+      if (favoritesRes.ok) {
+        const data = await favoritesRes.json();
+        const items = Array.isArray(data.items)
+          ? data.items
+          : (data.videoIds || []).map((videoId) => ({ videoId, createdAt: null }));
+        applyFavorites(items);
+      }
       setCatalogLoading(false);
       return authData.profile;
     },
-    [setAuthState]
+    [setAuthState, applyFavorites]
   );
 
   const register = useCallback(
@@ -207,20 +245,66 @@ export function AuthProvider({ children }) {
       const authData = await res.json();
       setAuthState(authData.token, authData.refreshToken, authData.profile);
 
-      const [chaptersRes, progressRes] = await Promise.all([
+      const [chaptersRes, progressRes, favoritesRes] = await Promise.all([
         fetch(`${apiBase}/chapters`, {
           headers: { Authorization: `Bearer ${authData.token}` }
         }),
         fetch(`${apiBase}/progress`, {
           headers: { Authorization: `Bearer ${authData.token}` }
+        }),
+        fetch(`${apiBase}/favorites`, {
+          headers: { Authorization: `Bearer ${authData.token}` }
         })
       ]);
       if (chaptersRes.ok) setChapters(await chaptersRes.json());
       if (progressRes.ok) setProgress(await progressRes.json());
+      if (favoritesRes.ok) {
+        const data = await favoritesRes.json();
+        const items = Array.isArray(data.items)
+          ? data.items
+          : (data.videoIds || []).map((videoId) => ({ videoId, createdAt: null }));
+        applyFavorites(items);
+      }
       setCatalogLoading(false);
       return authData.profile;
     },
-    [setAuthState]
+    [setAuthState, applyFavorites]
+  );
+
+  const isVideoFavorite = useCallback(
+    (videoId) => {
+      const vid = Number(videoId);
+      return favoriteItems.some((item) => Number(item.videoId) === vid);
+    },
+    [favoriteItems]
+  );
+
+  const toggleFavorite = useCallback(
+    async (videoId) => {
+      const vid = Number(videoId);
+      if (!Number.isFinite(vid) || vid <= 0) return false;
+      const res = await apiRequest(`/videos/${vid}/favorite`, { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Не удалось обновить избранное");
+      }
+      const data = await res.json();
+      if (Array.isArray(data.videoIds)) {
+        const prevMap = new Map(favoriteItems.map((item) => [Number(item.videoId), item]));
+        applyFavorites(
+          data.videoIds.map((id) => {
+            const num = Number(id);
+            const prev = prevMap.get(num);
+            if (prev) return prev;
+            return { videoId: num, createdAt: new Date().toISOString() };
+          })
+        );
+      } else {
+        await loadFavorites();
+      }
+      return Boolean(data.favorited);
+    },
+    [apiRequest, applyFavorites, favoriteItems, loadFavorites]
   );
 
   const logout = useCallback(async () => {
@@ -237,6 +321,7 @@ export function AuthProvider({ children }) {
     }
     setAuthState("", "", null);
     setChapters([]);
+    applyFavorites([]);
     setCatalogLoading(false);
     setProgress({
       percentage: 0,
@@ -249,7 +334,7 @@ export function AuthProvider({ children }) {
         last7Days: []
       }
     });
-  }, [setAuthState]);
+  }, [setAuthState, applyFavorites]);
 
   const value = useMemo(
     () => ({
@@ -259,6 +344,7 @@ export function AuthProvider({ children }) {
       chapters,
       catalogLoading,
       progress,
+      favoriteItems,
       hydrated,
       login,
       register,
@@ -266,7 +352,10 @@ export function AuthProvider({ children }) {
       logout,
       apiRequest,
       loadCatalog,
+      loadFavorites,
       refreshProgress,
+      isVideoFavorite,
+      toggleFavorite,
       setProgress,
       tokenRef,
       refreshTokenRef
@@ -277,6 +366,7 @@ export function AuthProvider({ children }) {
       chapters,
       catalogLoading,
       progress,
+      favoriteItems,
       hydrated,
       login,
       register,
@@ -284,7 +374,10 @@ export function AuthProvider({ children }) {
       logout,
       apiRequest,
       loadCatalog,
-      refreshProgress
+      loadFavorites,
+      refreshProgress,
+      isVideoFavorite,
+      toggleFavorite
     ]
   );
 

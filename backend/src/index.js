@@ -32,6 +32,7 @@ import {
   safeSegmentName
 } from "./hlsTranscode.js";
 import { ensureVideoCommentsTables, registerVideoCommentRoutes } from "./videoComments.js";
+import { ensureVideoFavoritesTables, registerVideoFavoriteRoutes } from "./videoFavorites.js";
 import { createReadStream, mkdirSync } from "node:fs";
 import { access, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
 import crypto from "node:crypto";
@@ -91,6 +92,8 @@ const memState = {
   videoCommentLikes: [],
   /** @type {Array<{ commentId: number; userId: number }>} */
   videoCommentDislikes: [],
+  /** @type {Array<{ userId: number; videoId: number; createdAt: string }>} */
+  videoFavorites: [],
   /** @type {Map<string, string>} key: `${userId}:${role}` => ISO timestamp */
   supportLastRead: new Map(),
   /** @type {Array<{ id: number; code: string; discountType: string; discountValue: number; maxUses: number | null; usesCount: number; expiresAt: string | null; active: boolean; createdAt: string; updatedAt: string }>} */
@@ -952,12 +955,23 @@ async function ensureSupportMessagesTable() {
 }
 
 function getVideoTitleById(videoId) {
+  const meta = resolveVideoMeta(videoId);
+  return meta?.title || null;
+}
+
+function resolveVideoMeta(videoId) {
   const vid = Number(videoId);
   if (!Number.isFinite(vid)) return null;
   for (const course of chapters) {
     for (const subtopic of course.subtopics || []) {
       const video = (subtopic.videos || []).find((v) => Number(v.id) === vid);
-      if (video) return video.title || null;
+      if (video) {
+        return {
+          title: video.title || null,
+          courseTitle: course.title || null,
+          subtopicTitle: subtopic.title || null
+        };
+      }
     }
   }
   return null;
@@ -3480,6 +3494,18 @@ registerVideoCommentRoutes(app, {
   videoExists
 });
 
+registerVideoFavoriteRoutes(app, {
+  pool,
+  get dbReady() {
+    return dbReady;
+  },
+  memState,
+  auth,
+  requireAdmin,
+  videoExists,
+  resolveVideoMeta
+});
+
 app.post("/auth/refresh", async (req, res) => {
   const parsed = refreshSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: "Invalid payload" });
@@ -3925,6 +3951,11 @@ async function start() {
         await ensureVideoCommentsTables(pool);
       } catch (e) {
         console.error("Таблица video_comments — пропуск (проверьте миграцию):", e.message);
+      }
+      try {
+        await ensureVideoFavoritesTables(pool);
+      } catch (e) {
+        console.error("Таблица video_favorites — пропуск (проверьте миграцию):", e.message);
       }
       try {
         await ensurePaymentsTable();

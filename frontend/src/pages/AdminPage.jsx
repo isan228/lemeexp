@@ -19,6 +19,7 @@ function swapInList(ids, id, dir) {
 
 const NAV_ITEMS = [
   { id: "content", label: "Курсы и уроки", icon: "📚", desc: "Предметы, главы и видеоуроки" },
+  { id: "favorites", label: "Избранное", icon: "⭐", desc: "Статистика сохранённых уроков" },
   { id: "promo", label: "Биллинг", icon: "🎟", desc: "Цена подписки и промокоды" },
   { id: "users", label: "Пользователи", icon: "👥", desc: "Учётные записи и тарифы" },
   { id: "devices", label: "Устройства", icon: "📱", desc: "Входы учеников с разных устройств" },
@@ -177,6 +178,15 @@ export default function AdminPage() {
   const [billingSaving, setBillingSaving] = useState(false);
   const [billingLoading, setBillingLoading] = useState(false);
 
+  const [favoriteStats, setFavoriteStats] = useState({
+    totalFavorites: 0,
+    uniqueVideos: 0,
+    videos: []
+  });
+  const [favoriteStatsLoading, setFavoriteStatsLoading] = useState(false);
+  const [favoriteStatsError, setFavoriteStatsError] = useState("");
+  const [favoriteStatsSearch, setFavoriteStatsSearch] = useState("");
+
   const isAdmin = profile?.subscriptionType === "admin";
   const activeNav = NAV_ITEMS.find((n) => n.id === tab) || NAV_ITEMS[0];
 
@@ -211,6 +221,26 @@ export default function AdminPage() {
     }
     return { subjects: adminCatalog.length, chapters, lessons };
   }, [adminCatalog]);
+
+  const favoriteCountByVideoId = useMemo(() => {
+    const map = new Map();
+    for (const row of favoriteStats.videos || []) {
+      map.set(Number(row.videoId), Number(row.favoriteCount) || 0);
+    }
+    return map;
+  }, [favoriteStats.videos]);
+
+  const filteredFavoriteStats = useMemo(() => {
+    const q = favoriteStatsSearch.trim().toLowerCase();
+    const list = favoriteStats.videos || [];
+    if (!q) return list;
+    return list.filter(
+      (row) =>
+        String(row.title || "").toLowerCase().includes(q) ||
+        String(row.courseTitle || "").toLowerCase().includes(q) ||
+        String(row.subtopicTitle || "").toLowerCase().includes(q)
+    );
+  }, [favoriteStats.videos, favoriteStatsSearch]);
 
   const catalogIndex = useMemo(() => {
     const items = [];
@@ -391,6 +421,23 @@ export default function AdminPage() {
     setToast({ message, type });
     toastTimer.current = setTimeout(() => setToast(null), 4000);
   }, []);
+
+  const loadFavoriteStats = useCallback(async () => {
+    setFavoriteStatsError("");
+    setFavoriteStatsLoading(true);
+    try {
+      const res = await apiRequest("/admin/favorites/stats");
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Не удалось загрузить статистику избранного");
+      }
+      setFavoriteStats(await res.json());
+    } catch (err) {
+      setFavoriteStatsError(err.message || "Ошибка загрузки");
+    } finally {
+      setFavoriteStatsLoading(false);
+    }
+  }, [apiRequest]);
 
   const loadAdminCatalog = useCallback(async () => {
     setCatalogError("");
@@ -701,7 +748,13 @@ export default function AdminPage() {
   useEffect(() => {
     if (!hydrated || !token || !isAdmin) return;
     void loadAdminCatalog();
-  }, [hydrated, token, isAdmin, loadAdminCatalog]);
+    void loadFavoriteStats();
+  }, [hydrated, token, isAdmin, loadAdminCatalog, loadFavoriteStats]);
+
+  useEffect(() => {
+    if (!hydrated || !token || !isAdmin || tab !== "favorites") return;
+    void loadFavoriteStats();
+  }, [hydrated, token, isAdmin, tab, loadFavoriteStats]);
 
   useEffect(() => {
     if (!hydrated || !token || !isAdmin || tab !== "users") return;
@@ -1912,6 +1965,12 @@ export default function AdminPage() {
                                       <span className="adm-badge pending"> Длительность после загрузки</span>
                                     ) : null}
                                     {v.isTrial ? <span className="adm-badge trial"> Пробник</span> : null}
+                                    {favoriteCountByVideoId.get(Number(v.id)) ? (
+                                      <span className="adm-badge">
+                                        {" "}
+                                        ★ {favoriteCountByVideoId.get(Number(v.id))} в избранном
+                                      </span>
+                                    ) : null}
                                     {isPlayableStream(v.streamPath) ? (
                                       <span className="adm-badge ok"> Готово (защищённый HLS)</span>
                                     ) : isProcessingStream(v.streamPath) ? (
@@ -2662,6 +2721,72 @@ export default function AdminPage() {
                 )}
               </section>
             </div>
+          )}
+
+          {tab === "favorites" && (
+            <section className="adm-card adm-panel" style={{ padding: 20 }}>
+              <div className="adm-panel-head">
+                <div>
+                  <h2>Избранное учеников</h2>
+                  <p className="muted small">
+                    Сколько раз уроки добавляли в избранное и какие видео популярнее всего.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="adm-btn adm-btn-ghost adm-btn-sm"
+                  onClick={() => void loadFavoriteStats()}
+                  disabled={favoriteStatsLoading}
+                >
+                  {favoriteStatsLoading ? "…" : "Обновить"}
+                </button>
+              </div>
+
+              {favoriteStatsError ? <div className="adm-alert warn">{favoriteStatsError}</div> : null}
+
+              <div className="adm-stats" style={{ marginBottom: 16 }}>
+                <div className="adm-stat">
+                  <div className="adm-stat-value">{favoriteStats.totalFavorites}</div>
+                  <div className="adm-stat-label">всего добавлений</div>
+                </div>
+                <div className="adm-stat">
+                  <div className="adm-stat-value">{favoriteStats.uniqueVideos}</div>
+                  <div className="adm-stat-label">уникальных видео</div>
+                </div>
+              </div>
+
+              <AdminSearchBox
+                id="favorite-stats-search"
+                value={favoriteStatsSearch}
+                onChange={setFavoriteStatsSearch}
+                placeholder="Поиск по названию, предмету или главе…"
+                ariaLabel="Поиск в статистике избранного"
+                style={{ marginBottom: 14 }}
+              />
+
+              {favoriteStatsLoading && !favoriteStats.videos?.length ? (
+                <div className="adm-empty">Загрузка…</div>
+              ) : filteredFavoriteStats.length === 0 ? (
+                <div className="adm-empty">
+                  {favoriteStatsSearch.trim() ? "Ничего не найдено" : "Пока никто не добавлял уроки в избранное"}
+                </div>
+              ) : (
+                <ul className="adm-favorites-stats-list">
+                  {filteredFavoriteStats.map((row, index) => (
+                    <li key={row.videoId} className="adm-favorites-stats-item">
+                      <span className="adm-favorites-stats-rank">{index + 1}</span>
+                      <div className="adm-favorites-stats-body">
+                        <strong>{row.title}</strong>
+                        <span className="muted small">
+                          {row.courseTitle} · {row.subtopicTitle}
+                        </span>
+                      </div>
+                      <span className="adm-favorites-stats-count">★ {row.favoriteCount}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
           )}
 
           {tab === "support" && (

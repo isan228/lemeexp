@@ -414,6 +414,8 @@
 
 .adm-panel-head {
   display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 12px;
   margin-bottom: 16px;
   padding-bottom: 14px;
@@ -429,6 +431,49 @@
   margin: 0;
   font-size: 13px;
   color: var(--adm-text-muted);
+}
+
+.adm-favorites-stats-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.adm-favorites-stats-item {
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid var(--adm-border);
+  border-radius: 10px;
+  background: var(--adm-surface);
+}
+
+.adm-favorites-stats-rank {
+  font-weight: 800;
+  color: var(--adm-text-muted);
+  text-align: center;
+}
+
+.adm-favorites-stats-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.adm-favorites-stats-body strong {
+  font-size: 0.95rem;
+}
+
+.adm-favorites-stats-count {
+  font-weight: 700;
+  color: var(--adm-accent, #3e69ae);
+  white-space: nowrap;
 }
 
 .adm-form {

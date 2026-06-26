@@ -726,34 +726,29 @@ select:focus {
   line-height: 1.2;
 }
 
-.video-lesson-label.is-default {
-  background: rgba(62, 105, 174, 0.12);
-  color: var(--med-primary-hover);
+.video-lesson-label.is-default,
+.video-lesson-label.is-next,
+.video-lesson-label.is-progress,
+.video-lesson-label.is-complete {
+  background: rgba(62, 105, 174, 0.1);
+  color: #3d5f8f;
 }
 
-.video-lesson-label.is-next {
-  background: rgba(62, 105, 174, 0.18);
-  color: #1d4f8f;
-}
-
+.video-lesson-label.is-next,
 .video-lesson-label.is-progress {
-  background: rgba(13, 148, 136, 0.14);
-  color: #0f766e;
+  background: rgba(62, 105, 174, 0.15);
+  color: #2f5280;
 }
 
 .video-lesson-label.is-complete {
-  background: rgba(22, 163, 74, 0.14);
-  color: #15803d;
+  background: rgba(62, 105, 174, 0.08);
+  color: var(--med-text-secondary);
 }
 
-.video-lesson-label.is-pending {
-  background: rgba(217, 119, 6, 0.14);
-  color: #b45309;
-}
-
+.video-lesson-label.is-pending,
 .video-lesson-label.is-locked {
-  background: rgba(100, 116, 139, 0.16);
-  color: #475569;
+  background: rgba(91, 122, 157, 0.12);
+  color: var(--med-text-secondary);
 }
 
 .video-lesson-title {
@@ -770,7 +765,7 @@ select:focus {
   min-width: 1.4em;
   margin-right: 4px;
   font-weight: 800;
-  color: var(--med-primary);
+  color: var(--med-text-secondary);
 }
 
 .video-lesson-title-text {
@@ -806,8 +801,8 @@ select:focus {
 }
 
 .video-lesson-meta-trial {
-  font-weight: 700;
-  color: var(--med-primary);
+  font-weight: 600;
+  color: var(--med-text-secondary);
 }
 
 .student-app .video-lesson-item.is-locked .video-lesson-title-text {
@@ -1471,6 +1466,142 @@ select:focus {
   display: flex;
   flex-wrap: wrap;
   gap: 12px 18px;
+}
+
+/* ----- Favorites ----- */
+.favorite-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(30, 58, 95, 0.14);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--med-text-secondary);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease, transform 0.12s ease;
+}
+
+.favorite-btn:hover:not(:disabled) {
+  border-color: rgba(62, 105, 174, 0.28);
+  color: var(--med-primary);
+  transform: translateY(-1px);
+}
+
+.favorite-btn.is-active {
+  border-color: rgba(62, 105, 174, 0.35);
+  background: rgba(62, 105, 174, 0.1);
+  color: var(--med-primary-hover);
+}
+
+.favorite-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.favorite-btn--sm {
+  width: 36px;
+  height: 36px;
+  justify-content: center;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.favorite-btn--md {
+  min-height: 38px;
+  padding: 8px 12px;
+}
+
+.favorite-btn-icon {
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.favorite-btn-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.video-lesson-favorite-btn {
+  position: relative;
+  z-index: 2;
+}
+
+.lesson-watch-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.favorites-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.favorites-item {
+  padding: 0;
+  overflow: hidden;
+}
+
+.favorites-item-link {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 16px 18px;
+  text-decoration: none;
+  color: inherit;
+  transition: background 0.12s ease;
+}
+
+.favorites-item-link:hover {
+  background: rgba(62, 105, 174, 0.06);
+}
+
+.favorites-item-star {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: rgba(62, 105, 174, 0.12);
+  color: var(--med-primary);
+  font-size: 1.1rem;
+}
+
+.favorites-item-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.favorites-item-title {
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.favorites-item-meta,
+.favorites-item-date {
+  display: block;
+}
+
+.favorites-item-arrow {
+  color: var(--med-muted-light);
+  font-size: 1.1rem;
+}
+
+.favorites-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: var(--med-space-6);
 }
 
 /* ----- Weekly leaderboard ----- */
