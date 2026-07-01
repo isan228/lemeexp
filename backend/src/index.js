@@ -713,6 +713,8 @@ function requireAdmin(req, res, next) {
   return next();
 }
 
+const maxUploadBytes = Number(process.env.MAX_UPLOAD_BYTES || 2 * 1024 * 1024 * 1024);
+
 const upload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, uploadsDir),
@@ -721,7 +723,7 @@ const upload = multer({
       cb(null, `${crypto.randomUUID()}${safeExt}`);
     }
   }),
-  limits: { fileSize: 1024 * 1024 * 1024 }
+  limits: { fileSize: maxUploadBytes }
 });
 
 async function seedDemoData() {
@@ -2410,17 +2412,11 @@ app.post("/admin/videos/:videoId/upload", auth, requireAdmin, upload.single("fil
 
   const streamPath = `upload:${req.file.filename}`;
   const inputPath = path.join(uploadsDir, req.file.filename);
-  let durationSec = 0;
-  try {
-    durationSec = await probeVideoDurationSec(inputPath);
-  } catch (error) {
-    console.warn(`[upload] Video ${videoId} duration probe failed:`, error.message);
-  }
 
   const updated = await pool.query(
-    `update videos set stream_path = $2, duration = $3 where id = $1
+    `update videos set stream_path = $2 where id = $1
      returning id, subtopic_id, title, duration, stream_path, "order"`,
-    [videoId, streamPath, durationSec]
+    [videoId, streamPath]
   );
   if (!updated.rows[0]) return res.status(404).json({ message: "Video not found" });
 
@@ -3852,8 +3848,9 @@ app.get("/hls/:videoId/key", async (req, res) => {
 
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
+    const maxGb = (maxUploadBytes / (1024 * 1024 * 1024)).toFixed(1).replace(/\.0$/, "");
     const message =
-      err.code === "LIMIT_FILE_SIZE" ? "File too large (max 1 GB)" : err.message;
+      err.code === "LIMIT_FILE_SIZE" ? `Файл слишком большой (максимум ${maxGb} ГБ)` : err.message;
     return res.status(413).json({ message });
   }
   return next(err);

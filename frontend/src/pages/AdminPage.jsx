@@ -1290,8 +1290,9 @@ export default function AdminPage() {
   }
 
   async function pollHlsReady(videoId) {
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+    // Длинные ролики: до ~45 мин опроса (конвертация может идти долго)
+    for (let attempt = 0; attempt < 180; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 15_000));
       const res = await apiRequest(`/admin/videos/${videoId}/hls-status`);
       if (!res.ok) continue;
       const data = await res.json().catch(() => ({}));
@@ -1302,7 +1303,7 @@ export default function AdminPage() {
       }
       if (!data.processing && !data.ready) break;
     }
-    showToast("Конвертация ещё идёт — обновите каталог через минуту", "error");
+    showToast("Конвертация ещё идёт — обновите каталог позже", "error");
   }
 
   async function packageExistingVideo(videoId) {
@@ -1328,10 +1329,13 @@ export default function AdminPage() {
     try {
       const res = await apiRequest(`/admin/videos/${videoId}/upload`, { method: "POST", body: form });
       if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        const serverMsg = typeof errBody.message === "string" ? errBody.message : "";
         const msg =
-          res.status === 413
+          serverMsg ||
+          (res.status === 413
             ? "Файл слишком большой для сервера. На VPS в nginx для api.lemexplain.com задайте client_max_body_size 2G (в блоке HTTPS)."
-            : "Загрузка файла не удалась";
+            : "Загрузка файла не удалась");
         setCatalogError(msg);
         showToast(res.status === 413 ? "Файл слишком большой (413)" : "Ошибка загрузки видео", "error");
         return;
