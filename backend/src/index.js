@@ -1623,7 +1623,13 @@ app.get("/health", async (_req, res) => {
     }
   }
 
-  res.json({ ok: true, dbOk, redisOk });
+  res.json({
+    ok: true,
+    dbOk,
+    redisOk,
+    maxUploadBytes,
+    maxUploadGb: Number((maxUploadBytes / (1024 * 1024 * 1024)).toFixed(2))
+  });
 });
 
 app.post("/auth/login", async (req, res) => {
@@ -2405,28 +2411,48 @@ app.post("/admin/reorder", auth, requireAdmin, async (req, res) => {
   }
 });
 
-app.post("/admin/videos/:videoId/upload", auth, requireAdmin, upload.single("file"), async (req, res) => {
-  const videoId = Number(req.params.videoId);
-  if (!dbReady) return res.status(503).json({ message: "DB required for admin" });
-  if (!req.file) return res.status(400).json({ message: "Missing file" });
+function logUploadStart(req, _res, next) {
+  req.setTimeout(3_600_000);
+  const videoId = req.params.videoId;
+  const contentLength = req.headers["content-length"] || "?";
+  console.log(`[upload] incoming videoId=${videoId} content-length=${contentLength}`);
+  next();
+}
 
-  const streamPath = `upload:${req.file.filename}`;
-  const inputPath = path.join(uploadsDir, req.file.filename);
+app.post(
+  "/admin/videos/:videoId/upload",
+  auth,
+  requireAdmin,
+  logUploadStart,
+  upload.single("file"),
+  async (req, res) => {
+    const videoId = Number(req.params.videoId);
+    if (!dbReady) return res.status(503).json({ message: "DB required for admin" });
+    if (!req.file) {
+      console.warn(`[upload] videoId=${videoId} missing file in request`);
+      return res.status(400).json({ message: "Missing file" });
+    }
 
-  const updated = await pool.query(
-    `update videos set stream_path = $2 where id = $1
+    const streamPath = `upload:${req.file.filename}`;
+    const inputPath = path.join(uploadsDir, req.file.filename);
+    const sizeMb = (req.file.size / (1024 * 1024)).toFixed(1);
+    console.log(`[upload] saved videoId=${videoId} file=${req.file.filename} size=${sizeMb}MB`);
+
+    const updated = await pool.query(
+      `update videos set stream_path = $2 where id = $1
      returning id, subtopic_id, title, duration, stream_path, "order"`,
-    [videoId, streamPath]
-  );
-  if (!updated.rows[0]) return res.status(404).json({ message: "Video not found" });
+      [videoId, streamPath]
+    );
+    if (!updated.rows[0]) return res.status(404).json({ message: "Video not found" });
 
-  void queueHlsPackaging(videoId, inputPath, req.file.filename);
+    void queueHlsPackaging(videoId, inputPath, req.file.filename);
 
-  res.json({
-    ...updated.rows[0],
-    hlsProcessing: true
-  });
-});
+    res.json({
+      ...updated.rows[0],
+      hlsProcessing: true
+    });
+  }
+);
 
 app.get("/admin/videos/:videoId/hls-status", auth, requireAdmin, async (req, res) => {
   const videoId = Number(req.params.videoId);
@@ -3851,6 +3877,7 @@ app.use((err, req, res, next) => {
     const maxGb = (maxUploadBytes / (1024 * 1024 * 1024)).toFixed(1).replace(/\.0$/, "");
     const message =
       err.code === "LIMIT_FILE_SIZE" ? `Файл слишком большой (максимум ${maxGb} ГБ)` : err.message;
+    console.error(`[upload] multer ${err.code}: ${message} path=${req.path}`);
     return res.status(413).json({ message });
   }
   return next(err);

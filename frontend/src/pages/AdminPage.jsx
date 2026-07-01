@@ -5,6 +5,7 @@ import { routes } from "../config/site.js";
 import AdminSearchBox from "../components/AdminSearchBox.jsx";
 import { formatPlanPrice } from "../config/billing.js";
 import { filterAssociative, suggestAssociative } from "../utils/adminSearch.js";
+import { formatUploadProgress, uploadMultipart } from "../utils/uploadFile.js";
 import { isPlayableStream, isProcessingStream } from "../utils/streamPath.js";
 import "./AdminPage.css";
 
@@ -1326,27 +1327,43 @@ export default function AdminPage() {
 
     const form = new FormData();
     form.append("file", file);
+    const sizeGb = (file.size / (1024 * 1024 * 1024)).toFixed(2);
+    setCatalogError("");
+    showToast(`Загрузка ${sizeGb} ГБ на сервер…`);
+
     try {
-      const res = await apiRequest(`/admin/videos/${videoId}/upload`, { method: "POST", body: form });
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => ({}));
-        const serverMsg = typeof errBody.message === "string" ? errBody.message : "";
+      const result = await uploadMultipart(`/admin/videos/${videoId}/upload`, {
+        token,
+        formData: form,
+        onProgress: (loaded, total) => {
+          setCatalogError(`Загрузка: ${formatUploadProgress(loaded, total)}`);
+        }
+      });
+
+      if (!result.ok) {
+        const serverMsg = typeof result.data?.message === "string" ? result.data.message : "";
         const msg =
           serverMsg ||
-          (res.status === 413
-            ? "Файл слишком большой для сервера. На VPS в nginx для api.lemexplain.com задайте client_max_body_size 2G (в блоке HTTPS)."
-            : "Загрузка файла не удалась");
+          (result.status === 413
+            ? "Файл слишком большой. Проверьте nginx (client_max_body_size 2G) и перезапустите API после git pull."
+            : `Загрузка не удалась (HTTP ${result.status})`);
         setCatalogError(msg);
-        showToast(res.status === 413 ? "Файл слишком большой (413)" : "Ошибка загрузки видео", "error");
+        showToast(result.status === 413 ? "Файл слишком большой (413)" : "Ошибка загрузки видео", "error");
         return;
       }
-    } catch {
+    } catch (err) {
+      const hint =
+        file.size > 1024 * 1024 * 1024
+          ? " Для файлов >1 ГБ увеличьте в nginx proxy_send_timeout и proxy_read_timeout до 3600s."
+          : "";
       setCatalogError(
-        "Загрузка не удалась. Частая причина — лимит nginx (413): в конфиге api.lemexplain.com нужен client_max_body_size 2G на порту 443."
+        `${err.message || "Загрузка не удалась"}.${hint} Смотрите: pm2 logs lemeexp-api и tail /var/log/nginx/error.log`
       );
-      showToast("Ошибка загрузки видео", "error");
+      showToast("Соединение оборвалось при загрузке", "error");
       return;
     }
+
+    setCatalogError("");
     await loadAdminCatalog();
     showToast("Видео загружено, идёт защита и конвертация…");
     void pollHlsReady(videoId);
