@@ -1883,6 +1883,7 @@ select:focus {
   box-shadow:
     0 4px 6px rgba(15, 23, 42, 0.06),
     0 16px 40px rgba(15, 23, 42, 0.14);
+  isolation: isolate;
 }
 
 .lesson-watch-page .lesson-video {
@@ -1890,9 +1891,11 @@ select:focus {
   width: 100%;
   aspect-ratio: 16 / 9;
   min-height: 0;
-  border-radius: 0;
+  border-radius: 14px;
   background: #000;
   vertical-align: top;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
 }
 
 .lesson-watch-page .player-error {

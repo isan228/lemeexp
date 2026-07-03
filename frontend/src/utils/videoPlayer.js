@@ -1,6 +1,10 @@
+/** Safari (iOS + macOS): встроенный HLS. hls.js даёт серый экран при работающем звуке. */
 export function preferNativeHls() {
-  if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent || "";
-  if (/iPhone|iPad|iPod/i.test(ua)) return true;
-  return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+  if (typeof document === "undefined") return false;
+  try {
+    const probe = document.createElement("video");
+    return Boolean(probe.canPlayType("application/vnd.apple.mpegurl"));
+  } catch {
+    return false;
+  }
 }

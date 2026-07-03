@@ -180,9 +180,7 @@ function LessonPlayerInner({
       node.addEventListener("error", onVideoError);
       removeVideoError = () => node.removeEventListener("error", onVideoError);
 
-      const useNativeHls = preferNativeHls() && node.canPlayType("application/vnd.apple.mpegurl");
-
-      if (useNativeHls) {
+      if (preferNativeHls()) {
         if (applyInitialSeek) {
           node.addEventListener("loadedmetadata", applyInitialSeek, { once: true });
         }
@@ -224,11 +222,6 @@ function LessonPlayerInner({
           }
           setPlayError("Не удалось загрузить защищённый поток.");
         });
-      } else if (node.canPlayType("application/vnd.apple.mpegurl")) {
-        if (applyInitialSeek) {
-          node.addEventListener("loadedmetadata", applyInitialSeek, { once: true });
-        }
-        node.src = src;
       } else {
         setPlayError("Ваш браузер не поддерживает воспроизведение этого формата.");
       }

@@ -1628,7 +1628,9 @@ app.get("/health", async (_req, res) => {
     dbOk,
     redisOk,
     maxUploadBytes,
-    maxUploadGb: Number((maxUploadBytes / (1024 * 1024 * 1024)).toFixed(2))
+    maxUploadGb: Number((maxUploadBytes / (1024 * 1024 * 1024)).toFixed(2)),
+    requestTimeout: httpServer?.requestTimeout ?? null,
+    serverTimeout: httpServer?.timeout ?? null
   });
 });
 
@@ -2411,12 +2413,53 @@ app.post("/admin/reorder", auth, requireAdmin, async (req, res) => {
   }
 });
 
-function logUploadStart(req, _res, next) {
-  req.setTimeout(3_600_000);
+let httpServer = null;
+
+function disableUploadTimeouts(req, res) {
+  req.setTimeout(0);
+  res.setTimeout(0);
+  const socket = req.socket;
+  if (socket) {
+    socket.setTimeout(0);
+    socket.setKeepAlive(true, 60_000);
+  }
+}
+
+function logUploadStart(req, res, next) {
+  disableUploadTimeouts(req, res);
   const videoId = req.params.videoId;
   const contentLength = req.headers["content-length"] || "?";
   console.log(`[upload] incoming videoId=${videoId} content-length=${contentLength}`);
+  req.on("aborted", () => {
+    console.warn(`[upload] aborted by client/nginx videoId=${videoId}`);
+  });
+  req.on("close", () => {
+    if (!req.complete) {
+      console.warn(`[upload] connection closed before complete videoId=${videoId}`);
+    }
+  });
   next();
+}
+
+function uploadVideoMiddleware(req, res, next) {
+  disableUploadTimeouts(req, res);
+  upload.single("file")(req, res, (err) => {
+    if (err) {
+      const msg = err.message || String(err);
+      console.error(`[upload] multer videoId=${req.params.videoId}: ${msg}`);
+      if (msg === "Request aborted" || msg.includes("aborted")) {
+        if (!res.headersSent) {
+          return res.status(499).json({
+            message:
+              "Загрузка прервана — соединение оборвалось. Не закрывайте вкладку; проверьте nginx client_body_timeout и перезапустите API после git pull."
+          });
+        }
+        return;
+      }
+      return next(err);
+    }
+    next();
+  });
 }
 
 app.post(
@@ -2424,7 +2467,7 @@ app.post(
   auth,
   requireAdmin,
   logUploadStart,
-  upload.single("file"),
+  uploadVideoMiddleware,
   async (req, res) => {
     const videoId = Number(req.params.videoId);
     if (!dbReady) return res.status(503).json({ message: "DB required for admin" });
@@ -3880,7 +3923,20 @@ app.use((err, req, res, next) => {
     console.error(`[upload] multer ${err.code}: ${message} path=${req.path}`);
     return res.status(413).json({ message });
   }
+  const msg = err?.message || "";
+  if (msg === "Request aborted" || msg.includes("aborted")) {
+    if (!res.headersSent) {
+      return res.status(499).json({ message: "Загрузка прервана — соединение оборвалось" });
+    }
+    return;
+  }
   return next(err);
+});
+
+app.use((err, req, res, _next) => {
+  if (res.headersSent) return;
+  console.error("[error]", req.method, req.path, err?.message || err);
+  res.status(500).json({ message: err?.message || "Server error" });
 });
 
 async function backfillVideoDurations() {
@@ -4016,6 +4072,15 @@ async function start() {
   const server = app.listen(port, () => {
     console.log(`API running on http://localhost:${port}`);
   });
+  httpServer = server;
+  // Node 18+ рвёт длинные upload через ~5 мин без этого.
+  server.requestTimeout = 0;
+  server.headersTimeout = 0;
+  server.timeout = 0;
+  server.keepAliveTimeout = 75_000;
+  console.log(
+    `[http] requestTimeout=${server.requestTimeout} server.timeout=${server.timeout}`
+  );
   server.on("error", (err) => {
     console.error(`Не удалось занять порт ${port}:`, err.code || err.message);
     if (err.code === "EADDRINUSE") {
