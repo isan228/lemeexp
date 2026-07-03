@@ -83,6 +83,72 @@ export async function probeVideoDurationSec(mediaPath) {
   return Math.max(1, Math.round(seconds));
 }
 
+async function probeStreamCodecs(mediaPath) {
+  const stdout = await runFfprobe([
+    "-v",
+    "error",
+    "-show_streams",
+    "-of",
+    "json",
+    mediaPath
+  ]);
+  const data = JSON.parse(stdout);
+  const streams = Array.isArray(data?.streams) ? data.streams : [];
+  return {
+    video: streams.find((s) => s.codec_type === "video") || null,
+    audio: streams.find((s) => s.codec_type === "audio") || null
+  };
+}
+
+/** Safari/iOS: H.264 yuv420p + AAC в MPEG-TS; иначе звук есть, картинка чёрная. */
+function needsSafariCompatibleTranscode(video, audio) {
+  if (!video) return true;
+  if (video.codec_name !== "h264") return true;
+  const pix = String(video.pix_fmt || "");
+  if (pix !== "yuv420p") return true;
+  if (audio && audio.codec_name && audio.codec_name !== "aac") return true;
+  return false;
+}
+
+const SAFARI_TRANSCODE_VIDEO_AUDIO = [
+  "-c:v",
+  "libx264",
+  "-preset",
+  "veryfast",
+  "-profile:v",
+  "main",
+  "-level",
+  "4.0",
+  "-pix_fmt",
+  "yuv420p",
+  "-crf",
+  "23",
+  "-c:a",
+  "aac",
+  "-b:a",
+  "128k",
+  "-ac",
+  "2"
+];
+
+const SAFARI_COPY_H264 = ["-c:v", "copy", "-bsf:v", "h264_mp4toannexb", "-c:a", "copy"];
+
+function hlsOutputArgs(keyInfoName) {
+  return [
+    "-hls_time",
+    "6",
+    "-hls_playlist_type",
+    "vod",
+    "-hls_flags",
+    "independent_segments",
+    "-hls_segment_filename",
+    "seg_%03d.ts",
+    "-hls_key_info_file",
+    keyInfoName,
+    "index.m3u8"
+  ];
+}
+
 /** MP4 → AES-128 HLS (сегменты на диске, ключ только через API). */
 export async function packageVideoToHls(videoId, inputMp4Path) {
   const outDir = getHlsDir(videoId);
@@ -104,58 +170,21 @@ export async function packageVideoToHls(videoId, inputMp4Path) {
     throw new Error(`encryption key not written: ${keyPath}`);
   }
 
-  const args = [
-    "-y",
-    "-i",
-    inputMp4Path,
-    "-c:v",
-    "copy",
-    "-c:a",
-    "copy",
-    "-hls_time",
-    "6",
-    "-hls_playlist_type",
-    "vod",
-    "-hls_segment_filename",
-    "seg_%03d.ts",
-    "-hls_key_info_file",
-    keyInfoName,
-    "index.m3u8"
-  ];
+  const { video, audio } = await probeStreamCodecs(inputMp4Path);
+  const transcode = needsSafariCompatibleTranscode(video, audio);
+
+  const encodeArgs = transcode ? SAFARI_TRANSCODE_VIDEO_AUDIO : SAFARI_COPY_H264;
+  const args = ["-y", "-i", inputMp4Path, ...encodeArgs, ...hlsOutputArgs(keyInfoName)];
 
   try {
     await runFfmpeg(args, outDir);
-  } catch (copyError) {
+  } catch (firstError) {
+    if (transcode) throw firstError;
     await runFfmpeg(
-      [
-        "-y",
-        "-i",
-        inputMp4Path,
-        "-c:v",
-        "libx264",
-        "-preset",
-        "veryfast",
-        "-crf",
-        "23",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "128k",
-        "-movflags",
-        "+faststart",
-        "-hls_time",
-        "6",
-        "-hls_playlist_type",
-        "vod",
-        "-hls_segment_filename",
-        "seg_%03d.ts",
-        "-hls_key_info_file",
-        keyInfoName,
-        "index.m3u8"
-      ],
+      ["-y", "-i", inputMp4Path, ...SAFARI_TRANSCODE_VIDEO_AUDIO, ...hlsOutputArgs(keyInfoName)],
       outDir
     ).catch(() => {
-      throw copyError;
+      throw firstError;
     });
   }
 
