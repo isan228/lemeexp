@@ -1882,16 +1882,19 @@ select:focus {
   box-shadow:
     0 4px 6px rgba(15, 23, 42, 0.06),
     0 16px 40px rgba(15, 23, 42, 0.14);
+  line-height: 0;
 }
 
+/* aspect-ratio на <video> ломает отрисовку кадров в Safari (звук есть, экран чёрный) */
 .lesson-watch-page .lesson-video {
   display: block;
   width: 100%;
+  height: auto;
   min-height: 280px;
-  aspect-ratio: 16 / 9;
   border-radius: 14px;
   background: #000;
   vertical-align: top;
+  object-fit: contain;
 }
 
 .lesson-watch-page .player-error {

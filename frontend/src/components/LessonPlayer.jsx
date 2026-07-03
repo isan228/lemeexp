@@ -2,7 +2,7 @@ import Hls from "hls.js";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { apiBase } from "../config.js";
 import { getDeviceId } from "../utils/deviceId.js";
-import { preferNativeHls } from "../utils/videoPlayer.js";
+import { getHlsConfig } from "../utils/videoPlayer.js";
 import { mapVideoElementError } from "../utils/mediaProbe.js";
 import { isPlayableStream, isProcessingStream } from "../utils/streamPath.js";
 import { isLessonVideoCompleted } from "../utils/videoProgress.js";
@@ -180,21 +180,8 @@ function LessonPlayerInner({
       node.addEventListener("error", onVideoError);
       removeVideoError = () => node.removeEventListener("error", onVideoError);
 
-      if (preferNativeHls()) {
-        if (applyInitialSeek) {
-          node.addEventListener("loadedmetadata", applyInitialSeek, { once: true });
-        }
-        node.src = src;
-      } else if (Hls.isSupported()) {
-        const hls = new Hls({
-          enableWorker: true,
-          lowLatencyMode: false,
-          maxBufferLength: 30,
-          maxMaxBufferLength: 120,
-          backBufferLength: 30,
-          fragLoadingMaxRetry: 2,
-          manifestLoadingMaxRetry: 2
-        });
+      if (Hls.isSupported()) {
+        const hls = new Hls(getHlsConfig());
         hlsRef.current = hls;
         hls.loadSource(src);
         hls.attachMedia(node);
@@ -222,6 +209,11 @@ function LessonPlayerInner({
           }
           setPlayError("Не удалось загрузить защищённый поток.");
         });
+      } else if (node.canPlayType("application/vnd.apple.mpegurl")) {
+        if (applyInitialSeek) {
+          node.addEventListener("loadedmetadata", applyInitialSeek, { once: true });
+        }
+        node.src = src;
       } else {
         setPlayError("Ваш браузер не поддерживает воспроизведение этого формата.");
       }

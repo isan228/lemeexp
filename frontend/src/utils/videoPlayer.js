@@ -5,14 +5,16 @@ export function isSafariBrowser() {
   return /Safari/i.test(ua) && !/Chrome|Chromium|CriOS|FxiOS|Edg|OPR|Opera/i.test(ua);
 }
 
-/** Только Safari: встроенный HLS. В Chrome/Firefox — hls.js. */
-export function preferNativeHls() {
-  if (!isSafariBrowser()) return false;
-  if (typeof document === "undefined") return false;
-  try {
-    const probe = document.createElement("video");
-    return Boolean(probe.canPlayType("application/vnd.apple.mpegurl"));
-  } catch {
-    return false;
-  }
+/** Настройки hls.js: в Safari воркеры ломают MSE с AES-128. */
+export function getHlsConfig() {
+  const safari = isSafariBrowser();
+  return {
+    enableWorker: !safari,
+    lowLatencyMode: false,
+    maxBufferLength: 30,
+    maxMaxBufferLength: 120,
+    backBufferLength: safari ? 0 : 30,
+    fragLoadingMaxRetry: 2,
+    manifestLoadingMaxRetry: 2
+  };
 }
