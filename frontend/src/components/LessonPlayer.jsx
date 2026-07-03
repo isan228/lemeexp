@@ -282,11 +282,10 @@ function LessonPlayerInner({
           className="lesson-video"
           controls
           controlsList="nodownload noplaybackrate noremoteplayback"
-          crossOrigin="anonymous"
           disablePictureInPicture
           disableRemotePlayback
           playsInline
-          preload="auto"
+          preload="metadata"
           onPause={onPauseSave}
           onEnded={onEndedSave}
         />
