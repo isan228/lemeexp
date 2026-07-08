@@ -1517,8 +1517,14 @@ export default function AdminPage() {
 
   if (!hydrated) {
     return (
-      <div className="page-loading">
-        <p>Загрузка…</p>
+      <div className="adm-login">
+        <div className="adm-login-bg" aria-hidden />
+        <div className="adm-login-shell">
+          <div className="adm-login-loading">
+            <span className="adm-spinner" aria-hidden />
+            <span>Загрузка…</span>
+          </div>
+        </div>
       </div>
     );
   }
@@ -1526,43 +1532,85 @@ export default function AdminPage() {
   if (!token || !isAdmin) {
     return (
       <div className="adm-login">
-        <div className="adm-login-box">
-          <Link to={routes.home} className="adm-back">
-            ← На главную
-          </Link>
-          <h1>Админ-панель</h1>
-          <p style={{ margin: 0, color: "var(--adm-text-muted)", fontSize: 14 }}>
-            Вход для управления курсами, пользователями и контентом.
-          </p>
-          {error && <div className="adm-login-error" style={{ marginTop: 16 }}>{error}</div>}
-          <form className="adm-login-form" onSubmit={onAdminLogin}>
-            <div className="adm-field">
-              <label htmlFor="admin-email">Email</label>
-              <input
-                id="admin-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoComplete="username"
-              />
+        <div className="adm-login-bg" aria-hidden />
+        <div className="adm-login-shell">
+          <div className="adm-login-box">
+            <div className="adm-login-brand">
+              <div className="adm-login-icon" aria-hidden>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path
+                    d="M12 2L4 6v6c0 5.25 3.4 10.15 8 11.35 4.6-1.2 8-6.1 8-11.35V6l-8-4z"
+                    stroke="currentColor"
+                    strokeWidth="1.75"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M9.5 12.5l1.75 1.75L15 10"
+                    stroke="currentColor"
+                    strokeWidth="1.75"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+              <p className="adm-login-eyebrow">Lemexplain</p>
+              <h1>Админ-панель</h1>
+              <p className="adm-login-desc">
+                Вход для управления курсами, пользователями и контентом.
+              </p>
             </div>
-            <div className="adm-field">
-              <label htmlFor="admin-password">Пароль</label>
-              <input
-                id="admin-password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={6}
-                autoComplete="current-password"
-              />
+
+            {error && (
+              <div className="adm-login-error" role="alert">
+                {error}
+              </div>
+            )}
+
+            <form className="adm-login-form" onSubmit={onAdminLogin}>
+              <div className="adm-field">
+                <label htmlFor="admin-email">Email</label>
+                <input
+                  id="admin-email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoComplete="username"
+                  placeholder="admin@example.com"
+                />
+              </div>
+              <div className="adm-field">
+                <label htmlFor="admin-password">Пароль</label>
+                <input
+                  id="admin-password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                />
+              </div>
+              <button type="submit" className="adm-btn adm-btn-primary adm-login-submit" disabled={pending}>
+                {pending ? (
+                  <>
+                    <span className="adm-spinner adm-spinner-sm" aria-hidden />
+                    Вход…
+                  </>
+                ) : (
+                  "Войти"
+                )}
+              </button>
+            </form>
+
+            <div className="adm-login-foot">
+              <Link to={routes.home} className="adm-login-back">
+                ← На главную
+              </Link>
             </div>
-            <button type="submit" className="adm-btn adm-btn-primary" disabled={pending} style={{ width: "100%" }}>
-              {pending ? "Вход…" : "Войти"}
-            </button>
-          </form>
+          </div>
+          <p className="adm-login-caption">Доступ только для администраторов</p>
         </div>
       </div>
     );

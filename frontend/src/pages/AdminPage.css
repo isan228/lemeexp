@@ -1,6 +1,7 @@
 /* Admin dashboard — layout & components */
 
-.adm {
+.adm,
+.adm-login {
   --adm-sidebar-w: 248px;
   --adm-header-h: 64px;
   --adm-radius: 12px;
@@ -15,7 +16,9 @@
   --adm-success: #059669;
   --adm-warning: #d97706;
   --adm-danger: #dc2626;
+}
 
+.adm {
   display: flex;
   min-height: 100vh;
   background: var(--adm-bg);
@@ -1279,51 +1282,199 @@
 
 /* Login */
 .adm-login {
+  --adm-login-text: #e8f2fc;
+  --adm-login-text-muted: #a8c4e8;
+
+  position: relative;
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
-  background: linear-gradient(145deg, #1e3a5f 0%, #3e69ae 100%);
+  padding: 32px 20px;
+  background: #152a47;
+  color: var(--adm-login-text);
+  overflow: hidden;
+}
+
+.adm-login-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 70% 55% at 15% 10%, rgba(125, 249, 255, 0.12) 0%, transparent 55%),
+    radial-gradient(ellipse 55% 45% at 90% 85%, rgba(62, 105, 174, 0.35) 0%, transparent 50%),
+    linear-gradient(155deg, #0f1f35 0%, #1e3a5f 42%, #3e69ae 100%);
+  pointer-events: none;
+}
+
+.adm-login-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 45%, #000 20%, transparent 75%);
+}
+
+.adm-login-shell {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
 }
 
 .adm-login-box {
   width: 100%;
-  max-width: 400px;
-  padding: 32px;
-  background: #fff;
+  padding: 36px 32px 28px;
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  border-radius: 20px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.5) inset,
+    0 24px 64px rgba(8, 20, 40, 0.35),
+    0 8px 24px rgba(30, 58, 95, 0.2);
+  color: var(--adm-text);
+  backdrop-filter: blur(12px);
+}
+
+.adm-login-brand {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.adm-login-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 14px;
   border-radius: 16px;
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.2);
-}
-
-.adm-login-box h1 {
-  margin: 0 0 8px;
-  font-size: 1.35rem;
-}
-
-.adm-login-box .adm-back {
-  display: inline-block;
-  margin-bottom: 20px;
+  background: linear-gradient(145deg, #e8f2fc 0%, #d4e4f4 100%);
   color: var(--adm-primary);
-  text-decoration: none;
+  box-shadow: 0 4px 14px rgba(62, 105, 174, 0.18);
+}
+
+.adm-login-eyebrow {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--adm-primary);
+}
+
+.adm-login-brand h1 {
+  margin: 0 0 8px;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--adm-text);
+}
+
+.adm-login-desc {
+  margin: 0;
   font-size: 14px;
-  font-weight: 500;
+  line-height: 1.5;
+  color: var(--adm-text-muted);
 }
 
 .adm-login-form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  margin-top: 20px;
+  gap: 14px;
+}
+
+.adm-login-form .adm-field label {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+}
+
+.adm-login-form .adm-field input::placeholder {
+  color: #94a8c4;
+}
+
+.adm-login-submit {
+  width: 100%;
+  margin-top: 4px;
+  padding: 12px 16px;
+  font-size: 15px;
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(62, 105, 174, 0.28);
+}
+
+.adm-login-submit .adm-spinner-sm {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
 }
 
 .adm-login-error {
-  padding: 10px 12px;
-  border-radius: 8px;
+  padding: 11px 14px;
+  margin-bottom: 16px;
+  border-radius: 10px;
   background: #fef2f2;
   border: 1px solid #fecaca;
   color: #991b1b;
   font-size: 14px;
+  line-height: 1.45;
+}
+
+.adm-login-foot {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid var(--adm-border);
+  text-align: center;
+}
+
+.adm-login-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--adm-text-muted);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: color 0.15s;
+}
+
+.adm-login-back:hover {
+  color: var(--adm-primary);
+}
+
+.adm-login-caption {
+  margin: 0;
+  font-size: 13px;
+  color: var(--adm-login-text-muted);
+  text-align: center;
+}
+
+.adm-login-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 28px 36px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--adm-login-text);
+  font-size: 15px;
+  font-weight: 500;
+  backdrop-filter: blur(8px);
+}
+
+.adm-login-loading .adm-spinner {
+  border-color: rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
 }
 
 @media (max-width: 1100px) {
@@ -1348,6 +1499,15 @@
 }
 
 @media (max-width: 900px) {
+  .adm-login {
+    padding: 20px 16px;
+  }
+
+  .adm-login-box {
+    padding: 28px 22px 22px;
+    border-radius: 16px;
+  }
+
   .adm-sidebar {
     transform: translateX(-100%);
   }
