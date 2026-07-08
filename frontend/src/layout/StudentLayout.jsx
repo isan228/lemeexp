@@ -14,12 +14,14 @@ const NAV = [
 ];
 
 export default function StudentLayout() {
-  const { logout, profile, loadCatalog, token, apiRequest, progress } = useAuth();
+  const { logout, profile, loadCatalog, token, apiRequest, progress, chapters, catalogError, catalogLoading } =
+    useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [supportUnread, setSupportUnread] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const lastCatalogRefreshRef = useRef(0);
+  const prevPathRef = useRef(location.pathname);
 
   useEffect(() => {
     if (!token) return;
@@ -29,17 +31,29 @@ export default function StudentLayout() {
 
   useEffect(() => {
     if (!token) return;
+    const prev = prevPathRef.current;
+    prevPathRef.current = location.pathname;
+    if (prev === location.pathname) return;
+    if (!location.pathname.startsWith(routes.learningLessons)) return;
+    if (catalogLoading) return;
+    if (chapters.length > 0 && !catalogError) return;
+    void loadCatalog();
+  }, [location.pathname, token, chapters.length, catalogError, catalogLoading, loadCatalog]);
+
+  useEffect(() => {
+    if (!token) return;
     const refreshCatalog = () => {
       if (document.visibilityState !== "visible") return;
       if (/\/videos\/\d+/.test(location.pathname)) return;
       const now = Date.now();
-      if (now - lastCatalogRefreshRef.current < 60_000) return;
+      const needsReload = chapters.length === 0 || catalogError;
+      if (!needsReload && now - lastCatalogRefreshRef.current < 60_000) return;
       lastCatalogRefreshRef.current = now;
       void loadCatalog();
     };
     document.addEventListener("visibilitychange", refreshCatalog);
     return () => document.removeEventListener("visibilitychange", refreshCatalog);
-  }, [token, loadCatalog, location.pathname]);
+  }, [token, loadCatalog, location.pathname, chapters.length, catalogError]);
 
   useEffect(() => {
     if (!token) return;

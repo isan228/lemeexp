@@ -9,7 +9,7 @@ function subjectVideoCount(subject) {
 }
 
 export default function SubjectsIndex() {
-  const { chapters, catalogLoading, progress } = useAuth();
+  const { chapters, catalogLoading, catalogError, progress, loadCatalog } = useAuth();
   const watched = progress?.watchedSeconds || {};
   const videoCompleted = progress?.videoCompleted || {};
 
@@ -20,10 +20,17 @@ export default function SubjectsIndex() {
         title="Предметы"
         intro="Выберите предмет, затем главу и видеоурок."
       />
-      {catalogLoading ? (
+      {catalogLoading && chapters.length === 0 ? (
         <div className="loading-block">
           <div className="loading-spinner" aria-hidden="true" />
           <p className="muted">Загрузка каталога…</p>
+        </div>
+      ) : catalogError && chapters.length === 0 ? (
+        <div className="empty-state card">
+          <p>{catalogError}</p>
+          <button type="button" className="btn-primary" onClick={() => void loadCatalog()}>
+            Повторить загрузку
+          </button>
         </div>
       ) : (
         <>

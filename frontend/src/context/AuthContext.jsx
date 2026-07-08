@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { apiBase } from "../config.js";
 import { getDeviceId } from "../utils/deviceId.js";
 
@@ -53,6 +53,7 @@ export function AuthProvider({ children }) {
   });
   const [hydrated] = useState(true);
   const [catalogLoading, setCatalogLoading] = useState(() => Boolean(bootstrap.token));
+  const [catalogError, setCatalogError] = useState("");
   const [favoriteItems, setFavoriteItems] = useState([]);
 
   const applyFavorites = useCallback((items) => {
@@ -151,18 +152,24 @@ export function AuthProvider({ children }) {
   const loadCatalog = useCallback(async () => {
     if (!tokenRef.current) {
       setCatalogLoading(false);
+      setCatalogError("");
       return;
     }
     const isInitialLoad = chaptersRef.current.length === 0;
     if (isInitialLoad) setCatalogLoading(true);
     try {
       const [chaptersRes, progressRes, favoritesRes] = await Promise.all([
-        apiRequest("/chapters", {}, false),
-        apiRequest("/progress", {}, false),
-        apiRequest("/favorites", {}, false)
+        apiRequest("/chapters"),
+        apiRequest("/progress"),
+        apiRequest("/favorites")
       ]);
       if (chaptersRes.ok) {
         setChapters(await chaptersRes.json());
+        setCatalogError("");
+      } else if (chaptersRes.status === 401) {
+        setCatalogError("Сессия истекла. Обновите страницу или войдите снова.");
+      } else {
+        setCatalogError("Не удалось загрузить каталог уроков.");
       }
       if (progressRes.ok) {
         setProgress(await progressRes.json());
@@ -174,6 +181,8 @@ export function AuthProvider({ children }) {
           : (data.videoIds || []).map((videoId) => ({ videoId, createdAt: null }));
         applyFavorites(items);
       }
+    } catch {
+      setCatalogError("Не удалось загрузить каталог. Проверьте соединение.");
     } finally {
       setCatalogLoading(false);
     }
@@ -222,6 +231,7 @@ export function AuthProvider({ children }) {
           : (data.videoIds || []).map((videoId) => ({ videoId, createdAt: null }));
         applyFavorites(items);
       }
+      setCatalogError("");
       setCatalogLoading(false);
       return authData.profile;
     },
@@ -265,6 +275,7 @@ export function AuthProvider({ children }) {
           : (data.videoIds || []).map((videoId) => ({ videoId, createdAt: null }));
         applyFavorites(items);
       }
+      setCatalogError("");
       setCatalogLoading(false);
       return authData.profile;
     },
@@ -323,6 +334,7 @@ export function AuthProvider({ children }) {
     setChapters([]);
     applyFavorites([]);
     setCatalogLoading(false);
+    setCatalogError("");
     setProgress({
       percentage: 0,
       completedCount: 0,
@@ -343,6 +355,7 @@ export function AuthProvider({ children }) {
       profile,
       chapters,
       catalogLoading,
+      catalogError,
       progress,
       favoriteItems,
       hydrated,
@@ -365,6 +378,7 @@ export function AuthProvider({ children }) {
       profile,
       chapters,
       catalogLoading,
+      catalogError,
       progress,
       favoriteItems,
       hydrated,

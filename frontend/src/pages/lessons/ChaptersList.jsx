@@ -7,17 +7,30 @@ import { getChapterWatchProgressPercent } from "../../utils/videoProgress.js";
 export default function ChaptersList() {
   const { subjectId } = useParams();
   const id = Number(subjectId);
-  const { chapters, catalogLoading, progress } = useAuth();
+  const { chapters, catalogLoading, catalogError, progress, loadCatalog } = useAuth();
   const subject = chapters.find((c) => Number(c.id) === id);
   const watched = progress?.watchedSeconds || {};
   const videoCompleted = progress?.videoCompleted || {};
 
-  if (catalogLoading) {
+  if (catalogLoading && chapters.length === 0) {
     return (
       <section className="lessons-flow lessons-flow-padded">
         <div className="loading-block">
           <div className="loading-spinner" aria-hidden="true" />
           <p className="muted">Загрузка каталога…</p>
+        </div>
+      </section>
+    );
+  }
+
+  if (catalogError && chapters.length === 0) {
+    return (
+      <section className="lessons-flow lessons-flow-padded">
+        <div className="empty-state card">
+          <p>{catalogError}</p>
+          <button type="button" className="btn-primary" onClick={() => void loadCatalog()}>
+            Повторить загрузку
+          </button>
         </div>
       </section>
     );

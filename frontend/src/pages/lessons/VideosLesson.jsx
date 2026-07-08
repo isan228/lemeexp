@@ -38,7 +38,7 @@ export default function VideosLesson() {
   const { subjectId, chapterId } = useParams();
   const sid = Number(subjectId);
   const cid = Number(chapterId);
-  const { chapters, catalogLoading, progress } = useAuth();
+  const { chapters, catalogLoading, catalogError, progress, loadCatalog } = useAuth();
   const subscribeHref = routes.payment(SUBSCRIPTION_PLAN.id);
 
   const { subject, chapter } = useMemo(() => {
@@ -47,12 +47,25 @@ export default function VideosLesson() {
     return { subject: subj, chapter: ch };
   }, [chapters, sid, cid]);
 
-  if (catalogLoading) {
+  if (catalogLoading && chapters.length === 0) {
     return (
       <section className="lessons-flow lessons-flow-padded">
         <div className="loading-block">
           <div className="loading-spinner" aria-hidden="true" />
           <p className="muted">Загрузка каталога…</p>
+        </div>
+      </section>
+    );
+  }
+
+  if (catalogError && chapters.length === 0) {
+    return (
+      <section className="lessons-flow lessons-flow-padded">
+        <div className="empty-state card">
+          <p>{catalogError}</p>
+          <button type="button" className="btn-primary" onClick={() => void loadCatalog()}>
+            Повторить загрузку
+          </button>
         </div>
       </section>
     );
