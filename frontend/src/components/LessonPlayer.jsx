@@ -2,7 +2,7 @@ import Hls from "hls.js";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { apiBase } from "../config.js";
 import { getDeviceId } from "../utils/deviceId.js";
-import { getHlsConfig } from "../utils/videoPlayer.js";
+import { getHlsConfig, shouldUseNativeHls } from "../utils/videoPlayer.js";
 import { mapVideoElementError } from "../utils/mediaProbe.js";
 import { isPlayableStream, isProcessingStream } from "../utils/streamPath.js";
 import { isLessonVideoCompleted } from "../utils/videoProgress.js";
@@ -180,7 +180,15 @@ function LessonPlayerInner({
       node.addEventListener("error", onVideoError);
       removeVideoError = () => node.removeEventListener("error", onVideoError);
 
-      if (Hls.isSupported()) {
+      const useNativeHls = shouldUseNativeHls(node);
+
+      if (useNativeHls) {
+        if (applyInitialSeek) {
+          node.addEventListener("loadedmetadata", applyInitialSeek, { once: true });
+        }
+        node.src = src;
+        node.load();
+      } else if (Hls.isSupported()) {
         const hls = new Hls(getHlsConfig());
         hlsRef.current = hls;
         hls.loadSource(src);
@@ -214,6 +222,7 @@ function LessonPlayerInner({
           node.addEventListener("loadedmetadata", applyInitialSeek, { once: true });
         }
         node.src = src;
+        node.load();
       } else {
         setPlayError("Ваш браузер не поддерживает воспроизведение этого формата.");
       }

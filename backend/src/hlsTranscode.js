@@ -100,12 +100,16 @@ async function probeStreamCodecs(mediaPath) {
   };
 }
 
-/** Safari/iOS: H.264 yuv420p + AAC в MPEG-TS; иначе звук есть, картинка чёрная. */
+/** Safari/iOS: H.264 Baseline yuv420p + AAC в MPEG-TS; иначе звук есть, картинка чёрная. */
 function needsSafariCompatibleTranscode(video, audio) {
   if (!video) return true;
   if (video.codec_name !== "h264") return true;
   const pix = String(video.pix_fmt || "");
   if (pix !== "yuv420p") return true;
+  const profile = String(video.profile || "").toLowerCase();
+  if (profile.includes("high")) return true;
+  const level = Number(video.level);
+  if (Number.isFinite(level) && level > 31) return true;
   if (audio && audio.codec_name && audio.codec_name !== "aac") return true;
   return false;
 }
@@ -116,9 +120,9 @@ const SAFARI_TRANSCODE_VIDEO_AUDIO = [
   "-preset",
   "veryfast",
   "-profile:v",
-  "main",
+  "baseline",
   "-level",
-  "4.0",
+  "3.1",
   "-pix_fmt",
   "yuv420p",
   "-crf",

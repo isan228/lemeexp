@@ -1895,6 +1895,8 @@ select:focus {
   background: #000;
   vertical-align: top;
   object-fit: contain;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
 }
 
 .lesson-watch-page .player-error {
