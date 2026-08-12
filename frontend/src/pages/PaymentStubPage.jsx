@@ -125,8 +125,8 @@ export default function PaymentPage() {
         </p>
         <p className="muted">
           {finalAmount <= 0
-            ? "Промокод покрывает стоимость — оплата через Finik не нужна."
-            : "Оплата через Finik QR — любым банковским приложением Кыргызстана."}
+            ? "Промокод покрывает стоимость — оплата не нужна."
+            : "Оплата по QR — любым банковским приложением Кыргызстана."}
         </p>
 
         <div className="adm-form" style={{ marginTop: 16, marginBottom: 16 }}>
@@ -161,10 +161,7 @@ export default function PaymentPage() {
 
         <div className="payment-methods">
           <div className="payment-method active">
-            <span className="payment-method-icon" aria-hidden>
-              📱
-            </span>
-            <span>{finalAmount <= 0 ? "Промокод" : "Finik QR"}</span>
+            <span>{finalAmount <= 0 ? "Промокод" : "Оплата по QR"}</span>
           </div>
         </div>
         {location.state?.form?.fullName && (
@@ -186,7 +183,7 @@ export default function PaymentPage() {
             onClick={() => void onPay()}
             disabled={pending || !isValidPlan || planLoading}
           >
-            {pending ? "Обработка…" : finalAmount <= 0 ? "Активировать доступ" : "Оплатить через Finik"}
+            {pending ? "Обработка…" : finalAmount <= 0 ? "Активировать доступ" : "Оплатить"}
           </button>
         </div>
       </div>
