@@ -732,16 +732,21 @@ input:focus {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 24px;
-  background: linear-gradient(180deg, #dceefe 0%, var(--med-bg-warm) 45%, #ffffff 100%);
+  padding: 28px 20px 40px;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(0, 150, 255, 0.12) 0%, transparent 55%),
+    linear-gradient(180deg, #eef5fb 0%, #f7fafc 48%, #ffffff 100%);
 }
 
 .payment-stub-card {
   width: min(560px, 100%);
-  padding: 24px;
-  border-radius: var(--med-radius);
-  border: 1px solid var(--med-border-soft);
-  box-shadow: 0 24px 60px rgba(62, 105, 174, 0.16);
+  padding: 28px;
+  border-radius: 16px;
+  border: 1px solid rgba(211, 211, 211, 0.85);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.8) inset,
+    0 18px 48px rgba(30, 58, 95, 0.1);
+  background: #ffffff;
 }
 
 .payment-stub-card h1 {
@@ -749,15 +754,181 @@ input:focus {
 }
 
 .payment-stub-actions {
-  margin-top: 16px;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(211, 211, 211, 0.75);
   display: flex;
-  gap: 10px;
+  align-items: center;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
-.register-page .register-card,
-.payment-page .payment-card {
+.register-page .register-card {
   width: min(680px, 100%);
+}
+
+.payment-page .payment-card {
+  width: min(560px, 100%);
+}
+
+.payment-page .flow-hero {
+  background: linear-gradient(145deg, #f8fbff 0%, #eaf3fb 100%);
+  border: 1px solid rgba(0, 150, 255, 0.14);
+  border-radius: 14px;
+  padding: 18px 18px 16px;
+  margin-bottom: 18px;
+}
+
+.payment-page .flow-hero h1 {
+  margin: 0 0 6px;
+  font-size: clamp(1.35rem, 3vw, 1.65rem);
+  letter-spacing: -0.02em;
+}
+
+.payment-summary {
+  padding: 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(211, 211, 211, 0.9);
+  background: #f8fbff;
+  margin-bottom: 18px;
+}
+
+.payment-summary-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.payment-summary-tag {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #15803d;
+  background: #dcfce7;
+  border: 1px solid #bbf7d0;
+  padding: 4px 8px;
+  border-radius: 999px;
+}
+
+.payment-summary-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.payment-summary-name {
+  display: block;
+  font-size: 1.05rem;
+  color: var(--med-fg, #0d0d0d);
+}
+
+.payment-summary-period {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--med-muted, #7293b3);
+}
+
+.payment-summary-price-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+}
+
+.payment-summary-old {
+  font-size: 13px;
+  color: var(--med-muted, #7293b3);
+  text-decoration: line-through;
+}
+
+.payment-summary-price {
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--med-primary-hover, #191970);
+  line-height: 1.1;
+}
+
+.payment-summary-note {
+  margin: 14px 0 0;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(211, 211, 211, 0.95);
+  font-size: 13px;
+  color: #15803d;
+}
+
+.payment-promo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.payment-promo label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--med-fg-soft, #28282b);
+}
+
+.payment-promo-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.payment-promo-row input {
+  flex: 1 1 180px;
+  margin-top: 0;
+  max-width: none;
+}
+
+.payment-promo-row .btn-secondary {
+  margin-top: 0;
+  white-space: nowrap;
+}
+
+.payment-applicant {
+  margin: 12px 0 0;
+}
+
+.payment-page .form-error {
+  margin-top: 14px;
+}
+
+.payment-pay-btn {
+  margin-top: 0;
+  margin-left: auto;
+  min-width: 160px;
+  padding: 12px 22px;
+}
+
+@media (max-width: 560px) {
+  .payment-stub-card {
+    padding: 20px 16px;
+  }
+
+  .payment-summary-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .payment-summary-price-block {
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .payment-stub-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .payment-pay-btn {
+    margin-left: 0;
+    width: 100%;
+  }
 }
 
 .flow-steps {

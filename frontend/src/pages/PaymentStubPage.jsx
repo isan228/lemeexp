@@ -83,7 +83,7 @@ export default function PaymentPage() {
       }
 
       if (!data.paymentUrl) {
-        throw new Error("Finik не вернул ссылку на оплату");
+        throw new Error("Не удалось получить ссылку на оплату");
       }
       window.location.href = data.paymentUrl;
     } catch (err) {
@@ -103,6 +103,7 @@ export default function PaymentPage() {
           На главную
         </Link>
       </header>
+
       <div className="payment-stub-card card payment-card">
         <div className="flow-hero">
           <p className="landing-kicker">Шаг оплаты</p>
@@ -111,63 +112,64 @@ export default function PaymentPage() {
             <span className="flow-step active">2. Оплата</span>
           </div>
           <h1>{GET_ACCESS_LABEL}</h1>
+          <p className="muted">Оформите подписку, чтобы открыть все уроки.</p>
         </div>
-        <p className="muted">
-          {SUBSCRIPTION_PLAN.name} — <strong>{displayPrice}</strong> / {periodLabel}
-          {appliedPromo?.discount > 0 ? (
-            <>
-              {" "}
-              <span className="small">
-                (было {priceLabel}, скидка {formatPlanPrice(appliedPromo.discount)})
-              </span>
-            </>
-          ) : null}
-        </p>
-        <p className="muted">
-          {finalAmount <= 0
-            ? "Промокод покрывает стоимость — оплата не нужна."
-            : "Оплата по QR — любым банковским приложением Кыргызстана."}
-        </p>
 
-        <div className="adm-form" style={{ marginTop: 16, marginBottom: 16 }}>
-          <div className="adm-field">
-            <label htmlFor="promo-code">Промокод</label>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <input
-                id="promo-code"
-                value={promoInput}
-                onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
-                placeholder="Например: WELCOME"
-                disabled={promoPending || pending}
-                style={{ flex: "1 1 160px" }}
-              />
-              {appliedPromo ? (
-                <button type="button" className="btn-secondary inline" onClick={clearPromo} disabled={pending}>
-                  Сбросить
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="btn-secondary inline"
-                  onClick={() => void onApplyPromo()}
-                  disabled={promoPending || pending || !promoInput.trim()}
-                >
-                  {promoPending ? "Проверка…" : "Применить"}
-                </button>
-              )}
+        <div className="payment-summary">
+          <div className="payment-summary-top">
+            <span className="plan-badge">Подписка</span>
+            {appliedPromo?.discount > 0 ? <span className="payment-summary-tag">Скидка</span> : null}
+          </div>
+          <div className="payment-summary-row">
+            <div>
+              <strong className="payment-summary-name">{SUBSCRIPTION_PLAN.name}</strong>
+              <p className="payment-summary-period">на {periodLabel}</p>
+            </div>
+            <div className="payment-summary-price-block">
+              {appliedPromo?.discount > 0 ? (
+                <span className="payment-summary-old">{priceLabel}</span>
+              ) : null}
+              <span className="payment-summary-price">{displayPrice}</span>
             </div>
           </div>
+          {finalAmount <= 0 ? (
+            <p className="payment-summary-note">Промокод покрывает стоимость — оплата не нужна.</p>
+          ) : null}
         </div>
 
-        <div className="payment-methods">
-          <div className="payment-method active">
-            <span>{finalAmount <= 0 ? "Промокод" : "Оплата по QR"}</span>
+        <div className="payment-promo">
+          <label htmlFor="promo-code">Промокод</label>
+          <div className="payment-promo-row">
+            <input
+              id="promo-code"
+              value={promoInput}
+              onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+              placeholder="Например: WELCOME"
+              disabled={promoPending || pending}
+              autoComplete="off"
+            />
+            {appliedPromo ? (
+              <button type="button" className="btn-secondary inline" onClick={clearPromo} disabled={pending}>
+                Сбросить
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn-secondary inline"
+                onClick={() => void onApplyPromo()}
+                disabled={promoPending || pending || !promoInput.trim()}
+              >
+                {promoPending ? "Проверка…" : "Применить"}
+              </button>
+            )}
           </div>
         </div>
-        {location.state?.form?.fullName && (
-          <p className="muted small">Анкета получена для: {location.state.form.fullName}</p>
-        )}
-        {error && <p className="form-error">{error}</p>}
+
+        {location.state?.form?.fullName ? (
+          <p className="muted small payment-applicant">Анкета получена для: {location.state.form.fullName}</p>
+        ) : null}
+        {error ? <p className="form-error">{error}</p> : null}
+
         <div className="payment-stub-actions">
           {!isValidPlan ? (
             <Link to={routes.register} className="btn-secondary">
@@ -179,7 +181,7 @@ export default function PaymentPage() {
           </Link>
           <button
             type="button"
-            className="btn-primary inline"
+            className="btn-primary payment-pay-btn"
             onClick={() => void onPay()}
             disabled={pending || !isValidPlan || planLoading}
           >
