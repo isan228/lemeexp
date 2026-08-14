@@ -4,7 +4,7 @@ export const site = {
   url: "https://lemexplain.com",
   /** Прямая ссылка на Android APK (файл в frontend/public/downloads/). */
   androidApkUrl: "/downloads/lemexplain.apk",
-  androidApkLabel: "Скачать Android"
+  androidApkLabel: "Скачать приложение"
 };
 
 /** Единая подпись CTA для оформления доступа. */

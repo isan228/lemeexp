@@ -165,15 +165,14 @@ VideoLocation? findVideoById(List<LessonSubject> chapters, int? videoId) {
 }
 
 bool isPlayableStream(String? path) {
-  if (path == null || path.trim().isEmpty) return false;
-  final p = path.toLowerCase();
-  return p.contains(".m3u8") || p.startsWith("hls:") || p.contains("/hls/");
+  final p = path?.trim() ?? "";
+  if (p.isEmpty) return false;
+  return p.startsWith("hls:") || p.startsWith("hls/");
 }
 
 bool isProcessingStream(String? path) {
-  if (path == null) return false;
-  final p = path.toLowerCase();
-  return p.contains("processing") || p.contains("pending") || p.contains("packaging");
+  final p = path?.trim() ?? "";
+  return p.startsWith("upload:");
 }
 
 List<WatchDay> normalizeLast7Days(LearningProgress progress) {

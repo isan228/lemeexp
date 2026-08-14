@@ -25,7 +25,7 @@ class AuthProvider extends ChangeNotifier {
   List<FavoriteItem> favoriteItems = const [];
   int supportUnread = 0;
 
-  bool get isLoggedIn => (token ?? "").isNotEmpty && profile != null;
+  bool get isLoggedIn => (token ?? "").isNotEmpty;
 
   Future<void> bootstrap() async {
     final session = await _storage.readSession();
@@ -34,10 +34,18 @@ class AuthProvider extends ChangeNotifier {
     await _api.hydrate(session.token, session.refresh);
     hydrated = true;
     notifyListeners();
-    if (isLoggedIn) {
-      await loadCatalog();
-      await refreshSupportUnread();
+    if (!isLoggedIn) return;
+
+    // Если токен есть, а профиль потерялся — восстановим через refresh / каталог.
+    if (profile == null && session.refresh.isNotEmpty) {
+      final refreshed = await _api.request("GET", "/progress", retry: true);
+      if (refreshed.statusCode == 401) {
+        await logout();
+        return;
+      }
     }
+    await loadCatalog();
+    await refreshSupportUnread();
   }
 
   Future<void> _persistAuth(String nextToken, String nextRefresh, UserProfile? nextProfile) async {
@@ -49,52 +57,80 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<UserProfile> login(String email, String password) async {
-    final res = await _api.request(
-      "POST",
-      "/auth/login",
-      body: {"email": email.trim(), "password": password},
-      auth: false,
-      retry: false,
-    );
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      _api.throwFrom(res, "Неверный email или пароль");
+    try {
+      final res = await _api.request(
+        "POST",
+        "/auth/login",
+        body: {"email": email.trim(), "password": password},
+        auth: false,
+        retry: false,
+      );
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        _api.throwFrom(res, "Неверный email или пароль");
+      }
+      final data = await _api.decodeMap(res);
+      final profileRaw = data["profile"];
+      if (profileRaw is! Map) {
+        throw ApiException("Сервер не вернул профиль пользователя");
+      }
+      final nextProfile = UserProfile.fromJson(Map<String, dynamic>.from(profileRaw));
+      final nextToken = data["token"] as String? ?? "";
+      if (nextToken.isEmpty) {
+        throw ApiException("Сервер не вернул токен");
+      }
+      await _persistAuth(
+        nextToken,
+        data["refreshToken"] as String? ?? "",
+        nextProfile,
+      );
+      await loadCatalog();
+      await refreshSupportUnread();
+      return nextProfile;
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ApiException("Ошибка входа: $e");
     }
-    final data = await _api.decodeMap(res);
-    final nextProfile = UserProfile.fromJson(Map<String, dynamic>.from(data["profile"] as Map));
-    await _persistAuth(
-      data["token"] as String? ?? "",
-      data["refreshToken"] as String? ?? "",
-      nextProfile,
-    );
-    await loadCatalog();
-    await refreshSupportUnread();
-    return nextProfile;
   }
 
   Future<UserProfile> register(String email, String password, String nickname) async {
-    final res = await _api.request(
-      "POST",
-      "/auth/register",
-      body: {
-        "email": email.trim(),
-        "password": password,
-        "nickname": nickname.trim(),
-      },
-      auth: false,
-      retry: false,
-    );
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      _api.throwFrom(res, "Регистрация не удалась");
+    try {
+      final res = await _api.request(
+        "POST",
+        "/auth/register",
+        body: {
+          "email": email.trim(),
+          "password": password,
+          "nickname": nickname.trim(),
+        },
+        auth: false,
+        retry: false,
+      );
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        _api.throwFrom(res, "Регистрация не удалась");
+      }
+      final data = await _api.decodeMap(res);
+      final profileRaw = data["profile"];
+      if (profileRaw is! Map) {
+        throw ApiException("Сервер не вернул профиль пользователя");
+      }
+      final nextProfile = UserProfile.fromJson(Map<String, dynamic>.from(profileRaw));
+      final nextToken = data["token"] as String? ?? "";
+      if (nextToken.isEmpty) {
+        throw ApiException("Сервер не вернул токен");
+      }
+      await _persistAuth(
+        nextToken,
+        data["refreshToken"] as String? ?? "",
+        nextProfile,
+      );
+      await loadCatalog();
+      return nextProfile;
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ApiException("Ошибка регистрации: $e");
     }
-    final data = await _api.decodeMap(res);
-    final nextProfile = UserProfile.fromJson(Map<String, dynamic>.from(data["profile"] as Map));
-    await _persistAuth(
-      data["token"] as String? ?? "",
-      data["refreshToken"] as String? ?? "",
-      nextProfile,
-    );
-    await loadCatalog();
-    return nextProfile;
   }
 
   Future<void> logout() async {
@@ -187,7 +223,8 @@ class AuthProvider extends ChangeNotifier {
     }
     if (data["videoIds"] is List) {
       favoriteItems = (data["videoIds"] as List)
-          .map((id) => FavoriteItem(videoId: (id as num).toInt()))
+          .map((id) => FavoriteItem(videoId: asInt(id)))
+          .where((item) => item.videoId > 0)
           .toList();
     }
   }
@@ -212,9 +249,9 @@ class AuthProvider extends ChangeNotifier {
     if (data["videoIds"] is List) {
       final prev = {for (final item in favoriteItems) item.videoId: item};
       favoriteItems = (data["videoIds"] as List).map((id) {
-        final numId = (id as num).toInt();
+        final numId = asInt(id);
         return prev[numId] ?? FavoriteItem(videoId: numId, createdAt: DateTime.now().toIso8601String());
-      }).toList();
+      }).where((item) => item.videoId > 0).toList();
       notifyListeners();
     } else {
       await loadCatalog();
@@ -227,12 +264,12 @@ class AuthProvider extends ChangeNotifier {
     final res = await _api.request("GET", "/support/unread", retry: false);
     if (res.statusCode == 200) {
       final data = await _api.decodeMap(res);
-      supportUnread = (data["total"] as num?)?.toInt() ?? 0;
+      supportUnread = asInt(data["total"]);
       notifyListeners();
     }
   }
 
-  Future<List<SupportMessage>> loadSupportMessages({int? videoId}) async {
+  Future<List<SupportMessage>> loadSupportMessages({int? videoId, bool markRead = true}) async {
     final query = videoId != null && videoId > 0 ? {"videoId": "$videoId"} : null;
     final res = await _api.request("GET", "/support/messages", query: query);
     if (res.statusCode != 200) {
@@ -243,9 +280,11 @@ class AuthProvider extends ChangeNotifier {
         .whereType<Map>()
         .map((e) => SupportMessage.fromJson(Map<String, dynamic>.from(e)))
         .toList();
-    await _api.request("POST", "/support/mark-read");
-    supportUnread = 0;
-    notifyListeners();
+    if (markRead) {
+      await _api.request("POST", "/support/mark-read");
+      supportUnread = 0;
+      notifyListeners();
+    }
     return list;
   }
 
@@ -272,8 +311,9 @@ class AuthProvider extends ChangeNotifier {
     int? rank;
     var seconds = 0;
     if (current is Map) {
-      rank = (current["rank"] as num?)?.toInt();
-      seconds = (current["seconds"] as num?)?.toInt() ?? 0;
+      final rawRank = current["rank"];
+      rank = rawRank == null ? null : asInt(rawRank);
+      seconds = asInt(current["seconds"]);
     }
     return LeaderboardData(entries: entries, currentRank: rank, currentSeconds: seconds);
   }
@@ -285,8 +325,8 @@ class AuthProvider extends ChangeNotifier {
     }
     final data = await _api.decodeMap(res);
     return BillingPlan(
-      amount: (data["amount"] as num?)?.toDouble() ?? 0,
-      periodLabel: (data["periodLabel"] as String?) ?? "1 месяц",
+      amount: asDouble(data["amount"]),
+      periodLabel: asStringOrNull(data["periodLabel"]) ?? "1 месяц",
     );
   }
 
@@ -300,10 +340,11 @@ class AuthProvider extends ChangeNotifier {
       _api.throwFrom(res, "Промокод недействителен");
     }
     final data = await _api.decodeMap(res);
+    final discount = data["discount"] ?? data["discountLabel"] ?? data["discountValue"];
     return PromoResult(
-      code: (data["code"] as String?) ?? code.trim(),
-      finalAmount: (data["finalAmount"] as num?)?.toDouble() ?? 0,
-      discountLabel: data["discountLabel"] as String?,
+      code: asStringOrNull(data["code"]) ?? code.trim(),
+      finalAmount: asDouble(data["finalAmount"]),
+                  discountLabel: discount?.toString(),
     );
   }
 
@@ -323,19 +364,41 @@ class AuthProvider extends ChangeNotifier {
     }
     return (
       free: data["free"] == true,
-      paymentUrl: data["paymentUrl"] as String?,
-      paymentId: data["paymentId"] as String?,
+      paymentUrl: asStringOrNull(data["paymentUrl"]),
+      paymentId: asStringOrNull(data["paymentId"]),
       profile: nextProfile,
     );
   }
 
-  Future<String> getVideoAccessToken(int videoId) async {
+  /// Returns access JWT and TTL seconds (default 300).
+  Future<({String token, int expiresIn})> getVideoAccessToken(int videoId) async {
     final res = await _api.request("POST", "/videos/$videoId/access-token");
     if (res.statusCode < 200 || res.statusCode >= 300) {
       _api.throwFrom(res, "Не удалось получить доступ к видео");
     }
     final data = await _api.decodeMap(res);
-    return data["token"] as String? ?? "";
+    final token = asStringOrNull(data["token"]) ?? "";
+    if (token.isEmpty) {
+      throw ApiException("Пустой токен доступа к видео");
+    }
+    final expiresIn = asInt(data["expiresIn"], 300);
+    return (token: token, expiresIn: expiresIn > 0 ? expiresIn : 300);
+  }
+
+  Future<({String status, UserProfile? profile})> getPaymentStatus(String paymentId) async {
+    final res = await _api.request("GET", "/billing/payment-status/$paymentId");
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      _api.throwFrom(res, "Не удалось проверить оплату");
+    }
+    final data = await _api.decodeMap(res);
+    UserProfile? nextProfile;
+    if (data["profile"] is Map) {
+      nextProfile = UserProfile.fromJson(Map<String, dynamic>.from(data["profile"] as Map));
+    }
+    return (
+      status: asStringOrNull(data["status"]) ?? "unknown",
+      profile: nextProfile,
+    );
   }
 
   Future<void> saveVideoPosition(int videoId, int watchedSeconds, int durationSec) async {
@@ -351,6 +414,33 @@ class AuthProvider extends ChangeNotifier {
       body: {"watchedSeconds": watchedSeconds, "completed": completed},
       retry: false,
     );
+
+    // Keep local progress in sync so «Продолжить урок» and bars update immediately.
+    final nextWatched = Map<int, int>.from(progress.watchedSeconds);
+    final prev = nextWatched[videoId] ?? 0;
+    nextWatched[videoId] = watchedSeconds > prev ? watchedSeconds : prev;
+    final nextCompleted = Map<int, bool>.from(progress.videoCompleted);
+    if (completed) nextCompleted[videoId] = true;
+
+    var completedCount = progress.completedCount;
+    if (completed && progress.videoCompleted[videoId] != true) {
+      completedCount += 1;
+    }
+    final total = progress.totalVideos;
+    final pct = total > 0 ? (completedCount / total) * 100 : progress.percentage;
+
+    progress = LearningProgress(
+      percentage: pct,
+      completedCount: completedCount,
+      totalVideos: total,
+      lastVideoId: videoId,
+      watchedSeconds: nextWatched,
+      videoCompleted: nextCompleted,
+      last7Days: progress.last7Days,
+      dailyRecordDate: progress.dailyRecordDate,
+      dailyRecordSeconds: progress.dailyRecordSeconds,
+    );
+    notifyListeners();
   }
 
   VideoLocation? continueLesson() => findVideoById(chapters, progress.lastVideoId);

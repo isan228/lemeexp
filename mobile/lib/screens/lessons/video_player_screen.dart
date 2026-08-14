@@ -31,19 +31,107 @@ class VideoPlayerScreen extends StatefulWidget {
   State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
 }
 
-class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
+class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindingObserver {
   VideoPlayerController? _videoController;
   ChewieController? _chewieController;
   Timer? _saveTimer;
+  Timer? _tokenRefreshTimer;
   String? _error;
   bool _loading = true;
+  bool _refreshingToken = false;
   AuthProvider? _auth;
   int _durationSec = 0;
+  bool _wasPlaying = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _initPlayer());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      unawaited(_persist(false));
+    }
+  }
+
+  Future<void> _disposeControllers() async {
+    _saveTimer?.cancel();
+    _saveTimer = null;
+    _tokenRefreshTimer?.cancel();
+    _tokenRefreshTimer = null;
+    final video = _videoController;
+    final chewie = _chewieController;
+    _videoController = null;
+    _chewieController = null;
+    video?.removeListener(_onTick);
+    chewie?.dispose();
+    await video?.dispose();
+  }
+
+  void _scheduleTokenRefresh(int expiresInSec) {
+    _tokenRefreshTimer?.cancel();
+    final refreshAfter = Duration(seconds: (expiresInSec - 45).clamp(30, expiresInSec));
+    _tokenRefreshTimer = Timer(refreshAfter, () => unawaited(_refreshAccessToken()));
+  }
+
+  Future<void> _refreshAccessToken() async {
+    if (_refreshingToken || !mounted) return;
+    final auth = _auth;
+    final old = _videoController;
+    if (auth == null || old == null || !old.value.isInitialized) return;
+
+    _refreshingToken = true;
+    try {
+      final position = old.value.position;
+      final playing = old.value.isPlaying;
+      final access = await auth.getVideoAccessToken(widget.videoId);
+      if (!mounted) return;
+
+      final url = auth.api.hlsManifestUrl(widget.videoId, access.token);
+      final next = VideoPlayerController.networkUrl(Uri.parse(url));
+      await next.initialize();
+      if (!mounted) {
+        await next.dispose();
+        return;
+      }
+
+      await next.seekTo(position);
+      if (playing) await next.play();
+
+      final chewie = ChewieController(
+        videoPlayerController: next,
+        autoPlay: playing,
+        looping: false,
+        allowFullScreen: true,
+        allowMuting: true,
+        materialProgressColors: ChewieProgressColors(
+          playedColor: AppColors.primary,
+          handleColor: AppColors.accent,
+          bufferedColor: AppColors.primaryWeak,
+          backgroundColor: Colors.white24,
+        ),
+      );
+
+      final prevChewie = _chewieController;
+      final prevVideo = _videoController;
+      prevVideo?.removeListener(_onTick);
+      _videoController = next;
+      _chewieController = chewie;
+      next.addListener(_onTick);
+      prevChewie?.dispose();
+      await prevVideo?.dispose();
+
+      _scheduleTokenRefresh(access.expiresIn);
+      if (mounted) setState(() {});
+    } catch (_) {
+      // Keep current stream; try again soon.
+      _tokenRefreshTimer = Timer(const Duration(seconds: 30), () => unawaited(_refreshAccessToken()));
+    } finally {
+      _refreshingToken = false;
+    }
   }
 
   Future<void> _initPlayer() async {
@@ -82,20 +170,31 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       return;
     }
 
+    VideoPlayerController? controller;
+    ChewieController? chewie;
     try {
-      final accessToken = await auth.getVideoAccessToken(widget.videoId);
-      final url = auth.api.hlsManifestUrl(widget.videoId, accessToken);
-      final controller = VideoPlayerController.networkUrl(Uri.parse(url));
+      final access = await auth.getVideoAccessToken(widget.videoId);
+      final url = auth.api.hlsManifestUrl(widget.videoId, access.token);
+      controller = VideoPlayerController.networkUrl(Uri.parse(url));
       await controller.initialize();
+
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+
+      final mediaDuration = controller.value.duration.inSeconds;
+      if (mediaDuration > 0) _durationSec = mediaDuration;
 
       final startAt = widget.resume
           ? getVideoWatchedSeconds(auth.progress.watchedSeconds, widget.videoId)
           : 0;
-      if (startAt > 0 && startAt < (video.duration > 0 ? video.duration - 5 : 1 << 30)) {
+      final maxSeek = _durationSec > 5 ? _durationSec - 5 : _durationSec;
+      if (startAt > 0 && (maxSeek <= 0 || startAt < maxSeek)) {
         await controller.seekTo(Duration(seconds: startAt));
       }
 
-      final chewie = ChewieController(
+      chewie = ChewieController(
         videoPlayerController: controller,
         autoPlay: true,
         looping: false,
@@ -109,20 +208,29 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         ),
       );
 
+      if (!mounted) {
+        chewie.dispose();
+        await controller.dispose();
+        return;
+      }
+
       _videoController = controller;
       _chewieController = chewie;
       _saveTimer = Timer.periodic(const Duration(seconds: 15), (_) => _persist(false));
       controller.addListener(_onTick);
-
-      if (!mounted) return;
+      _scheduleTokenRefresh(access.expiresIn);
       setState(() => _loading = false);
     } on ApiException catch (e) {
+      chewie?.dispose();
+      await controller?.dispose();
       if (!mounted) return;
       setState(() {
         _loading = false;
         _error = e.message;
       });
     } catch (_) {
+      chewie?.dispose();
+      await controller?.dispose();
       if (!mounted) return;
       setState(() {
         _loading = false;
@@ -134,7 +242,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void _onTick() {
     final c = _videoController;
     if (c == null || !c.value.isInitialized) return;
-    // no-op; periodic timer handles saves
+    final playing = c.value.isPlaying;
+    if (_wasPlaying && !playing) {
+      unawaited(_persist(false));
+    }
+    _wasPlaying = playing;
   }
 
   Future<void> _persist(bool refresh) async {
@@ -153,8 +265,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _saveTimer?.cancel();
-    _videoController?.removeListener(_onTick);
+    _tokenRefreshTimer?.cancel();
     final c = _videoController;
     final auth = _auth;
     if (c != null && c.value.isInitialized && auth != null) {
@@ -163,8 +276,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         unawaited(auth.saveVideoPosition(widget.videoId, seconds, _durationSec));
       }
     }
-    _chewieController?.dispose();
-    _videoController?.dispose();
+    unawaited(_disposeControllers());
     super.dispose();
   }
 
@@ -261,9 +373,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             video?.title ?? "",
             style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
           ),
-          if (video != null && video.duration > 0) ...[
+          if ((video?.duration ?? 0) > 0 || _durationSec > 0) ...[
             const SizedBox(height: 4),
-            Text(formatWatchDuration(video.duration), style: const TextStyle(color: AppColors.textMuted)),
+            Text(
+              formatWatchDuration(_durationSec > 0 ? _durationSec : video!.duration),
+              style: const TextStyle(color: AppColors.textMuted),
+            ),
           ],
           const SizedBox(height: 16),
           Row(

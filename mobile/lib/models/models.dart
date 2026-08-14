@@ -1,3 +1,25 @@
+int asInt(dynamic value, [int fallback = 0]) {
+  if (value == null) return fallback;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value.trim()) ?? fallback;
+  return fallback;
+}
+
+double asDouble(dynamic value, [double fallback = 0]) {
+  if (value == null) return fallback;
+  if (value is double) return value;
+  if (value is num) return value.toDouble();
+  if (value is String) return double.tryParse(value.trim()) ?? fallback;
+  return fallback;
+}
+
+String? asStringOrNull(dynamic value) {
+  if (value == null) return null;
+  if (value is String) return value;
+  return value.toString();
+}
+
 class UserProfile {
   const UserProfile({
     required this.id,
@@ -33,13 +55,13 @@ class UserProfile {
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
     return UserProfile(
-      id: (json["id"] as num?)?.toInt() ?? 0,
-      email: (json["email"] as String?) ?? "",
-      nickname: json["nickname"] as String?,
-      subscriptionType: (json["subscriptionType"] as String?) ?? "free",
-      subscriptionExpiresAt: json["subscriptionExpiresAt"] as String?,
-      hasFullAccess: json["hasFullAccess"] as bool?,
-      examDate: json["examDate"] as String?,
+      id: asInt(json["id"]),
+      email: asStringOrNull(json["email"]) ?? "",
+      nickname: asStringOrNull(json["nickname"]),
+      subscriptionType: asStringOrNull(json["subscriptionType"]) ?? "free",
+      subscriptionExpiresAt: asStringOrNull(json["subscriptionExpiresAt"]),
+      hasFullAccess: json["hasFullAccess"] is bool ? json["hasFullAccess"] as bool : null,
+      examDate: asStringOrNull(json["examDate"]),
     );
   }
 
@@ -75,13 +97,13 @@ class LessonVideo {
 
   factory LessonVideo.fromJson(Map<String, dynamic> json) {
     return LessonVideo(
-      id: (json["id"] as num?)?.toInt() ?? 0,
-      title: (json["title"] as String?) ?? "",
-      duration: (json["duration"] as num?)?.toInt() ?? 0,
-      order: (json["order"] as num?)?.toInt() ?? 0,
+      id: asInt(json["id"]),
+      title: asStringOrNull(json["title"]) ?? "",
+      duration: asInt(json["duration"]),
+      order: asInt(json["order"]),
       isTrial: json["isTrial"] == true,
       locked: json["locked"] == true,
-      streamPath: json["streamPath"] as String?,
+      streamPath: asStringOrNull(json["streamPath"]),
     );
   }
 }
@@ -105,9 +127,9 @@ class LessonChapter {
         .map((e) => LessonVideo.fromJson(Map<String, dynamic>.from(e)))
         .toList();
     return LessonChapter(
-      id: (json["id"] as num?)?.toInt() ?? 0,
-      title: (json["title"] as String?) ?? "",
-      order: (json["order"] as num?)?.toInt() ?? 0,
+      id: asInt(json["id"]),
+      title: asStringOrNull(json["title"]) ?? "",
+      order: asInt(json["order"]),
       videos: videos,
     );
   }
@@ -126,8 +148,7 @@ class LessonSubject {
   final int order;
   final List<LessonChapter> subtopics;
 
-  int get videoCount =>
-      subtopics.fold(0, (n, ch) => n + ch.videos.length);
+  int get videoCount => subtopics.fold(0, (n, ch) => n + ch.videos.length);
 
   factory LessonSubject.fromJson(Map<String, dynamic> json) {
     final subs = (json["subtopics"] as List? ?? [])
@@ -135,9 +156,9 @@ class LessonSubject {
         .map((e) => LessonChapter.fromJson(Map<String, dynamic>.from(e)))
         .toList();
     return LessonSubject(
-      id: (json["id"] as num?)?.toInt() ?? 0,
-      title: (json["title"] as String?) ?? "",
-      order: (json["order"] as num?)?.toInt() ?? 0,
+      id: asInt(json["id"]),
+      title: asStringOrNull(json["title"]) ?? "",
+      order: asInt(json["order"]),
       subtopics: subs,
     );
   }
@@ -152,9 +173,9 @@ class WatchDay {
 
   factory WatchDay.fromJson(Map<String, dynamic> json) {
     return WatchDay(
-      date: (json["date"] as String?) ?? "",
-      label: (json["label"] as String?) ?? "",
-      seconds: (json["seconds"] as num?)?.toInt() ?? 0,
+      date: asStringOrNull(json["date"]) ?? "",
+      label: asStringOrNull(json["label"]) ?? "",
+      seconds: asInt(json["seconds"]),
     );
   }
 }
@@ -187,8 +208,8 @@ class LearningProgress {
     final watched = <int, int>{};
     if (watchedRaw is Map) {
       for (final e in watchedRaw.entries) {
-        final id = int.tryParse(e.key.toString());
-        if (id != null) watched[id] = (e.value as num?)?.toInt() ?? 0;
+        final id = asInt(e.key, -1);
+        if (id >= 0) watched[id] = asInt(e.value);
       }
     }
 
@@ -196,8 +217,8 @@ class LearningProgress {
     final completed = <int, bool>{};
     if (completedRaw is Map) {
       for (final e in completedRaw.entries) {
-        final id = int.tryParse(e.key.toString());
-        if (id != null) completed[id] = e.value == true;
+        final id = asInt(e.key, -1);
+        if (id >= 0) completed[id] = e.value == true;
       }
     }
 
@@ -215,15 +236,16 @@ class LearningProgress {
     var recordSeconds = 0;
     if (stats is Map && stats["dailyRecord"] is Map) {
       final rec = Map<String, dynamic>.from(stats["dailyRecord"] as Map);
-      recordDate = rec["date"] as String?;
-      recordSeconds = (rec["seconds"] as num?)?.toInt() ?? 0;
+      recordDate = asStringOrNull(rec["date"]);
+      recordSeconds = asInt(rec["seconds"]);
     }
 
+    final lastId = json["lastVideoId"];
     return LearningProgress(
-      percentage: (json["percentage"] as num?)?.toDouble() ?? 0,
-      completedCount: (json["completedCount"] as num?)?.toInt() ?? 0,
-      totalVideos: (json["totalVideos"] as num?)?.toInt() ?? 0,
-      lastVideoId: (json["lastVideoId"] as num?)?.toInt(),
+      percentage: asDouble(json["percentage"]),
+      completedCount: asInt(json["completedCount"]),
+      totalVideos: asInt(json["totalVideos"]),
+      lastVideoId: lastId == null ? null : asInt(lastId),
       watchedSeconds: watched,
       videoCompleted: completed,
       last7Days: days,
@@ -243,8 +265,8 @@ class FavoriteItem {
 
   factory FavoriteItem.fromJson(Map<String, dynamic> json) {
     return FavoriteItem(
-      videoId: (json["videoId"] as num?)?.toInt() ?? 0,
-      createdAt: json["createdAt"] as String?,
+      videoId: asInt(json["videoId"]),
+      createdAt: asStringOrNull(json["createdAt"]),
     );
   }
 }
@@ -269,13 +291,14 @@ class SupportMessage {
   bool get isMine => senderRole != "admin";
 
   factory SupportMessage.fromJson(Map<String, dynamic> json) {
+    final rawVideoId = json["videoId"];
     return SupportMessage(
-      id: (json["id"] as num?)?.toInt() ?? 0,
-      senderRole: (json["senderRole"] as String?) ?? "student",
-      text: (json["text"] as String?) ?? "",
-      createdAt: (json["createdAt"] as String?) ?? "",
-      videoId: (json["videoId"] as num?)?.toInt(),
-      videoTitle: json["videoTitle"] as String?,
+      id: asInt(json["id"]),
+      senderRole: asStringOrNull(json["senderRole"]) ?? "student",
+      text: asStringOrNull(json["text"]) ?? "",
+      createdAt: asStringOrNull(json["createdAt"]) ?? "",
+      videoId: rawVideoId == null ? null : asInt(rawVideoId),
+      videoTitle: asStringOrNull(json["videoTitle"]),
     );
   }
 }
@@ -297,10 +320,10 @@ class LeaderboardEntry {
 
   factory LeaderboardEntry.fromJson(Map<String, dynamic> json) {
     return LeaderboardEntry(
-      userId: (json["userId"] as num?)?.toInt() ?? 0,
-      nickname: (json["nickname"] as String?) ?? "",
-      seconds: (json["seconds"] as num?)?.toInt() ?? 0,
-      rank: (json["rank"] as num?)?.toInt() ?? 0,
+      userId: asInt(json["userId"]),
+      nickname: asStringOrNull(json["nickname"]) ?? "",
+      seconds: asInt(json["seconds"]),
+      rank: asInt(json["rank"]),
       isCurrentUser: json["isCurrentUser"] == true,
     );
   }

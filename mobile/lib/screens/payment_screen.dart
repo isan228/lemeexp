@@ -1,3 +1,5 @@
+import "dart:async";
+
 import "package:flutter/material.dart";
 import "package:go_router/go_router.dart";
 import "package:provider/provider.dart";
@@ -20,24 +22,42 @@ class PaymentScreen extends StatefulWidget {
   State<PaymentScreen> createState() => _PaymentScreenState();
 }
 
-class _PaymentScreenState extends State<PaymentScreen> {
+class _PaymentScreenState extends State<PaymentScreen> with WidgetsBindingObserver {
   final _promo = TextEditingController();
   bool _loadingPlan = true;
   bool _pending = false;
   bool _promoPending = false;
+  bool _awaitingPayment = false;
   String? _error;
+  String? _hint;
+  String? _paymentId;
   double _baseAmount = 0;
   PromoResult? _applied;
+  Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _awaitingPayment && _paymentId != null) {
+      unawaited(_checkPaymentStatus(showWaiting: false));
+    }
+  }
+
   Future<void> _load() async {
+    final auth = context.read<AuthProvider>();
+    if (!auth.isLoggedIn) {
+      if (!mounted) return;
+      context.go("/login");
+      return;
+    }
     try {
-      final plan = await context.read<AuthProvider>().loadBillingPlan();
+      final plan = await auth.loadBillingPlan();
       if (!mounted) return;
       setState(() {
         _baseAmount = plan.amount;
@@ -54,6 +74,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _pollTimer?.cancel();
     _promo.dispose();
     super.dispose();
   }
@@ -82,6 +104,44 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
   }
 
+  void _startPaymentPolling(String paymentId) {
+    _pollTimer?.cancel();
+    _paymentId = paymentId;
+    _awaitingPayment = true;
+    _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      unawaited(_checkPaymentStatus(showWaiting: false));
+    });
+  }
+
+  Future<void> _checkPaymentStatus({required bool showWaiting}) async {
+    final paymentId = _paymentId;
+    if (paymentId == null || paymentId.isEmpty) return;
+    try {
+      final auth = context.read<AuthProvider>();
+      final status = await auth.getPaymentStatus(paymentId);
+      if (!mounted) return;
+      if (status.status == "succeeded") {
+        _pollTimer?.cancel();
+        _awaitingPayment = false;
+        if (status.profile != null) auth.updateProfile(status.profile);
+        await auth.loadCatalog();
+        if (!mounted) return;
+        context.go("/payment/success?paymentId=$paymentId");
+        return;
+      }
+      if (showWaiting) {
+        setState(() {
+          _hint = "Оплата ещё не подтверждена. Если вы уже заплатили — подождите или нажмите «Проверить оплату».";
+        });
+      }
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      if (showWaiting) setState(() => _error = e.message);
+    } catch (_) {
+      // ignore transient poll errors
+    }
+  }
+
   Future<void> _pay() async {
     final planOk = (widget.plan == null || widget.plan == kSubscriptionPlanId);
     if (!planOk) {
@@ -91,6 +151,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     setState(() {
       _pending = true;
       _error = null;
+      _hint = null;
     });
     try {
       final auth = context.read<AuthProvider>();
@@ -109,6 +170,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final uri = Uri.parse(url);
       final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
       if (!ok) throw ApiException("Не удалось открыть страницу оплаты");
+      if (result.paymentId != null && result.paymentId!.isNotEmpty) {
+        _startPaymentPolling(result.paymentId!);
+        if (!mounted) return;
+        setState(() {
+          _hint =
+              "Открыли страницу оплаты. После оплаты вернитесь в приложение — подписка активируется автоматически.";
+        });
+      }
     } on ApiException catch (e) {
       setState(() => _error = e.message);
     } catch (_) {
@@ -185,7 +254,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     if (_applied != null) ...[
                       const SizedBox(height: 8),
                       Text(
-                        "Применён: ${_applied!.code}",
+                        "Применён: ${_applied!.code}${_applied!.discountLabel != null ? " (${_applied!.discountLabel})" : ""}",
                         style: const TextStyle(color: AppColors.success, fontWeight: FontWeight.w600),
                       ),
                       TextButton(
@@ -199,6 +268,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   ],
                 ),
               ),
+              if (_hint != null) ...[
+                const SizedBox(height: 12),
+                Text(_hint!, style: const TextStyle(color: AppColors.textSecondary)),
+              ],
               if (_error != null) ...[
                 const SizedBox(height: 12),
                 Text(_error!, style: const TextStyle(color: AppColors.danger, fontWeight: FontWeight.w600)),
@@ -208,6 +281,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 onPressed: _pending || _loadingPlan ? null : _pay,
                 child: Text(_pending ? "Оформление…" : kGetAccessLabel),
               ),
+              if (_awaitingPayment) ...[
+                const SizedBox(height: 10),
+                OutlinedButton(
+                  onPressed: () => _checkPaymentStatus(showWaiting: true),
+                  child: const Text("Проверить оплату"),
+                ),
+              ],
               const SizedBox(height: 10),
               OutlinedButton(
                 onPressed: () => context.go("/learning/home"),

@@ -272,7 +272,7 @@ export default function LandingPage() {
             </a>
           </div>
           <p className="landing-apk-hint muted small">
-            Приложение для телефона (Android). Установка из APK — разрешите установку из неизвестных источников.
+            Скачайте приложение для Android. При установке разрешите APK из неизвестных источников.
           </p>
         </section>
 

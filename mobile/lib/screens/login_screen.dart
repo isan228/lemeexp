@@ -40,8 +40,8 @@ class _LoginScreenState extends State<LoginScreen> {
       context.go("/learning/home");
     } on ApiException catch (e) {
       setState(() => _error = e.message);
-    } catch (_) {
-      setState(() => _error = "Ошибка входа");
+    } catch (e) {
+      setState(() => _error = "Ошибка входа: $e");
     } finally {
       if (mounted) setState(() => _pending = false);
     }

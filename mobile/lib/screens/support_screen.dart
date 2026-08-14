@@ -26,6 +26,7 @@ class _SupportScreenState extends State<SupportScreen> {
   List<SupportMessage> _messages = [];
   bool _loading = true;
   bool _sending = false;
+  bool _loadingInFlight = false;
   String? _error;
   Timer? _poll;
 
@@ -33,8 +34,8 @@ class _SupportScreenState extends State<SupportScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _load();
-      _poll = Timer.periodic(const Duration(seconds: 5), (_) => _load(silent: true));
+      _load(markRead: true);
+      _poll = Timer.periodic(const Duration(seconds: 5), (_) => _load(silent: true, markRead: false));
     });
   }
 
@@ -46,7 +47,15 @@ class _SupportScreenState extends State<SupportScreen> {
     super.dispose();
   }
 
-  Future<void> _load({bool silent = false}) async {
+  bool get _nearBottom {
+    if (!_scroll.hasClients) return true;
+    final pos = _scroll.position;
+    return pos.pixels >= pos.maxScrollExtent - 80;
+  }
+
+  Future<void> _load({bool silent = false, bool markRead = true}) async {
+    if (_loadingInFlight) return;
+    _loadingInFlight = true;
     if (!silent) {
       setState(() {
         _loading = true;
@@ -54,23 +63,31 @@ class _SupportScreenState extends State<SupportScreen> {
       });
     }
     try {
-      final list = await context.read<AuthProvider>().loadSupportMessages(videoId: widget.videoId);
+      final shouldStick = !silent || _nearBottom;
+      final list = await context.read<AuthProvider>().loadSupportMessages(
+            videoId: widget.videoId,
+            markRead: markRead || !silent,
+          );
       if (!mounted) return;
       setState(() {
         _messages = list;
         _loading = false;
       });
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scroll.hasClients) {
-          _scroll.jumpTo(_scroll.position.maxScrollExtent);
-        }
-      });
+      if (shouldStick) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scroll.hasClients) {
+            _scroll.jumpTo(_scroll.position.maxScrollExtent);
+          }
+        });
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
         if (!silent) _error = e is ApiException ? e.message : "Ошибка загрузки";
       });
+    } finally {
+      _loadingInFlight = false;
     }
   }
 
@@ -84,7 +101,7 @@ class _SupportScreenState extends State<SupportScreen> {
     try {
       await context.read<AuthProvider>().sendSupportMessage(clean, videoId: widget.videoId);
       _text.clear();
-      await _load(silent: true);
+      await _load(silent: true, markRead: true);
     } on ApiException catch (e) {
       setState(() => _error = e.message);
     } catch (_) {

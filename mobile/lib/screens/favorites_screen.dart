@@ -14,10 +14,9 @@ class FavoritesScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final items = <({FavoriteItem item, VideoLocation loc})>[];
+    final items = <({FavoriteItem item, VideoLocation? loc})>[];
     for (final item in auth.favoriteItems) {
-      final loc = findVideoById(auth.chapters, item.videoId);
-      if (loc != null) items.add((item: item, loc: loc));
+      items.add((item: item, loc: findVideoById(auth.chapters, item.videoId)));
     }
 
     return Scaffold(
@@ -50,10 +49,45 @@ class FavoritesScreen extends StatelessWidget {
                   separatorBuilder: (_, _) => const SizedBox(height: 10),
                   itemBuilder: (context, index) {
                     final row = items[index];
-                    final video = row.loc.video;
+                    final loc = row.loc;
+                    if (loc == null) {
+                      return AppCard(
+                        child: Row(
+                          children: [
+                            const Icon(Icons.star_rounded, color: Color(0xFFF59E0B)),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text("Урок #${row.item.videoId}", style: const TextStyle(fontWeight: FontWeight.w800)),
+                                  const Text(
+                                    "Урок недоступен в текущем каталоге",
+                                    style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: "Убрать",
+                              onPressed: () async {
+                                try {
+                                  await auth.toggleFavorite(row.item.videoId);
+                                } catch (e) {
+                                  if (!context.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$e")));
+                                }
+                              },
+                              icon: const Icon(Icons.close_rounded, color: AppColors.textMuted),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                    final video = loc.video;
                     return AppCard(
                       onTap: () => context.push(
-                        "/learning/lessons/${row.loc.subject.id}/chapters/${row.loc.chapter.id}/videos/${video.id}",
+                        "/learning/lessons/${loc.subject.id}/chapters/${loc.chapter.id}/videos/${video.id}",
                       ),
                       child: Row(
                         children: [
@@ -65,7 +99,7 @@ class FavoritesScreen extends StatelessWidget {
                               children: [
                                 Text(video.title, style: const TextStyle(fontWeight: FontWeight.w800)),
                                 Text(
-                                  "${row.loc.subject.title} · ${row.loc.chapter.title}${video.duration > 0 ? " · ${formatWatchDuration(video.duration)}" : ""}",
+                                  "${loc.subject.title} · ${loc.chapter.title}${video.duration > 0 ? " · ${formatWatchDuration(video.duration)}" : ""}",
                                   style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
                                 ),
                               ],
