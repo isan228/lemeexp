@@ -2,6 +2,18 @@
 
 React SPA + Express API + PostgreSQL. Production: [lemexplain.com](https://lemexplain.com), API: [api.lemexplain.com](https://api.lemexplain.com).
 
+## Мобильное приложение
+
+Flutter-клиент в каталоге [`mobile/`](./mobile) — тот же API, мобильный UI (нижняя навигация). Сайт не затрагивается. См. [mobile/README.md](./mobile/README.md).
+
+Сборка APK и копирование на сайт (`frontend/public/downloads/lemexplain.apk`):
+
+```bash
+npm run mobile:apk
+```
+
+На лендинге кнопка **Скачать Android** → `/downloads/lemexplain.apk` (файл лежит в git и попадает в `frontend/dist` при `npm run build`).
+
 ## Быстрый запуск
 
 ### Backend

@@ -21,7 +21,13 @@ server {
         try_files $uri $uri/ /index.html;
     }
 
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
+    location = /downloads/lemexplain.apk {
+        default_type application/vnd.android.package-archive;
+        add_header Content-Disposition 'attachment; filename="lemexplain.apk"';
+        try_files $uri =404;
+    }
+
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?|apk)$ {
         expires 7d;
         add_header Cache-Control "public, immutable";
     }

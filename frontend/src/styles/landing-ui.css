@@ -299,6 +299,28 @@
   font-size: 0.95rem !important;
 }
 
+.landing-marketing .landing-hero-apk-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 200px;
+  padding: 12px 24px !important;
+  text-decoration: none;
+}
+
+.landing-marketing .landing-apk-icon {
+  display: inline-flex;
+  line-height: 0;
+}
+
+.landing-marketing .landing-apk-hint {
+  margin: 12px auto 0;
+  max-width: 420px;
+  text-align: center;
+  line-height: 1.45;
+}
+
 /* —— Sections (full-bleed backgrounds) —— */
 
 .landing-marketing .landing-section {
@@ -1153,6 +1175,10 @@ a.nav-muted:hover {
     width: auto;
     min-width: 200px;
     text-align: center;
+  }
+
+  .landing-marketing .landing-apk-hint {
+    padding: 0 12px;
   }
 
   .landing-section {

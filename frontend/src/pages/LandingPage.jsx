@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import SiteBrand from "../components/SiteBrand.jsx";
 import SiteFooter from "../components/SiteFooter.jsx";
-import { routes, GET_ACCESS_LABEL } from "../config/site.js";
+import { routes, GET_ACCESS_LABEL, site } from "../config/site.js";
 
 function scrollToSection(id) {
   const el = document.getElementById(id);
@@ -258,7 +258,22 @@ export default function LandingPage() {
                 К урокам
               </Link>
             )}
+            <a
+              href={site.androidApkUrl}
+              className="btn-secondary landing-hero-apk-btn"
+              download="lemexplain.apk"
+            >
+              <span className="landing-apk-icon" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M17.6 9.48l1.84-3.18c.16-.31.04-.69-.26-.85-.29-.15-.65-.06-.83.22l-1.88 3.24a11.43 11.43 0 0 0-8.94 0L5.65 5.67c-.19-.28-.54-.37-.83-.22-.3.16-.42.54-.26.85L6.4 9.48A10.78 10.78 0 0 0 1 18h22a10.78 10.78 0 0 0-5.4-8.52zM7 15.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5zm10 0a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5z" />
+                </svg>
+              </span>
+              {site.androidApkLabel}
+            </a>
           </div>
+          <p className="landing-apk-hint muted small">
+            Приложение для телефона (Android). Установка из APK — разрешите установку из неизвестных источников.
+          </p>
         </section>
 
         <section id="curriculum" className="landing-section">

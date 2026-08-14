@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "push": "node scripts/deploy.mjs",
-    "deploy": "node scripts/deploy.mjs --deploy-only"
+    "deploy": "node scripts/deploy.mjs --deploy-only",
+    "mobile:apk": "node scripts/build-apk.mjs"
   }
 }
