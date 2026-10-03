@@ -1236,12 +1236,6 @@
   color: var(--adm-text);
 }
 
-.adm-plan-price s {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--adm-text-muted);
-}
-
 .adm-plan-price .muted {
   font-size: 13px;
   font-weight: 500;

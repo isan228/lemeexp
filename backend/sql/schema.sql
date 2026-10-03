@@ -219,7 +219,6 @@ create table if not exists subscription_plans (
   id bigserial primary key,
   title text not null default '',
   price numeric(12, 2) not null,
-  old_price numeric(12, 2),
   duration_days int not null,
   active boolean not null default true,
   "order" int not null default 0,

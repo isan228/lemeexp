@@ -8,13 +8,12 @@ const DURATION_PRESETS = [
   { days: 365, label: "1 год" }
 ];
 
-const EMPTY_FORM = { title: "", price: "", oldPrice: "", durationDays: "30" };
+const EMPTY_FORM = { title: "", price: "", durationDays: "30" };
 
 function planToForm(plan) {
   return {
     title: plan.customTitle || "",
     price: String(plan.amount ?? ""),
-    oldPrice: plan.rawOldAmount != null ? String(plan.rawOldAmount) : "",
     durationDays: String(plan.periodDays ?? 30)
   };
 }
@@ -24,11 +23,6 @@ function validateForm(form) {
   const durationDays = Number(form.durationDays);
   if (form.price === "" || !Number.isFinite(price) || price < 0) return "Укажите цену (0 или больше)";
   if (!Number.isInteger(durationDays) || durationDays < 1) return "Укажите срок в днях (минимум 1)";
-  if (form.oldPrice !== "") {
-    const oldPrice = Number(form.oldPrice);
-    if (!Number.isFinite(oldPrice) || oldPrice < 0) return "Старая цена указана неверно";
-    if (oldPrice <= price) return "Старая цена должна быть больше текущей — иначе её не будет видно";
-  }
   return "";
 }
 
@@ -36,7 +30,6 @@ function formToPayload(form) {
   return {
     title: form.title.trim(),
     price: Number(form.price),
-    oldPrice: form.oldPrice === "" ? null : Number(form.oldPrice),
     durationDays: Number(form.durationDays)
   };
 }
@@ -49,18 +42,6 @@ function PlanFormFields({ form, onChange, idPrefix }) {
         <div className="adm-field">
           <label htmlFor={`${idPrefix}-price`}>Цена, сом</label>
           <input id={`${idPrefix}-price`} type="number" min={0} step="any" value={form.price} onChange={set("price")} required />
-        </div>
-        <div className="adm-field">
-          <label htmlFor={`${idPrefix}-old`}>Старая цена (зачёркнута)</label>
-          <input
-            id={`${idPrefix}-old`}
-            type="number"
-            min={0}
-            step="any"
-            value={form.oldPrice}
-            onChange={set("oldPrice")}
-            placeholder="Необязательно"
-          />
         </div>
         <div className="adm-field">
           <label htmlFor={`${idPrefix}-days`}>Срок, дней</label>
@@ -252,7 +233,6 @@ export default function AdminPlansPanel({ plans, loading, apiRequest, onPlansCha
                     <div>
                       <strong>{plan.title}</strong>
                       <div className="adm-plan-price">
-                        {plan.oldAmount != null ? <s>{formatPlanPrice(plan.oldAmount)}</s> : null}
                         <span>{formatPlanPrice(plan.amount)}</span>
                         <span className="muted"> / {plan.periodLabel}</span>
                       </div>

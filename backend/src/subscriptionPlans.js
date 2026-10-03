@@ -6,7 +6,6 @@ export const LEGACY_PLAN_ID = "standard";
 const planCreateSchema = z.object({
   title: z.string().trim().max(120).optional().default(""),
   price: z.coerce.number().min(0).max(1_000_000),
-  oldPrice: z.coerce.number().min(0).max(1_000_000).optional().nullable(),
   durationDays: z.coerce.number().int().min(1).max(3650),
   active: z.boolean().optional().default(true)
 });
@@ -15,7 +14,6 @@ const planUpdateSchema = z
   .object({
     title: z.string().trim().max(120).optional(),
     price: z.coerce.number().min(0).max(1_000_000).optional(),
-    oldPrice: z.coerce.number().min(0).max(1_000_000).optional().nullable(),
     durationDays: z.coerce.number().int().min(1).max(3650).optional(),
     active: z.boolean().optional()
   })
@@ -63,15 +61,11 @@ function formatPlanRow(row) {
   const durationDays = Number(row.duration_days ?? row.durationDays);
   const periodLabel = formatPeriodLabel(durationDays);
   const title = String(row.title || "").trim();
-  const price = toMoney(row.price) ?? 0;
-  const oldPrice = toMoney(row.old_price ?? row.oldPrice);
   return {
     id: Number(row.id),
     title: title || periodLabel,
     customTitle: title,
-    amount: price,
-    oldAmount: oldPrice != null && oldPrice > price ? oldPrice : null,
-    rawOldAmount: oldPrice,
+    amount: toMoney(row.price) ?? 0,
     periodDays: durationDays,
     periodLabel,
     active: Boolean(row.active),
@@ -86,7 +80,6 @@ function toPublicPlan(plan) {
     id: plan.id,
     title: plan.title,
     amount: plan.amount,
-    oldAmount: plan.oldAmount,
     periodDays: plan.periodDays,
     periodLabel: plan.periodLabel
   };
@@ -103,7 +96,6 @@ export async function ensureSubscriptionPlansTable(pool, fallbackPrice) {
       id bigserial primary key,
       title text not null default '',
       price numeric(12, 2) not null,
-      old_price numeric(12, 2),
       duration_days int not null,
       active boolean not null default true,
       "order" int not null default 0,
@@ -140,7 +132,6 @@ export function createPlanStore({ pool, memState, isDbReady, fallbackPrice }) {
         id: memNextId++,
         title: "",
         price: fallbackPrice,
-        oldPrice: null,
         durationDays: 30,
         active: true,
         order: 1,
@@ -195,7 +186,6 @@ export function createPlanStore({ pool, memState, isDbReady, fallbackPrice }) {
         id: memNextId++,
         title: data.title,
         price: data.price,
-        oldPrice: data.oldPrice ?? null,
         durationDays: data.durationDays,
         active: data.active,
         order: plans.reduce((max, p) => Math.max(max, p.order), 0) + 1,
@@ -206,10 +196,10 @@ export function createPlanStore({ pool, memState, isDbReady, fallbackPrice }) {
       return formatPlanRow(row);
     }
     const r = await pool.query(
-      `insert into subscription_plans (title, price, old_price, duration_days, active, "order")
-       values ($1, $2, $3, $4, $5, (select coalesce(max("order"), 0) + 1 from subscription_plans))
+      `insert into subscription_plans (title, price, duration_days, active, "order")
+       values ($1, $2, $3, $4, (select coalesce(max("order"), 0) + 1 from subscription_plans))
        returning *`,
-      [data.title, data.price, data.oldPrice ?? null, data.durationDays, data.active]
+      [data.title, data.price, data.durationDays, data.active]
     );
     return formatPlanRow(r.rows[0]);
   }
@@ -221,7 +211,6 @@ export function createPlanStore({ pool, memState, isDbReady, fallbackPrice }) {
       if (!row) return null;
       if (data.title !== undefined) row.title = data.title;
       if (data.price !== undefined) row.price = data.price;
-      if (data.oldPrice !== undefined) row.oldPrice = data.oldPrice;
       if (data.durationDays !== undefined) row.durationDays = data.durationDays;
       if (data.active !== undefined) row.active = data.active;
       row.updatedAt = new Date().toISOString();
@@ -230,7 +219,6 @@ export function createPlanStore({ pool, memState, isDbReady, fallbackPrice }) {
     const columns = {
       title: "title",
       price: "price",
-      oldPrice: "old_price",
       durationDays: "duration_days",
       active: "active"
     };

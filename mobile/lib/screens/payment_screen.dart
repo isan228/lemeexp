@@ -209,11 +209,8 @@ class _PaymentScreenState extends State<PaymentScreen> with WidgetsBindingObserv
     final plan = _selectedPlan;
     final amount = _applied?.finalAmount ?? plan?.amount ?? 0;
     final price = _loadingPlan || plan == null ? "…" : formatPlanPrice(amount);
-    final struckPrice = plan == null
-        ? null
-        : _applied != null
-            ? (_applied!.finalAmount < plan.amount ? plan.amount : null)
-            : plan.oldAmount;
+    final struckPrice =
+        plan != null && _applied != null && _applied!.finalAmount < plan.amount ? plan.amount : null;
 
     return Scaffold(
       appBar: AppBar(title: const Text("Оплата")),

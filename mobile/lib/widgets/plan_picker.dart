@@ -53,7 +53,6 @@ class _PlanTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final discount = plan.discountPercent;
     return Material(
       color: selected ? AppColors.primaryWeak : AppColors.surface,
       shape: RoundedRectangleBorder(
@@ -76,33 +75,9 @@ class _PlanTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            plan.title,
-                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-                          ),
-                        ),
-                        if (discount > 0) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFDCFCE7),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              "−$discount%",
-                              style: const TextStyle(
-                                color: Color(0xFF15803D),
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
+                    Text(
+                      plan.title,
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -112,27 +87,13 @@ class _PlanTile extends StatelessWidget {
                   ],
                 ),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  if (plan.oldAmount != null)
-                    Text(
-                      formatPlanPrice(plan.oldAmount!),
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 12,
-                        decoration: TextDecoration.lineThrough,
-                      ),
-                    ),
-                  Text(
-                    formatPlanPrice(plan.amount),
-                    style: const TextStyle(
-                      color: AppColors.primary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
+              Text(
+                formatPlanPrice(plan.amount),
+                style: const TextStyle(
+                  color: AppColors.primary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ],
           ),

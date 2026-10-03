@@ -346,21 +346,16 @@ class BillingPlan {
     required this.id,
     required this.title,
     required this.amount,
-    this.oldAmount,
     required this.periodDays,
     required this.periodLabel,
   });
 
   factory BillingPlan.fromJson(Map<String, dynamic> json) {
-    final amount = asDouble(json["amount"]);
-    final rawOld = json["oldAmount"];
-    final oldAmount = rawOld == null ? null : asDouble(rawOld);
     final periodLabel = asStringOrNull(json["periodLabel"]) ?? "";
     return BillingPlan(
       id: asInt(json["id"]),
       title: asStringOrNull(json["title"]) ?? periodLabel,
-      amount: amount,
-      oldAmount: oldAmount != null && oldAmount > amount ? oldAmount : null,
+      amount: asDouble(json["amount"]),
       periodDays: asInt(json["periodDays"]),
       periodLabel: periodLabel,
     );
@@ -369,17 +364,8 @@ class BillingPlan {
   final int id;
   final String title;
   final double amount;
-
-  /// Старая цена (показывается зачёркнутой), только если больше текущей.
-  final double? oldAmount;
   final int periodDays;
   final String periodLabel;
-
-  int get discountPercent {
-    final old = oldAmount;
-    if (old == null || old <= 0) return 0;
-    return ((1 - amount / old) * 100).round();
-  }
 }
 
 class PromoResult {

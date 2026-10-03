@@ -103,7 +103,7 @@ export default function PaymentPage() {
     }
   }
 
-  const strikePrice = appliedPromo?.discount > 0 ? baseAmount : selectedPlan?.oldAmount;
+  const strikePrice = appliedPromo?.discount > 0 ? baseAmount : null;
   const displayPrice = finalAmount <= 0 ? "бесплатно" : formatPlanPrice(finalAmount);
 
   return (
