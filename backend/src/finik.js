@@ -3,20 +3,6 @@ import { Signer } from "@mancho.devs/authorizer";
 
 const DEFAULT_PLAN_ID = "standard";
 
-const PLAN_AMOUNTS = {
-  standard: Number(process.env.FINIK_AMOUNT || process.env.FINIK_AMOUNT_STANDARD || 1)
-};
-
-const PLAN_TITLES = {
-  standard: "Lemexplain"
-};
-
-export const PLAN_TO_SUBSCRIPTION = {
-  standard: "premium"
-};
-
-export { DEFAULT_PLAN_ID };
-
 const DEFAULT_FINIK_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuF/PUmhMPPidcMxhZBPb
 BSGJoSphmCI+h6ru8fG8guAlcPMVlhs+ThTjw2LHABvciwtpj51ebJ4EqhlySPyT
@@ -73,17 +59,18 @@ export function isFinikConfigured() {
   );
 }
 
+/** Стартовая цена первого тарифа, пока админ не задал свою. */
 export function getPlanAmount(plan) {
-  const key = plan || DEFAULT_PLAN_ID;
-  return PLAN_AMOUNTS[key] ?? null;
+  if ((plan || DEFAULT_PLAN_ID) !== DEFAULT_PLAN_ID) return null;
+  return Number(process.env.FINIK_AMOUNT || process.env.FINIK_AMOUNT_STANDARD || 1);
 }
 
 export function getDefaultPlanId() {
   return DEFAULT_PLAN_ID;
 }
 
-export function getPlanTitle(plan) {
-  return PLAN_TITLES[plan] ?? "Lemexplain subscription";
+function getPlanTitle() {
+  return "Lemexplain subscription";
 }
 
 export function getFrontendBaseUrl() {

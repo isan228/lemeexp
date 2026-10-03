@@ -213,6 +213,19 @@ create table if not exists promo_redemptions (
 );
 
 alter table payments add column if not exists promo_code text;
+alter table payments add column if not exists duration_days int;
+
+create table if not exists subscription_plans (
+  id bigserial primary key,
+  title text not null default '',
+  price numeric(12, 2) not null,
+  old_price numeric(12, 2),
+  duration_days int not null,
+  active boolean not null default true,
+  "order" int not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
 
 create table if not exists app_settings (
   key text primary key,

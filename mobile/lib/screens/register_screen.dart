@@ -4,10 +4,11 @@ import "package:provider/provider.dart";
 
 import "../config/api_config.dart";
 import "../config/theme.dart";
+import "../models/models.dart";
 import "../providers/auth_provider.dart";
 import "../services/api_client.dart";
-import "../utils/helpers.dart";
 import "../widgets/common.dart";
+import "../widgets/plan_picker.dart";
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key, this.isTrial = false});
@@ -25,24 +26,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _pending = false;
   String? _error;
-  String _priceLabel = "…";
+  bool _plansLoading = true;
+  List<BillingPlan> _plans = const [];
+  BillingPlan? _selectedPlan;
 
   @override
   void initState() {
     super.initState();
     if (!widget.isTrial) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _loadPrice());
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadPlans());
     }
   }
 
-  Future<void> _loadPrice() async {
+  Future<void> _loadPlans() async {
     try {
-      final plan = await context.read<AuthProvider>().loadBillingPlan();
+      final plans = await context.read<AuthProvider>().loadBillingPlans();
       if (!mounted) return;
-      setState(() => _priceLabel = "${formatPlanPrice(plan.amount)} / ${plan.periodLabel}");
+      setState(() {
+        _plans = plans;
+        _selectedPlan = pickInitialPlan(plans, null);
+        _plansLoading = false;
+      });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _priceLabel = "цена на сайте");
+      setState(() => _plansLoading = false);
     }
   }
 
@@ -66,7 +73,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (widget.isTrial) {
         context.go("/learning/lessons");
       } else {
-        context.go("/payment?plan=$kSubscriptionPlanId");
+        context.go("/payment?plan=${_selectedPlan?.id.toString() ?? kSubscriptionPlanId}");
       }
     } on ApiException catch (e) {
       setState(() => _error = e.message);
@@ -102,7 +109,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 Text(
                   widget.isTrial
                       ? "После регистрации откроются бесплатные уроки. Остальной каталог — по подписке."
-                      : "Зарегистрируйтесь и оформите подписку на все уроки на 1 месяц.",
+                      : "Зарегистрируйтесь и оформите подписку на все уроки.",
                   style: const TextStyle(color: AppColors.textSecondary),
                 ),
                 if (!widget.isTrial) ...[
@@ -114,8 +121,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         const Text("Подписка", style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700)),
                         const SizedBox(height: 6),
                         Text(kSubscriptionPlanName, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
-                        Text(_priceLabel, style: const TextStyle(color: AppColors.textSecondary)),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 10),
+                        if (_plansLoading)
+                          const Text("Загрузка тарифов…", style: TextStyle(color: AppColors.textSecondary))
+                        else if (_plans.isEmpty)
+                          const Text("Цены уточняйте на сайте", style: TextStyle(color: AppColors.textSecondary))
+                        else
+                          PlanPicker(
+                            plans: _plans,
+                            selectedId: _selectedPlan?.id,
+                            onSelect: (plan) => setState(() => _selectedPlan = plan),
+                            enabled: !_pending,
+                          ),
                         for (final b in kSubscriptionBullets)
                           Padding(
                             padding: const EdgeInsets.only(top: 4),

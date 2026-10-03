@@ -3,7 +3,9 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { routes } from "../config/site.js";
 import AdminSearchBox from "../components/AdminSearchBox.jsx";
-import { formatPlanPrice } from "../config/billing.js";
+import AdminPlansPanel from "../components/admin/AdminPlansPanel.jsx";
+import SubscriptionExpiryField from "../components/admin/SubscriptionExpiryField.jsx";
+import { dateInputToIso, isoToDateInput } from "../utils/subscriptionDates.js";
 import { filterAssociative, suggestAssociative } from "../utils/adminSearch.js";
 import { formatUploadProgress, uploadMultipart } from "../utils/uploadFile.js";
 import { isPlayableStream, isProcessingStream } from "../utils/streamPath.js";
@@ -21,7 +23,7 @@ function swapInList(ids, id, dir) {
 const NAV_ITEMS = [
   { id: "content", label: "Курсы и уроки", icon: "📚", desc: "Предметы, главы и видеоуроки" },
   { id: "favorites", label: "Избранное", icon: "⭐", desc: "Статистика сохранённых уроков" },
-  { id: "promo", label: "Биллинг", icon: "🎟", desc: "Цена подписки и промокоды" },
+  { id: "promo", label: "Биллинг", icon: "🎟", desc: "Тарифы подписки и промокоды" },
   { id: "users", label: "Пользователи", icon: "👥", desc: "Учётные записи и тарифы" },
   { id: "devices", label: "Устройства", icon: "📱", desc: "Входы учеников с разных устройств" },
   { id: "news", label: "Новости", icon: "📰", desc: "Публикации на главной" },
@@ -46,6 +48,16 @@ function formatLessonDuration(seconds) {
 
 function subscriptionTag(type) {
   return SUBSCRIPTION_TAGS[type] || { label: type, className: "adm-tag-free" };
+}
+
+function describeSubscriptionExpiry(user) {
+  if (user.subscriptionType === "free" || user.subscriptionType === "admin") return null;
+  if (!user.subscriptionExpiresAt) return { text: "бессрочно", expired: false };
+  const expires = new Date(user.subscriptionExpiresAt);
+  return {
+    text: `${expires < new Date() ? "истекла" : "до"} ${expires.toLocaleDateString("ru-RU")}`,
+    expired: expires < new Date()
+  };
 }
 
 function formatPromoType(type, value) {
@@ -127,12 +139,14 @@ export default function AdminPage() {
   const [newUserPassword, setNewUserPassword] = useState("");
   const [newUserNickname, setNewUserNickname] = useState("");
   const [newUserSubscription, setNewUserSubscription] = useState("free");
+  const [newUserExpires, setNewUserExpires] = useState("");
   const [userCreating, setUserCreating] = useState(false);
   const [editingUserId, setEditingUserId] = useState(null);
   const [editUserEmail, setEditUserEmail] = useState("");
   const [editUserPassword, setEditUserPassword] = useState("");
   const [editUserNickname, setEditUserNickname] = useState("");
   const [editUserSubscription, setEditUserSubscription] = useState("free");
+  const [editUserExpires, setEditUserExpires] = useState("");
   const [editUserBanReason, setEditUserBanReason] = useState("");
   const [userSaving, setUserSaving] = useState(false);
   const [securityAlerts, setSecurityAlerts] = useState([]);
@@ -179,9 +193,9 @@ export default function AdminPage() {
   const [pExpiresAt, setPExpiresAt] = useState("");
   const [pActive, setPActive] = useState(true);
 
-  const [subscriptionAmount, setSubscriptionAmount] = useState("");
-  const [billingSaving, setBillingSaving] = useState(false);
-  const [billingLoading, setBillingLoading] = useState(false);
+  const [plans, setPlans] = useState([]);
+  const [plansLoading, setPlansLoading] = useState(false);
+  const activePlans = useMemo(() => plans.filter((p) => p.active), [plans]);
 
   const [favoriteStats, setFavoriteStats] = useState({
     totalFavorites: 0,
@@ -567,7 +581,8 @@ export default function AdminPage() {
       const payload = {
         email,
         password,
-        subscriptionType: newUserSubscription
+        subscriptionType: newUserSubscription,
+        subscriptionExpiresAt: newUserSubscription === "free" ? null : dateInputToIso(newUserExpires)
       };
       const nickname = newUserNickname.trim();
       if (nickname) payload.nickname = nickname;
@@ -588,6 +603,7 @@ export default function AdminPage() {
       setNewUserPassword("");
       setNewUserNickname("");
       setNewUserSubscription("free");
+      setNewUserExpires("");
       await loadUsers();
       showToast(`Ученик «${created.nickname || created.email}» добавлен`);
     } finally {
@@ -601,6 +617,7 @@ export default function AdminPage() {
     setEditUserPassword("");
     setEditUserNickname("");
     setEditUserSubscription("free");
+    setEditUserExpires("");
     setEditUserBanReason("");
   }
 
@@ -611,6 +628,7 @@ export default function AdminPage() {
     setEditUserPassword("");
     setEditUserNickname(user.nickname);
     setEditUserSubscription(user.subscriptionType);
+    setEditUserExpires(isoToDateInput(user.subscriptionExpiresAt));
     setEditUserBanReason(user.banReason || "");
     setUsersError("");
   }
@@ -629,7 +647,8 @@ export default function AdminPage() {
       const payload = {
         email,
         nickname,
-        subscriptionType: editUserSubscription
+        subscriptionType: editUserSubscription,
+        subscriptionExpiresAt: editUserSubscription === "free" ? null : dateInputToIso(editUserExpires)
       };
       if (editUserPassword.length >= 6) payload.password = editUserPassword;
       if (editUserBanReason.trim()) payload.banReason = editUserBanReason.trim();
@@ -771,19 +790,20 @@ export default function AdminPage() {
     }
   }, [apiRequest]);
 
-  const loadBillingSettings = useCallback(async () => {
-    setBillingLoading(true);
+  const loadPlans = useCallback(async () => {
+    setPlansLoading(true);
     try {
-      const res = await apiRequest("/admin/billing/settings");
+      const res = await apiRequest("/admin/subscription-plans");
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        setPromoError(err.message || "Не удалось загрузить цену");
+        setPromoError(err.message || "Не удалось загрузить тарифы");
         return;
       }
-      const data = await res.json();
-      setSubscriptionAmount(String(data.amount ?? ""));
+      setPlans(await res.json());
+    } catch {
+      setPromoError("Не удалось загрузить тарифы");
     } finally {
-      setBillingLoading(false);
+      setPlansLoading(false);
     }
   }, [apiRequest]);
 
@@ -801,7 +821,8 @@ export default function AdminPage() {
   useEffect(() => {
     if (!hydrated || !token || !isAdmin || tab !== "users") return;
     void loadUsers();
-  }, [hydrated, token, isAdmin, tab, loadUsers]);
+    void loadPlans();
+  }, [hydrated, token, isAdmin, tab, loadUsers, loadPlans]);
 
   useEffect(() => {
     if (!hydrated || !token || !isAdmin) return;
@@ -868,8 +889,8 @@ export default function AdminPage() {
   useEffect(() => {
     if (!hydrated || !token || !isAdmin || tab !== "promo") return;
     void loadPromoCodes();
-    void loadBillingSettings();
-  }, [hydrated, token, isAdmin, tab, loadPromoCodes, loadBillingSettings]);
+    void loadPlans();
+  }, [hydrated, token, isAdmin, tab, loadPromoCodes, loadPlans]);
 
   useEffect(() => () => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -952,35 +973,6 @@ export default function AdminPage() {
     setPMaxUses("");
     setPExpiresAt("");
     setPActive(true);
-  }
-
-  async function saveBillingSettings(e) {
-    e.preventDefault();
-    const amount = Number(subscriptionAmount);
-    if (!Number.isFinite(amount) || amount < 0) {
-      setPromoError("Укажите корректную цену (0 или больше)");
-      return;
-    }
-    setBillingSaving(true);
-    setPromoError("");
-    try {
-      const res = await apiRequest("/admin/billing/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount })
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message || "Не удалось сохранить цену");
-      }
-      const data = await res.json();
-      setSubscriptionAmount(String(data.amount));
-      showToast(`Цена обновлена: ${formatPlanPrice(data.amount)}`);
-    } catch (err) {
-      setPromoError(err.message || "Ошибка сохранения цены");
-    } finally {
-      setBillingSaving(false);
-    }
   }
 
   async function submitPromo(e) {
@@ -2159,48 +2151,20 @@ export default function AdminPage() {
 
           {tab === "promo" && (
             <>
-              <section className="adm-card" style={{ padding: 20, marginBottom: 16 }}>
-                {promoError && <div className="adm-alert warn">{promoError}</div>}
-                <h2 style={{ margin: "0 0 8px", fontSize: "1rem" }}>Цена подписки</h2>
-                <p className="adm-page-desc" style={{ margin: "0 0 16px" }}>
-                  Отображается на регистрации и странице оплаты. Промокоды считаются от этой суммы.
-                </p>
-                {billingLoading ? (
-                  <div className="adm-loading-block">
-                    <span className="adm-spinner" />
-                    Загрузка…
-                  </div>
-                ) : (
-                  <form className="adm-form adm-form-row" style={{ gridTemplateColumns: "1fr auto", maxWidth: 360 }} onSubmit={saveBillingSettings}>
-                    <div className="adm-field">
-                      <label htmlFor="subscription-amount">Сумма, сом</label>
-                      <input
-                        id="subscription-amount"
-                        type="number"
-                        min={0}
-                        step={1}
-                        value={subscriptionAmount}
-                        onChange={(e) => setSubscriptionAmount(e.target.value)}
-                        required
-                      />
-                    </div>
-                    <button type="submit" className="adm-btn adm-btn-primary" disabled={billingSaving} style={{ alignSelf: "end" }}>
-                      {billingSaving ? "Сохранение…" : "Сохранить"}
-                    </button>
-                  </form>
-                )}
-                {subscriptionAmount !== "" && !billingLoading ? (
-                  <p className="muted small" style={{ margin: "12px 0 0" }}>
-                    Сейчас на сайте: <strong>{formatPlanPrice(Number(subscriptionAmount))}</strong>
-                  </p>
-                ) : null}
-              </section>
+              {promoError && <div className="adm-alert warn">{promoError}</div>}
+              <AdminPlansPanel
+                plans={plans}
+                loading={plansLoading}
+                apiRequest={apiRequest}
+                onPlansChange={setPlans}
+                showToast={showToast}
+              />
 
             <div className="adm-news-layout">
               <section className="adm-card" style={{ padding: 20 }}>
                 <h2 style={{ margin: "0 0 8px", fontSize: "1rem" }}>Новый промокод</h2>
                 <p className="adm-page-desc" style={{ margin: "0 0 16px" }}>
-                  «100%» даёт бесплатный доступ без Finik. Процент и фиксированная скидка считаются от цены выше.
+                  «100%» даёт бесплатный доступ без Finik. Процент и фиксированная скидка считаются от цены выбранного учеником тарифа.
                 </p>
                 <form className="adm-form" onSubmit={submitPromo}>
                   <div className="adm-field">
@@ -2383,20 +2347,16 @@ export default function AdminPage() {
                         placeholder="Оставьте пустым, чтобы не менять"
                       />
                     </div>
-                    <div className="adm-field">
-                      <label htmlFor="edit-user-subscription">Тариф</label>
-                      <select
-                        id="edit-user-subscription"
-                        value={editUserSubscription}
-                        onChange={(e) => setEditUserSubscription(e.target.value)}
-                        style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--adm-border)" }}
-                      >
-                        <option value="free">Free</option>
-                        <option value="basic">Basic</option>
-                        <option value="premium">Pro</option>
-                        <option value="mentor">Mentor</option>
-                      </select>
-                    </div>
+                    <SubscriptionExpiryField
+                      idPrefix="edit-user"
+                      subscriptionType={editUserSubscription}
+                      expiresDate={editUserExpires}
+                      plans={activePlans}
+                      onChange={(next) => {
+                        if (next.subscriptionType !== undefined) setEditUserSubscription(next.subscriptionType);
+                        if (next.expiresDate !== undefined) setEditUserExpires(next.expiresDate);
+                      }}
+                    />
                     <div className="adm-field">
                       <label htmlFor="edit-user-ban-reason">Причина блокировки (если заблокирован)</label>
                       <input
@@ -2451,20 +2411,16 @@ export default function AdminPage() {
                       placeholder="Из email, если пусто"
                     />
                   </div>
-                  <div className="adm-field">
-                    <label htmlFor="new-user-subscription">Тариф</label>
-                    <select
-                      id="new-user-subscription"
-                      value={newUserSubscription}
-                      onChange={(e) => setNewUserSubscription(e.target.value)}
-                      style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--adm-border)" }}
-                    >
-                      <option value="free">Free</option>
-                      <option value="basic">Basic</option>
-                      <option value="premium">Pro</option>
-                      <option value="mentor">Mentor</option>
-                    </select>
-                  </div>
+                  <SubscriptionExpiryField
+                    idPrefix="new-user"
+                    subscriptionType={newUserSubscription}
+                    expiresDate={newUserExpires}
+                    plans={activePlans}
+                    onChange={(next) => {
+                      if (next.subscriptionType !== undefined) setNewUserSubscription(next.subscriptionType);
+                      if (next.expiresDate !== undefined) setNewUserExpires(next.expiresDate);
+                    }}
+                  />
                   <button type="submit" className="adm-btn adm-btn-primary" disabled={userCreating}>
                     {userCreating ? "Создание…" : "Добавить ученика"}
                   </button>
@@ -2581,6 +2537,7 @@ export default function AdminPage() {
                         ) : (
                           filteredUsers.map((u) => {
                             const tag = subscriptionTag(u.subscriptionType);
+                            const expiry = describeSubscriptionExpiry(u);
                             const isAdminUser = u.subscriptionType === "admin";
                             const rowClass = [
                               u.banned ? "adm-row-banned" : null,
@@ -2595,6 +2552,11 @@ export default function AdminPage() {
                                 <td>{u.nickname}</td>
                                 <td>
                                   <span className={`adm-tag ${tag.className}`}>{tag.label}</span>
+                                  {expiry ? (
+                                    <div className={`adm-subscription-expiry${expiry.expired ? " is-expired" : ""}`}>
+                                      {expiry.text}
+                                    </div>
+                                  ) : null}
                                 </td>
                                 <td>
                                   {u.banned ? (

@@ -318,40 +318,43 @@ class AuthProvider extends ChangeNotifier {
     return LeaderboardData(entries: entries, currentRank: rank, currentSeconds: seconds);
   }
 
-  Future<BillingPlan> loadBillingPlan() async {
-    final res = await _api.request("GET", "/billing/plan", auth: false);
+  /// Активные тарифы в порядке, заданном в админке.
+  Future<List<BillingPlan>> loadBillingPlans() async {
+    final res = await _api.request("GET", "/billing/plans", auth: false);
     if (res.statusCode != 200) {
-      _api.throwFrom(res, "Не удалось загрузить тариф");
+      _api.throwFrom(res, "Не удалось загрузить тарифы");
     }
     final data = await _api.decodeMap(res);
-    return BillingPlan(
-      amount: asDouble(data["amount"]),
-      periodLabel: asStringOrNull(data["periodLabel"]) ?? "1 месяц",
-    );
+    final raw = data["plans"];
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((e) => BillingPlan.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
   }
 
-  Future<PromoResult> validatePromo(String code) async {
+  Future<PromoResult> validatePromo(String code, {required int planId}) async {
     final res = await _api.request(
       "POST",
       "/billing/validate-promo",
-      body: {"promoCode": code.trim()},
+      body: {"promoCode": code.trim(), "plan": planId},
     );
     if (res.statusCode < 200 || res.statusCode >= 300) {
       _api.throwFrom(res, "Промокод недействителен");
     }
     final data = await _api.decodeMap(res);
-    final discount = data["discount"] ?? data["discountLabel"] ?? data["discountValue"];
     return PromoResult(
       code: asStringOrNull(data["code"]) ?? code.trim(),
       finalAmount: asDouble(data["finalAmount"]),
-                  discountLabel: discount?.toString(),
+      discount: asDouble(data["discount"]),
     );
   }
 
   Future<({bool free, String? paymentUrl, String? paymentId, UserProfile? profile})> createPayment({
+    required int planId,
     String? promoCode,
   }) async {
-    final body = <String, dynamic>{"plan": "standard"};
+    final body = <String, dynamic>{"plan": planId};
     if (promoCode != null && promoCode.isNotEmpty) body["promoCode"] = promoCode;
     final res = await _api.request("POST", "/billing/create-payment", body: body);
     if (res.statusCode < 200 || res.statusCode >= 300) {

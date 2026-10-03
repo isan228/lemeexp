@@ -15,13 +15,15 @@ import {
   getDefaultPlanId,
   getFrontendBaseUrl,
   getPlanAmount,
-  getPlanTitle,
   isFinikConfigured,
-  DEFAULT_PLAN_ID,
-  PLAN_TO_SUBSCRIPTION,
   verifyFinikWebhook
 } from "./finik.js";
 import { computeFinalAmount, formatPromoRow, normalizePromoCode } from "./promo.js";
+import {
+  createPlanStore,
+  ensureSubscriptionPlansTable,
+  registerSubscriptionPlanRoutes
+} from "./subscriptionPlans.js";
 import {
   buildAuthenticatedManifest,
   getHlsDir,
@@ -212,7 +214,8 @@ const adminUserCreateSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   nickname: z.string().min(1).max(80).optional(),
-  subscriptionType: z.enum(["free", "basic", "premium", "mentor"]).optional().default("free")
+  subscriptionType: z.enum(["free", "basic", "premium", "mentor"]).optional().default("free"),
+  subscriptionExpiresAt: z.string().datetime().optional().nullable()
 });
 
 const adminUserUpdateSchema = z
@@ -221,6 +224,7 @@ const adminUserUpdateSchema = z
     password: z.string().min(6).optional(),
     nickname: z.string().min(1).max(80).optional(),
     subscriptionType: z.enum(["free", "basic", "premium", "mentor"]).optional(),
+    subscriptionExpiresAt: z.string().datetime().optional().nullable(),
     banned: z.boolean().optional(),
     banReason: z.string().max(500).optional().nullable()
   })
@@ -230,6 +234,7 @@ const adminUserUpdateSchema = z
       data.password !== undefined ||
       data.nickname !== undefined ||
       data.subscriptionType !== undefined ||
+      data.subscriptionExpiresAt !== undefined ||
       data.banned !== undefined ||
       data.banReason !== undefined,
     { message: "No fields to update" }
@@ -244,16 +249,19 @@ const securityAlertsDismissSchema = z
     message: "ids or userId required"
   });
 
+const planKeySchema = z.union([z.string().max(64), z.number().int()]).optional();
+
 const activateSubscriptionSchema = z.object({
-  plan: z.literal("standard").optional().default("standard")
+  plan: planKeySchema
 });
 
 const createPaymentSchema = z.object({
-  plan: z.literal("standard").optional().default("standard"),
+  plan: planKeySchema,
   promoCode: z.string().max(64).optional()
 });
 
 const validatePromoSchema = z.object({
+  plan: planKeySchema,
   promoCode: z.string().min(1).max(64)
 });
 
@@ -271,12 +279,6 @@ const promoUpdateSchema = z.object({
   maxUses: z.coerce.number().int().positive().optional().nullable(),
   expiresAt: z.string().datetime().nullable().optional()
 });
-
-const billingSettingsSchema = z.object({
-  amount: z.coerce.number().min(0).max(1_000_000)
-});
-
-const SUBSCRIPTION_AMOUNT_KEY = "subscription_amount";
 
 const refreshSchema = z.object({
   refreshToken: z.string().min(20)
@@ -829,6 +831,7 @@ async function ensurePaymentsTable() {
     )
   `);
   await pool.query(`alter table payments add column if not exists promo_code text`);
+  await pool.query(`alter table payments add column if not exists duration_days int`);
   await pool.query(`create index if not exists idx_payments_user on payments(user_id)`);
   await pool.query(`create index if not exists idx_payments_status on payments(status)`);
   await pool.query(
@@ -877,53 +880,14 @@ async function ensureAppSettingsTable() {
   `);
 }
 
-function getDefaultSubscriptionAmount() {
-  return getPlanAmount(getDefaultPlanId()) ?? 1;
-}
+const defaultPlanPrice = getPlanAmount(getDefaultPlanId()) ?? 1;
 
-async function getSubscriptionAmount() {
-  if (dbReady) {
-    const r = await pool.query(`select value from app_settings where key = $1 limit 1`, [
-      SUBSCRIPTION_AMOUNT_KEY
-    ]);
-    if (r.rows[0]) {
-      const amount = Number(r.rows[0].value);
-      if (Number.isFinite(amount) && amount >= 0) return amount;
-    }
-    return getDefaultSubscriptionAmount();
-  }
-  if (memState.settings[SUBSCRIPTION_AMOUNT_KEY] != null) {
-    const amount = Number(memState.settings[SUBSCRIPTION_AMOUNT_KEY]);
-    if (Number.isFinite(amount) && amount >= 0) return amount;
-  }
-  return getDefaultSubscriptionAmount();
-}
-
-async function setSubscriptionAmount(amount) {
-  const value = String(amount);
-  if (dbReady) {
-    await pool.query(
-      `insert into app_settings (key, value, updated_at) values ($1, $2, now())
-       on conflict (key) do update set value = excluded.value, updated_at = now()`,
-      [SUBSCRIPTION_AMOUNT_KEY, value]
-    );
-    return amount;
-  }
-  memState.settings[SUBSCRIPTION_AMOUNT_KEY] = value;
-  return amount;
-}
-
-async function getBillingPlanPayload() {
-  const id = getDefaultPlanId();
-  const amount = await getSubscriptionAmount();
-  return {
-    id,
-    title: getPlanTitle(id),
-    amount,
-    periodDays: 30,
-    periodLabel: "1 месяц"
-  };
-}
+const planStore = createPlanStore({
+  pool,
+  memState,
+  isDbReady: () => dbReady,
+  fallbackPrice: defaultPlanPrice
+});
 
 async function ensureSupportMessagesTable() {
   if (!pool) return;
@@ -1713,11 +1677,13 @@ app.post("/auth/register", async (req, res) => {
   return sendAuthTokensForUser(req, res, user);
 });
 
-async function activateSubscriptionForUser(userId, plan) {
-  const nextSubscription = PLAN_TO_SUBSCRIPTION[plan];
-  if (!nextSubscription) {
-    throw new Error("Unknown plan");
-  }
+const PAID_SUBSCRIPTION_TYPE = "premium";
+const DEFAULT_PLAN_DURATION_DAYS = 30;
+
+async function activateSubscriptionForUser(userId, durationDays) {
+  const nextSubscription = PAID_SUBSCRIPTION_TYPE;
+  const days = Number(durationDays) > 0 ? Math.floor(Number(durationDays)) : DEFAULT_PLAN_DURATION_DAYS;
+  const durationMs = days * 24 * 60 * 60 * 1000;
 
   if (dbReady) {
     const updated = await pool.query(
@@ -1725,12 +1691,12 @@ async function activateSubscriptionForUser(userId, plan) {
        set subscription_type = $2,
            subscription_expires_at = case
              when subscription_expires_at is not null and subscription_expires_at > now()
-             then subscription_expires_at + interval '30 days'
-             else now() + interval '30 days'
+             then subscription_expires_at + make_interval(days => $3::int)
+             else now() + make_interval(days => $3::int)
            end
        where id = $1
        returning id, email, nickname, subscription_type, subscription_expires_at`,
-      [userId, nextSubscription]
+      [userId, nextSubscription, days]
     );
     if (!updated.rows[0]) {
       return null;
@@ -1752,7 +1718,7 @@ async function activateSubscriptionForUser(userId, plan) {
     user.subscriptionType = nextSubscription;
     const base = user.subscriptionExpiresAt ? new Date(user.subscriptionExpiresAt).getTime() : Date.now();
     const from = Math.max(Date.now(), base);
-    user.subscriptionExpiresAt = new Date(from + 30 * 24 * 60 * 60 * 1000).toISOString();
+    user.subscriptionExpiresAt = new Date(from + durationMs).toISOString();
     memRegisteredUsersById.set(user.id, user);
     memRegisteredUsersByEmail.set(normalizeEmail(user.email), user);
     return buildProfilePayload(user);
@@ -1762,7 +1728,7 @@ async function activateSubscriptionForUser(userId, plan) {
     demoUser.subscriptionType = nextSubscription;
     const base = demoUser.subscriptionExpiresAt ? new Date(demoUser.subscriptionExpiresAt).getTime() : Date.now();
     const from = Math.max(Date.now(), base);
-    demoUser.subscriptionExpiresAt = new Date(from + 30 * 24 * 60 * 60 * 1000).toISOString();
+    demoUser.subscriptionExpiresAt = new Date(from + durationMs).toISOString();
     return buildProfilePayload(demoUser);
   }
 
@@ -1853,23 +1819,31 @@ async function redeemPromoCode(promoId, userId, paymentId) {
 async function completeFreeSubscriptionPayment({ paymentId, userId, plan, promo, promoCodeLabel }) {
   if (dbReady) {
     await pool.query(
-      `insert into payments (payment_id, user_id, plan, amount, status, promo_code)
-       values ($1, $2, $3, 0, 'succeeded', $4)`,
-      [paymentId, userId, plan, promoCodeLabel || null]
+      `insert into payments (payment_id, user_id, plan, amount, status, promo_code, duration_days)
+       values ($1, $2, $3, 0, 'succeeded', $4, $5)`,
+      [paymentId, userId, String(plan.id), promoCodeLabel || null, plan.periodDays]
     );
     if (promo) await redeemPromoCode(promo.id, userId, paymentId);
   } else {
     memState.paymentsById.set(paymentId, {
       paymentId,
       userId,
-      plan,
+      plan: String(plan.id),
+      durationDays: plan.periodDays,
       amount: 0,
       status: "succeeded",
       promoCode: promoCodeLabel || null
     });
     if (promo) await redeemPromoCode(promo.id, userId, paymentId);
   }
-  return activateSubscriptionForUser(userId, plan);
+  return activateSubscriptionForUser(userId, plan.periodDays);
+}
+
+/** Срок оплаченного платежа: сохранённый при создании, иначе — текущий срок тарифа. */
+async function resolvePaymentDurationDays(planKey, storedDays) {
+  if (Number(storedDays) > 0) return Number(storedDays);
+  const plan = /^\d+$/.test(String(planKey)) ? await planStore.getPlanById(planKey) : null;
+  return plan?.periodDays ?? DEFAULT_PLAN_DURATION_DAYS;
 }
 
 async function applyPromoAfterPaymentSuccess(paymentId, userId, promoCodeLabel) {
@@ -1880,13 +1854,7 @@ async function applyPromoAfterPaymentSuccess(paymentId, userId, promoCodeLabel) 
   await redeemPromoCode(promo.id, userId, paymentId);
 }
 
-app.get("/billing/plan", async (_req, res) => {
-  try {
-    res.json(await getBillingPlanPayload());
-  } catch (error) {
-    res.status(500).json({ message: "Failed to load plan", error: error.message });
-  }
-});
+registerSubscriptionPlanRoutes(app, { auth, requireAdmin, planStore });
 
 app.post("/billing/validate-promo", auth, async (req, res) => {
   const parsed = validatePromoSchema.safeParse(req.body);
@@ -1897,7 +1865,11 @@ app.post("/billing/validate-promo", auth, async (req, res) => {
     return res.status(403).json({ message: "Admin subscription cannot be changed" });
   }
 
-  const baseAmount = await getSubscriptionAmount();
+  const plan = await planStore.resolvePurchasablePlan(parsed.data.plan);
+  if (!plan) {
+    return res.status(400).json({ message: "Тариф не найден или недоступен" });
+  }
+  const baseAmount = plan.amount;
   const result = await validatePromoForUser(parsed.data.promoCode, req.user.userId, baseAmount);
   if (!result.ok) {
     return res.status(400).json({ message: result.message });
@@ -1921,11 +1893,11 @@ app.post("/billing/create-payment", auth, async (req, res) => {
     return res.status(403).json({ message: "Admin subscription cannot be changed" });
   }
 
-  const plan = parsed.data.plan || getDefaultPlanId();
-  const baseAmount = await getSubscriptionAmount();
-  if (baseAmount == null || baseAmount < 0) {
-    return res.status(400).json({ message: "Invalid plan amount" });
+  const plan = await planStore.resolvePurchasablePlan(parsed.data.plan);
+  if (!plan) {
+    return res.status(400).json({ message: "Тариф не найден или недоступен" });
   }
+  const baseAmount = plan.amount;
 
   let finalAmount = baseAmount;
   let promo = null;
@@ -1958,8 +1930,8 @@ app.post("/billing/create-payment", auth, async (req, res) => {
         paymentId,
         free: true,
         amount: 0,
-        plan,
-        planTitle: getPlanTitle(plan),
+        plan: String(plan.id),
+        planTitle: plan.title,
         promoCode: promoCodeLabel,
         profile
       });
@@ -1977,15 +1949,16 @@ app.post("/billing/create-payment", auth, async (req, res) => {
   try {
     if (dbReady) {
       await pool.query(
-        `insert into payments (payment_id, user_id, plan, amount, status, promo_code)
-         values ($1, $2, $3, $4, 'pending', $5)`,
-        [paymentId, req.user.userId, plan, finalAmount, promoCodeLabel]
+        `insert into payments (payment_id, user_id, plan, amount, status, promo_code, duration_days)
+         values ($1, $2, $3, $4, 'pending', $5, $6)`,
+        [paymentId, req.user.userId, String(plan.id), finalAmount, promoCodeLabel, plan.periodDays]
       );
     } else {
       memState.paymentsById.set(paymentId, {
         paymentId,
         userId: req.user.userId,
-        plan,
+        plan: String(plan.id),
+        durationDays: plan.periodDays,
         amount: finalAmount,
         status: "pending",
         promoCode: promoCodeLabel
@@ -1995,7 +1968,7 @@ app.post("/billing/create-payment", auth, async (req, res) => {
     const finik = await createFinikPayment({
       paymentId,
       amount: finalAmount,
-      plan,
+      plan: `${plan.periodDays} days`,
       redirectUrl
     });
 
@@ -2005,8 +1978,8 @@ app.post("/billing/create-payment", auth, async (req, res) => {
       amount: finalAmount,
       baseAmount,
       discount: Math.max(0, Math.round((baseAmount - finalAmount) * 100) / 100),
-      plan,
-      planTitle: getPlanTitle(plan),
+      plan: String(plan.id),
+      planTitle: plan.title,
       promoCode: promoCodeLabel
     });
   } catch (error) {
@@ -2120,7 +2093,7 @@ app.post("/billing/webhook/finik", async (req, res) => {
   try {
     if (dbReady) {
       const existing = await pool.query(
-        `select payment_id, user_id, plan, status, promo_code
+        `select payment_id, user_id, plan, status, promo_code, duration_days
          from payments
          where payment_id = $1`,
         [paymentId]
@@ -2144,7 +2117,10 @@ app.post("/billing/webhook/finik", async (req, res) => {
       );
 
       if (nextStatus === "succeeded") {
-        await activateSubscriptionForUser(row.user_id, row.plan);
+        await activateSubscriptionForUser(
+          row.user_id,
+          await resolvePaymentDurationDays(row.plan, row.duration_days)
+        );
         await applyPromoAfterPaymentSuccess(paymentId, row.user_id, row.promo_code);
       }
 
@@ -2164,7 +2140,10 @@ app.post("/billing/webhook/finik", async (req, res) => {
     memState.paymentsById.set(paymentId, payment);
 
     if (nextStatus === "succeeded") {
-      await activateSubscriptionForUser(payment.userId, payment.plan);
+      await activateSubscriptionForUser(
+        payment.userId,
+        await resolvePaymentDurationDays(payment.plan, payment.durationDays)
+      );
       await applyPromoAfterPaymentSuccess(paymentId, payment.userId, payment.promoCode);
     }
 
@@ -2189,7 +2168,11 @@ app.post("/billing/activate-subscription", auth, async (req, res) => {
   }
 
   try {
-    const profile = await activateSubscriptionForUser(req.user.userId, parsed.data.plan);
+    const plan = await planStore.resolvePurchasablePlan(parsed.data.plan);
+    if (!plan) {
+      return res.status(400).json({ message: "Тариф не найден или недоступен" });
+    }
+    const profile = await activateSubscriptionForUser(req.user.userId, plan.periodDays);
     if (!profile) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -2627,6 +2610,7 @@ app.post("/admin/users", auth, requireAdmin, async (req, res) => {
   const email = normalizeEmail(parsed.data.email);
   const nickname = (parsed.data.nickname?.trim() || email.split("@")[0] || "user").slice(0, 80);
   const subscriptionType = parsed.data.subscriptionType;
+  const subscriptionExpiresAt = parsed.data.subscriptionExpiresAt ?? null;
 
   if (email === normalizeEmail(adminUser.email) || email === normalizeEmail(demoUser.email)) {
     return res.status(409).json({ message: "Этот email зарезервирован" });
@@ -2642,17 +2626,18 @@ app.post("/admin/users", auth, requireAdmin, async (req, res) => {
   try {
     if (dbReady) {
       const created = await pool.query(
-        `insert into users (email, password_hash, nickname, subscription_type)
-         values ($1, $2, $3, $4)
+        `insert into users (email, password_hash, nickname, subscription_type, subscription_expires_at)
+         values ($1, $2, $3, $4, $5)
          returning id, email, nickname, subscription_type as "subscriptionType",
+                   subscription_expires_at as "subscriptionExpiresAt",
                    exam_date as "examDate", created_at as "createdAt"`,
-        [email, passwordHash, nickname, subscriptionType]
+        [email, passwordHash, nickname, subscriptionType, subscriptionExpiresAt]
       );
       return res.status(201).json(created.rows[0]);
     }
 
     const id = memNextUserId++;
-    const user = { id, email, passwordHash, nickname, subscriptionType };
+    const user = { id, email, passwordHash, nickname, subscriptionType, subscriptionExpiresAt };
     memRegisteredUsersByEmail.set(email, user);
     memRegisteredUsersById.set(id, user);
     memState.progressByUser.set(id, { lastVideoId: null, watchedSeconds: {}, videoCompleted: {} });
@@ -2661,6 +2646,7 @@ app.post("/admin/users", auth, requireAdmin, async (req, res) => {
       email,
       nickname,
       subscriptionType,
+      subscriptionExpiresAt,
       examDate: null,
       createdAt: new Date().toISOString()
     });
@@ -2686,6 +2672,7 @@ app.get("/admin/users", auth, requireAdmin, async (_req, res) => {
           email: u.email,
           nickname: u.nickname,
           subscriptionType: subscriptionType ?? u.subscriptionType,
+          subscriptionExpiresAt: u.subscriptionExpiresAt ?? null,
           examDate: u.examDate ?? null,
           createdAt: u.createdAt ?? null,
           banned: Boolean(u.banned),
@@ -2712,6 +2699,7 @@ app.get("/admin/users", auth, requireAdmin, async (_req, res) => {
 
     const r = await pool.query(
       `select u.id, u.email, u.nickname, u.subscription_type as "subscriptionType",
+              u.subscription_expires_at as "subscriptionExpiresAt",
               u.exam_date as "examDate", u.created_at as "createdAt",
               u.banned, u.banned_at as "bannedAt", u.ban_reason as "banReason",
               coalesce(s.device_count, 0)::int as "deviceCount",
@@ -2769,6 +2757,7 @@ app.patch("/admin/users/:userId", auth, requireAdmin, async (req, res) => {
       if (data.email) memUser.email = normalizeEmail(data.email);
       if (data.nickname) memUser.nickname = data.nickname.trim().slice(0, 80);
       if (data.subscriptionType) memUser.subscriptionType = data.subscriptionType;
+      if (data.subscriptionExpiresAt !== undefined) memUser.subscriptionExpiresAt = data.subscriptionExpiresAt;
       if (data.password) memUser.passwordHash = await bcrypt.hash(data.password, 10);
       if (data.banned === true) {
         memUser.banned = true;
@@ -2789,6 +2778,7 @@ app.patch("/admin/users/:userId", auth, requireAdmin, async (req, res) => {
         email: memUser.email,
         nickname: memUser.nickname,
         subscriptionType: memUser.subscriptionType,
+        subscriptionExpiresAt: memUser.subscriptionExpiresAt ?? null,
         examDate: memUser.examDate ?? null,
         createdAt: memUser.createdAt ?? null,
         banned: Boolean(memUser.banned),
@@ -2820,6 +2810,10 @@ app.patch("/admin/users/:userId", auth, requireAdmin, async (req, res) => {
       sets.push(`subscription_type = $${idx++}`);
       values.push(data.subscriptionType);
     }
+    if (data.subscriptionExpiresAt !== undefined) {
+      sets.push(`subscription_expires_at = $${idx++}`);
+      values.push(data.subscriptionExpiresAt);
+    }
     if (data.password !== undefined) {
       sets.push(`password_hash = $${idx++}`);
       values.push(await bcrypt.hash(data.password, 10));
@@ -2849,6 +2843,7 @@ app.patch("/admin/users/:userId", auth, requireAdmin, async (req, res) => {
       `update users set ${sets.join(", ")}
        where id = $${idx}
        returning id, email, nickname, subscription_type as "subscriptionType",
+                 subscription_expires_at as "subscriptionExpiresAt",
                  exam_date as "examDate", created_at as "createdAt",
                  banned, banned_at as "bannedAt", ban_reason as "banReason"`,
       values
@@ -2980,36 +2975,6 @@ app.post("/admin/security-alerts/:alertId/dismiss", auth, requireAdmin, async (r
     return res.status(204).send();
   } catch (error) {
     return res.status(500).json({ message: "Failed to dismiss alert", error: error.message });
-  }
-});
-
-app.get("/admin/billing/settings", auth, requireAdmin, async (_req, res) => {
-  try {
-    const payload = await getBillingPlanPayload();
-    let updatedAt = null;
-    if (dbReady) {
-      const r = await pool.query(`select updated_at from app_settings where key = $1 limit 1`, [
-        SUBSCRIPTION_AMOUNT_KEY
-      ]);
-      updatedAt = r.rows[0]?.updated_at ?? null;
-    }
-    res.json({ ...payload, updatedAt });
-  } catch (error) {
-    res.status(500).json({ message: "Failed to load billing settings", error: error.message });
-  }
-});
-
-app.patch("/admin/billing/settings", auth, requireAdmin, async (req, res) => {
-  const parsed = billingSettingsSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
-  }
-  try {
-    await setSubscriptionAmount(parsed.data.amount);
-    const payload = await getBillingPlanPayload();
-    res.json(payload);
-  } catch (error) {
-    res.status(500).json({ message: "Failed to update billing settings", error: error.message });
   }
 });
 
@@ -4056,6 +4021,11 @@ async function start() {
         await ensureAppSettingsTable();
       } catch (e) {
         console.error("Таблица app_settings — пропуск (проверьте миграцию):", e.message);
+      }
+      try {
+        await ensureSubscriptionPlansTable(pool, defaultPlanPrice);
+      } catch (e) {
+        console.error("Таблица subscription_plans — пропуск (проверьте миграцию):", e.message);
       }
       await seedDemoData();
       dbReady = true;

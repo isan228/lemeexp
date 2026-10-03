@@ -184,7 +184,7 @@ export default function ProfilePage() {
           </dl>
           {!fullAccess ? (
             <div className="profile-upgrade">
-              <p className="muted small">Полный каталог — подписка на {SUBSCRIPTION_PLAN.periodDays} дней.</p>
+              <p className="muted small">Полный каталог открывается по подписке — выберите удобный срок.</p>
               <Link to={routes.payment(SUBSCRIPTION_PLAN.id)} className="btn-get-access inline">
                 {GET_ACCESS_LABEL}
               </Link>

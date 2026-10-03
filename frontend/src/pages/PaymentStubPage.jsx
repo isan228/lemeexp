@@ -1,37 +1,37 @@
 import { useState } from "react";
-import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import PlanPicker from "../components/PlanPicker.jsx";
 import SiteBrand from "../components/SiteBrand.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
-import { SUBSCRIPTION_PLAN, formatPlanPrice } from "../config/billing.js";
-import { useBillingPlan } from "../hooks/useBillingPlan.js";
+import { formatPlanPrice } from "../config/billing.js";
+import { pickInitialPlan, useBillingPlans } from "../hooks/useBillingPlans.js";
 import { routes, GET_ACCESS_LABEL } from "../config/site.js";
 
 export default function PaymentPage() {
   const [searchParams] = useSearchParams();
-  const location = useLocation();
   const navigate = useNavigate();
   const { apiRequest, updateProfile, loadCatalog } = useAuth();
-  const { amount: baseAmount, loading: planLoading, priceLabel, periodLabel } = useBillingPlan(apiRequest);
-  const planId = searchParams.get("plan") || SUBSCRIPTION_PLAN.id;
-  const isValidPlan = planId === SUBSCRIPTION_PLAN.id;
+  const { plans, loading: plansLoading, error: plansError } = useBillingPlans();
+  const [selectedPlanId, setSelectedPlanId] = useState(null);
   const [pending, setPending] = useState(false);
   const [promoPending, setPromoPending] = useState(false);
   const [error, setError] = useState("");
   const [promoInput, setPromoInput] = useState("");
   const [appliedPromo, setAppliedPromo] = useState(null);
 
+  const selectedPlan =
+    plans.find((p) => p.id === selectedPlanId) || pickInitialPlan(plans, searchParams.get("plan"));
+  const baseAmount = selectedPlan?.amount ?? 0;
   const finalAmount = appliedPromo ? appliedPromo.finalAmount : baseAmount;
 
-  async function onApplyPromo() {
-    const code = promoInput.trim();
-    if (!code) return;
+  async function validatePromo(code, plan) {
     setError("");
     setPromoPending(true);
     try {
       const res = await apiRequest("/billing/validate-promo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ promoCode: code })
+        body: JSON.stringify({ promoCode: code, plan: plan.id })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -47,6 +47,17 @@ export default function PaymentPage() {
     }
   }
 
+  function onApplyPromo() {
+    const code = promoInput.trim();
+    if (!code || !selectedPlan) return;
+    void validatePromo(code, selectedPlan);
+  }
+
+  function onSelectPlan(plan) {
+    setSelectedPlanId(plan.id);
+    if (appliedPromo) void validatePromo(appliedPromo.code, plan);
+  }
+
   function clearPromo() {
     setAppliedPromo(null);
     setPromoInput("");
@@ -54,15 +65,15 @@ export default function PaymentPage() {
   }
 
   async function onPay() {
-    if (!isValidPlan) {
-      setError("Некорректный тариф.");
+    if (!selectedPlan) {
+      setError("Выберите тариф.");
       return;
     }
 
     setError("");
     setPending(true);
     try {
-      const payload = { plan: SUBSCRIPTION_PLAN.id };
+      const payload = { plan: selectedPlan.id };
       if (appliedPromo?.code) payload.promoCode = appliedPromo.code;
 
       const res = await apiRequest("/billing/create-payment", {
@@ -85,15 +96,15 @@ export default function PaymentPage() {
       if (!data.paymentUrl) {
         throw new Error("Не удалось получить ссылку на оплату");
       }
-      window.location.href = data.paymentUrl;
+      window.location.assign(data.paymentUrl);
     } catch (err) {
       setError(err.message || "Ошибка оплаты");
       setPending(false);
     }
   }
 
-  const displayPrice =
-    finalAmount <= 0 ? "бесплатно" : planLoading && !appliedPromo ? "…" : formatPlanPrice(finalAmount);
+  const strikePrice = appliedPromo?.discount > 0 ? baseAmount : selectedPlan?.oldAmount;
+  const displayPrice = finalAmount <= 0 ? "бесплатно" : formatPlanPrice(finalAmount);
 
   return (
     <div className="payment-stub-page payment-page">
@@ -112,30 +123,47 @@ export default function PaymentPage() {
             <span className="flow-step active">2. Оплата</span>
           </div>
           <h1>{GET_ACCESS_LABEL}</h1>
-          <p className="muted">Оформите подписку, чтобы открыть все уроки.</p>
+          <p className="muted">Выберите срок подписки, чтобы открыть все уроки.</p>
         </div>
 
-        <div className="payment-summary">
-          <div className="payment-summary-top">
-            <span className="plan-badge">Подписка</span>
-            {appliedPromo?.discount > 0 ? <span className="payment-summary-tag">Скидка</span> : null}
-          </div>
-          <div className="payment-summary-row">
-            <div>
-              <strong className="payment-summary-name">{SUBSCRIPTION_PLAN.name}</strong>
-              <p className="payment-summary-period">на {periodLabel}</p>
-            </div>
-            <div className="payment-summary-price-block">
-              {appliedPromo?.discount > 0 ? (
-                <span className="payment-summary-old">{priceLabel}</span>
+        {plansLoading ? (
+          <p className="muted">Загрузка тарифов…</p>
+        ) : plans.length === 0 ? (
+          <p className="form-error">{plansError || "Сейчас нет доступных тарифов. Напишите в поддержку."}</p>
+        ) : (
+          <>
+            {plans.length > 1 ? (
+              <PlanPicker
+                plans={plans}
+                selectedId={selectedPlan?.id}
+                onSelect={onSelectPlan}
+                disabled={pending || promoPending}
+              />
+            ) : null}
+
+            <div className="payment-summary">
+              <div className="payment-summary-top">
+                <span className="plan-badge">Подписка</span>
+                {appliedPromo?.discount > 0 ? <span className="payment-summary-tag">Скидка</span> : null}
+              </div>
+              <div className="payment-summary-row">
+                <div>
+                  <strong className="payment-summary-name">{selectedPlan.title}</strong>
+                  <p className="payment-summary-period">доступ на {selectedPlan.periodLabel}</p>
+                </div>
+                <div className="payment-summary-price-block">
+                  {strikePrice != null && strikePrice > finalAmount ? (
+                    <span className="payment-summary-old">{formatPlanPrice(strikePrice)}</span>
+                  ) : null}
+                  <span className="payment-summary-price">{displayPrice}</span>
+                </div>
+              </div>
+              {finalAmount <= 0 ? (
+                <p className="payment-summary-note">Промокод покрывает стоимость — оплата не нужна.</p>
               ) : null}
-              <span className="payment-summary-price">{displayPrice}</span>
             </div>
-          </div>
-          {finalAmount <= 0 ? (
-            <p className="payment-summary-note">Промокод покрывает стоимость — оплата не нужна.</p>
-          ) : null}
-        </div>
+          </>
+        )}
 
         <div className="payment-promo">
           <label htmlFor="promo-code">Промокод</label>
@@ -145,7 +173,7 @@ export default function PaymentPage() {
               value={promoInput}
               onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
               placeholder="Например: WELCOME"
-              disabled={promoPending || pending}
+              disabled={promoPending || pending || !selectedPlan}
               autoComplete="off"
             />
             {appliedPromo ? (
@@ -156,8 +184,8 @@ export default function PaymentPage() {
               <button
                 type="button"
                 className="btn-secondary inline"
-                onClick={() => void onApplyPromo()}
-                disabled={promoPending || pending || !promoInput.trim()}
+                onClick={onApplyPromo}
+                disabled={promoPending || pending || !promoInput.trim() || !selectedPlan}
               >
                 {promoPending ? "Проверка…" : "Применить"}
               </button>
@@ -165,17 +193,9 @@ export default function PaymentPage() {
           </div>
         </div>
 
-        {location.state?.form?.fullName ? (
-          <p className="muted small payment-applicant">Анкета получена для: {location.state.form.fullName}</p>
-        ) : null}
         {error ? <p className="form-error">{error}</p> : null}
 
         <div className="payment-stub-actions">
-          {!isValidPlan ? (
-            <Link to={routes.register} className="btn-secondary">
-              К регистрации
-            </Link>
-          ) : null}
           <Link to={routes.login} className="btn-link">
             Войти
           </Link>
@@ -183,7 +203,7 @@ export default function PaymentPage() {
             type="button"
             className="btn-primary payment-pay-btn"
             onClick={() => void onPay()}
-            disabled={pending || !isValidPlan || planLoading}
+            disabled={pending || promoPending || !selectedPlan}
           >
             {pending ? "Обработка…" : finalAmount <= 0 ? "Активировать доступ" : "Оплатить"}
           </button>

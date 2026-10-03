@@ -614,6 +614,11 @@
   margin-top: 0;
 }
 
+.landing-pricing .plan-picker {
+  margin-bottom: 22px;
+  text-align: left;
+}
+
 /* —— FAQ —— */
 
 .landing-faq-list {

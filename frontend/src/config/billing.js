@@ -1,10 +1,9 @@
-/** Метаданные тарифа (цена — с API `/billing/plan`). */
+/** Общее описание подписки. Тарифы (цена и срок) задаются в админке — `/billing/plans`. */
 export const SUBSCRIPTION_PLAN = {
   id: "standard",
   name: "Подписка Lemexplain",
-  periodDays: 30,
   bullets: [
-    "Все предметы, главы и видеоуроки на 1 месяц",
+    "Все предметы, главы и видеоуроки на весь срок подписки",
     "Личный кабинет и прогресс",
     "Чат с поддержкой"
   ]
@@ -15,10 +14,4 @@ export function formatPlanPrice(amount) {
   if (!Number.isFinite(n)) return "—";
   if (n <= 0) return "бесплатно";
   return Number.isInteger(n) ? `${n} сом` : `${n.toFixed(2)} сом`;
-}
-
-export function formatPlanPeriodLabel(amount, periodLabel = "1 месяц") {
-  const n = Number(amount);
-  if (!Number.isFinite(n) || n <= 0) return `бесплатно / ${periodLabel}`;
-  return `${formatPlanPrice(amount)} / ${periodLabel}`;
 }

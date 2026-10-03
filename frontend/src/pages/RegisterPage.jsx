@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import SiteBrand from "../components/SiteBrand.jsx";
+import PlanPicker from "../components/PlanPicker.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { SUBSCRIPTION_PLAN } from "../config/billing.js";
-import { useBillingPlan } from "../hooks/useBillingPlan.js";
+import { pickInitialPlan, useBillingPlans } from "../hooks/useBillingPlans.js";
 import { routes } from "../config/site.js";
 
 export default function RegisterPage() {
@@ -11,7 +12,9 @@ export default function RegisterPage() {
   const [searchParams] = useSearchParams();
   const isTrial = searchParams.get("intent") === "trial";
   const { register } = useAuth();
-  const { periodPriceLabel, loading: planLoading } = useBillingPlan();
+  const { plans, loading: plansLoading } = useBillingPlans();
+  const [selectedPlanId, setSelectedPlanId] = useState(null);
+  const selectedPlan = plans.find((p) => p.id === selectedPlanId) || pickInitialPlan(plans, searchParams.get("plan"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [nickname, setNickname] = useState("");
@@ -31,7 +34,7 @@ export default function RegisterPage() {
       if (isTrial) {
         navigate(routes.learningLessons, { replace: true });
       } else {
-        navigate(routes.payment(SUBSCRIPTION_PLAN.id), { replace: true });
+        navigate(routes.payment(selectedPlan?.id), { replace: true });
       }
     } catch (err) {
       setError(err.message || "Ошибка регистрации");
@@ -66,16 +69,18 @@ export default function RegisterPage() {
           <p className="muted">
             {isTrial
               ? "После регистрации откроются три бесплатных урока. Остальной каталог — по подписке."
-              : "Зарегистрируйтесь и оформите подписку на все уроки на 1 месяц."}
+              : "Зарегистрируйтесь и выберите срок подписки на все уроки."}
           </p>
         </div>
 
         {!isTrial && (
-          <div className="plan-card active" style={{ marginBottom: 20, cursor: "default" }}>
-            <span className="plan-badge">Подписка</span>
-            <strong>{SUBSCRIPTION_PLAN.name}</strong>
-            <span className="plan-price">{planLoading ? "Загрузка цены…" : periodPriceLabel}</span>
-            <ul>
+          <div className="register-plans">
+            {plansLoading ? (
+              <p className="muted">Загрузка тарифов…</p>
+            ) : plans.length > 0 ? (
+              <PlanPicker plans={plans} selectedId={selectedPlan?.id} onSelect={(plan) => setSelectedPlanId(plan.id)} />
+            ) : null}
+            <ul className="register-plan-bullets">
               {SUBSCRIPTION_PLAN.bullets.map((item) => (
                 <li key={item}>{item}</li>
               ))}

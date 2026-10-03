@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
+import PlanPicker from "../components/PlanPicker.jsx";
 import SiteBrand from "../components/SiteBrand.jsx";
 import SiteFooter from "../components/SiteFooter.jsx";
+import { useBillingPlans } from "../hooks/useBillingPlans.js";
 import { routes, GET_ACCESS_LABEL, site } from "../config/site.js";
 
 function scrollToSection(id) {
@@ -113,6 +115,7 @@ export default function LandingPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { token, profile, hydrated } = useAuth();
+  const { plans } = useBillingPlans();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [openFaqIndex, setOpenFaqIndex] = useState(null);
   const [curriculumExpanded, setCurriculumExpanded] = useState(false);
@@ -335,6 +338,7 @@ export default function LandingPage() {
             <p className="landing-pricing-lead">
               Полный доступ ко всем видеоурокам, тестам и менторской поддержке — оформите подписку в личном кабинете.
             </p>
+            {plans.length > 0 ? <PlanPicker plans={plans} /> : null}
             {!token ? (
               <Link to={routes.register} className="btn-primary inline">
                 {GET_ACCESS_LABEL}

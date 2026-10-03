@@ -714,6 +714,104 @@ input:focus {
   box-shadow: 0 12px 28px rgba(62, 105, 174, 0.15);
 }
 
+.plan-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.plan-picker-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--med-border);
+  border-radius: var(--med-radius-sm);
+  background: var(--med-surface, #ffffff);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.plan-picker-card.is-selectable {
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.plan-picker-card.is-selectable:hover:not(:disabled) {
+  border-color: var(--med-primary-border);
+}
+
+.plan-picker-card.is-selected {
+  border-color: var(--med-primary);
+  background: var(--med-primary-weak);
+  box-shadow: 0 0 0 2px rgba(62, 105, 174, 0.18);
+}
+
+.plan-picker-card:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.plan-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.plan-picker-title {
+  font-size: 1rem;
+  color: var(--med-fg);
+}
+
+.plan-picker-discount {
+  font-size: 11px;
+  font-weight: 700;
+  color: #15803d;
+  background: #dcfce7;
+  border: 1px solid #bbf7d0;
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.plan-picker-price {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.plan-picker-old {
+  font-size: 13px;
+  color: var(--med-muted);
+}
+
+.plan-picker-amount {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--med-primary-hover);
+}
+
+.plan-picker-period {
+  font-size: 12px;
+  color: var(--med-muted);
+}
+
+.register-plans {
+  margin-bottom: 20px;
+}
+
+.register-plan-bullets {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--med-fg-soft);
+  font-size: 13px;
+}
+
 .register-form-actions {
   display: flex;
   flex-wrap: wrap;

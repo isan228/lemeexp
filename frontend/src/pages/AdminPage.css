@@ -1204,6 +1204,60 @@
   box-shadow: 0 0 0 3px rgba(62, 105, 174, 0.15);
 }
 
+.adm-plan-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 640px) {
+  .adm-plan-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.adm-plan-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.adm-plan-edit {
+  padding: 4px 0;
+}
+
+.adm-plan-price {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--adm-text);
+}
+
+.adm-plan-price s {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--adm-text-muted);
+}
+
+.adm-plan-price .muted {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.adm-subscription-expiry {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--adm-text-muted);
+  white-space: nowrap;
+}
+
+.adm-subscription-expiry.is-expired {
+  color: #b91c1c;
+}
+
 .adm-checkbox {
   display: flex;
   align-items: center;

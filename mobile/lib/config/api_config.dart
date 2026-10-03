@@ -10,11 +10,11 @@ const String kSiteName = "Let me explain";
 const String kSupportEmail = "support@lemexplain.com";
 const String kGetAccessLabel = "Получить доступ";
 
+/// Старый идентификатор тарифа: сервер подставляет первый активный тариф.
 const String kSubscriptionPlanId = "standard";
 const String kSubscriptionPlanName = "Подписка Lemexplain";
-const int kSubscriptionPeriodDays = 30;
 const List<String> kSubscriptionBullets = [
-  "Все предметы, главы и видеоуроки на 1 месяц",
+  "Все предметы, главы и видеоуроки на весь срок подписки",
   "Личный кабинет и прогресс",
   "Чат с поддержкой",
 ];

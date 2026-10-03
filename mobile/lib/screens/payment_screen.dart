@@ -12,6 +12,7 @@ import "../providers/auth_provider.dart";
 import "../services/api_client.dart";
 import "../utils/helpers.dart";
 import "../widgets/common.dart";
+import "../widgets/plan_picker.dart";
 
 class PaymentScreen extends StatefulWidget {
   const PaymentScreen({super.key, this.plan});
@@ -31,7 +32,8 @@ class _PaymentScreenState extends State<PaymentScreen> with WidgetsBindingObserv
   String? _error;
   String? _hint;
   String? _paymentId;
-  double _baseAmount = 0;
+  List<BillingPlan> _plans = const [];
+  BillingPlan? _selectedPlan;
   PromoResult? _applied;
   Timer? _pollTimer;
 
@@ -57,11 +59,13 @@ class _PaymentScreenState extends State<PaymentScreen> with WidgetsBindingObserv
       return;
     }
     try {
-      final plan = await auth.loadBillingPlan();
+      final plans = await auth.loadBillingPlans();
       if (!mounted) return;
       setState(() {
-        _baseAmount = plan.amount;
+        _plans = plans;
+        _selectedPlan = pickInitialPlan(plans, widget.plan);
         _loadingPlan = false;
+        if (plans.isEmpty) _error = "Сейчас нет доступных тарифов. Попробуйте позже.";
       });
     } catch (e) {
       if (!mounted) return;
@@ -80,21 +84,34 @@ class _PaymentScreenState extends State<PaymentScreen> with WidgetsBindingObserv
     super.dispose();
   }
 
+  void _selectPlan(BillingPlan plan) {
+    if (plan.id == _selectedPlan?.id) return;
+    final hadPromo = _applied != null;
+    setState(() {
+      _selectedPlan = plan;
+      _applied = null;
+      _error = null;
+    });
+    if (hadPromo) unawaited(_applyPromo());
+  }
+
   Future<void> _applyPromo() async {
     final code = _promo.text.trim();
-    if (code.isEmpty) return;
+    final plan = _selectedPlan;
+    if (code.isEmpty || plan == null) return;
     setState(() {
       _promoPending = true;
       _error = null;
     });
     try {
-      final result = await context.read<AuthProvider>().validatePromo(code);
-      if (!mounted) return;
+      final result = await context.read<AuthProvider>().validatePromo(code, planId: plan.id);
+      if (!mounted || _selectedPlan?.id != plan.id) return;
       setState(() {
         _applied = result;
         _promo.text = result.code;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _applied = null;
         _error = e.message;
@@ -143,9 +160,9 @@ class _PaymentScreenState extends State<PaymentScreen> with WidgetsBindingObserv
   }
 
   Future<void> _pay() async {
-    final planOk = (widget.plan == null || widget.plan == kSubscriptionPlanId);
-    if (!planOk) {
-      setState(() => _error = "Некорректный тариф.");
+    final plan = _selectedPlan;
+    if (plan == null) {
+      setState(() => _error = "Выберите тариф.");
       return;
     }
     setState(() {
@@ -155,7 +172,7 @@ class _PaymentScreenState extends State<PaymentScreen> with WidgetsBindingObserv
     });
     try {
       final auth = context.read<AuthProvider>();
-      final result = await auth.createPayment(promoCode: _applied?.code);
+      final result = await auth.createPayment(planId: plan.id, promoCode: _applied?.code);
       if (result.free) {
         if (result.profile != null) auth.updateProfile(result.profile);
         await auth.loadCatalog();
@@ -189,8 +206,14 @@ class _PaymentScreenState extends State<PaymentScreen> with WidgetsBindingObserv
 
   @override
   Widget build(BuildContext context) {
-    final amount = _applied?.finalAmount ?? _baseAmount;
-    final price = _loadingPlan && _applied == null ? "…" : formatPlanPrice(amount);
+    final plan = _selectedPlan;
+    final amount = _applied?.finalAmount ?? plan?.amount ?? 0;
+    final price = _loadingPlan || plan == null ? "…" : formatPlanPrice(amount);
+    final struckPrice = plan == null
+        ? null
+        : _applied != null
+            ? (_applied!.finalAmount < plan.amount ? plan.amount : null)
+            : plan.oldAmount;
 
     return Scaffold(
       appBar: AppBar(title: const Text("Оплата")),
@@ -207,13 +230,46 @@ class _PaymentScreenState extends State<PaymentScreen> with WidgetsBindingObserv
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 16),
+              if (_plans.length > 1) ...[
+                const Text("Выберите тариф", style: TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 10),
+                PlanPicker(
+                  plans: _plans,
+                  selectedId: plan?.id,
+                  onSelect: _selectPlan,
+                  enabled: !_pending && !_promoPending,
+                ),
+                const SizedBox(height: 6),
+              ],
               AppCard(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(kSubscriptionPlanName, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                    if (plan != null) ...[
+                      const SizedBox(height: 2),
+                      Text("Доступ на ${plan.periodLabel}", style: const TextStyle(color: AppColors.textSecondary)),
+                    ],
                     const SizedBox(height: 6),
-                    Text(price, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.primary)),
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.end,
+                      spacing: 10,
+                      children: [
+                        if (struckPrice != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 3),
+                            child: Text(
+                              formatPlanPrice(struckPrice),
+                              style: const TextStyle(
+                                fontSize: 16,
+                                color: AppColors.textSecondary,
+                                decoration: TextDecoration.lineThrough,
+                              ),
+                            ),
+                          ),
+                        Text(price, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.primary)),
+                      ],
+                    ),
                     const SizedBox(height: 12),
                     for (final b in kSubscriptionBullets)
                       Padding(
@@ -254,7 +310,7 @@ class _PaymentScreenState extends State<PaymentScreen> with WidgetsBindingObserv
                     if (_applied != null) ...[
                       const SizedBox(height: 8),
                       Text(
-                        "Применён: ${_applied!.code}${_applied!.discountLabel != null ? " (${_applied!.discountLabel})" : ""}",
+                        "Применён: ${_applied!.code}${_applied!.discount > 0 ? " (скидка ${formatPlanPrice(_applied!.discount)})" : ""}",
                         style: const TextStyle(color: AppColors.success, fontWeight: FontWeight.w600),
                       ),
                       TextButton(
@@ -278,7 +334,7 @@ class _PaymentScreenState extends State<PaymentScreen> with WidgetsBindingObserv
               ],
               const SizedBox(height: 20),
               FilledButton(
-                onPressed: _pending || _loadingPlan ? null : _pay,
+                onPressed: _pending || _loadingPlan || plan == null ? null : _pay,
                 child: Text(_pending ? "Оформление…" : kGetAccessLabel),
               ),
               if (_awaitingPayment) ...[
