@@ -16,6 +16,7 @@ import LessonsRoutes from "./pages/lessons/LessonsRoutes.jsx";
 import "./App.css";
 import "./styles/student-ui.css";
 import "./styles/landing-ui.css";
+import "./styles/lessons-ui.css";
 
 export default function App() {
   return (

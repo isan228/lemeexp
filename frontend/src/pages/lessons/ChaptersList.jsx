@@ -1,8 +1,23 @@
 import { Link, useParams } from "react-router-dom";
-import PageHeader from "../../components/PageHeader.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { routes } from "../../config/site.js";
 import { getChapterWatchProgressPercent } from "../../utils/videoProgress.js";
+import {
+  countCompletedVideos,
+  formatChaptersCount,
+  formatDuration,
+  formatLessonsCount,
+  subjectVideos,
+  sumDuration
+} from "../../utils/lessonsFormat.js";
+import { pickThumbVariant } from "../../utils/lessonThumbVariant.js";
+import {
+  CourseProgress,
+  LessonsHeader,
+  MetaDot,
+  PathCard,
+  TimelineStep
+} from "../../components/lessons/LessonsPath.jsx";
 
 export default function ChaptersList() {
   const { subjectId } = useParams();
@@ -14,7 +29,7 @@ export default function ChaptersList() {
 
   if (catalogLoading && chapters.length === 0) {
     return (
-      <section className="lessons-flow lessons-flow-padded">
+      <section className="lessons-flow lessons-flow-padded lp-page">
         <div className="loading-block">
           <div className="loading-spinner" aria-hidden="true" />
           <p className="muted">Загрузка каталога…</p>
@@ -25,7 +40,7 @@ export default function ChaptersList() {
 
   if (catalogError && chapters.length === 0) {
     return (
-      <section className="lessons-flow lessons-flow-padded">
+      <section className="lessons-flow lessons-flow-padded lp-page">
         <div className="empty-state card">
           <p>{catalogError}</p>
           <button type="button" className="btn-primary" onClick={() => void loadCatalog()}>
@@ -38,7 +53,7 @@ export default function ChaptersList() {
 
   if (!Number.isFinite(id) || !subject) {
     return (
-      <section className="lessons-flow lessons-flow-padded">
+      <section className="lessons-flow lessons-flow-padded lp-page">
         <div className="empty-state card">
           <p>Предмет не найден.</p>
           <Link to={routes.learningLessons} className="btn-link">
@@ -49,70 +64,77 @@ export default function ChaptersList() {
     );
   }
 
-  return (
-    <section className="lessons-flow lessons-flow-padded">
-      <nav className="breadcrumb" aria-label="Навигация">
-        <Link to={routes.learningLessons}>Предметы</Link>
-        <span className="bc-sep">/</span>
-        <span className="bc-current">{subject.title}</span>
-      </nav>
-      <PageHeader kicker="Главы" title={subject.title} intro="Выберите главу, чтобы открыть список видео." />
-      <ul className="chapter-link-list">
-        {(subject.subtopics || []).map((ch, index) => {
-          const videosN = ch.videos?.length || 0;
-          const progressPct = getChapterWatchProgressPercent(ch.videos, watched, videoCompleted);
-          const completed = progressPct >= 100 && videosN > 0;
-          const hasPartialProgress = progressPct > 0 && !completed;
-          const rowClass = [
-            "chapter-item",
-            "card",
-            completed ? "is-complete" : "",
-            hasPartialProgress ? "has-progress" : ""
-          ]
-            .filter(Boolean)
-            .join(" ");
+  const subtopics = subject.subtopics || [];
+  const allVideos = subjectVideos(subject);
+  const items = subtopics.map((ch) => {
+    const videos = ch.videos || [];
+    const percent = getChapterWatchProgressPercent(videos, watched, videoCompleted);
+    return { ch, videos, percent, completed: videos.length > 0 && percent >= 100 };
+  });
+  const currentId = Number(items.find((item) => !item.completed && item.videos.length > 0)?.ch.id || 0);
+  const subjectPercent = getChapterWatchProgressPercent(allVideos, watched, videoCompleted);
 
+  return (
+    <section className="lessons-flow lessons-flow-padded lp-page">
+      <LessonsHeader
+        backTo={routes.learningLessons}
+        backLabel="Все предметы"
+        crumbs={[{ label: "Предметы", to: routes.learningLessons }]}
+        title={subject.title}
+        stats={[
+          formatChaptersCount(subtopics.length),
+          formatLessonsCount(allVideos.length),
+          formatDuration(sumDuration(allVideos))
+        ]}
+      />
+
+      {allVideos.length > 0 ? (
+        <CourseProgress
+          title="Прогресс предмета"
+          done={countCompletedVideos(allVideos, watched, videoCompleted)}
+          total={allVideos.length}
+          percent={subjectPercent}
+        />
+      ) : null}
+
+      <ol className="lp-timeline">
+        {items.map(({ ch, videos, percent, completed }, index) => {
+          const state = completed ? "completed" : Number(ch.id) === currentId ? "current" : "upcoming";
+          const durationLabel = formatDuration(sumDuration(videos));
           return (
-            <li key={ch.id} className={rowClass}>
-              <Link to={routes.lessonChapter(subject.id, ch.id)} className="chapter-row">
-                <span
-                  className="video-lesson-progress-fill"
-                  style={{ width: `${progressPct}%` }}
-                  aria-hidden="true"
-                />
-                <div
-                  className="chapter-row-inner"
-                  role="progressbar"
-                  aria-valuenow={progressPct}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-label={`${ch.title}, просмотрено ${progressPct}%`}
-                >
-                  <span className="chapter-row-num">{index + 1}</span>
-                  <span className="chapter-row-body">
-                    <span className="chapter-title">{ch.title}</span>
-                    <span className="muted small">
-                      {videosN} {videosN === 1 ? "видео" : "видео"}
-                      {progressPct > 0 ? ` · ${progressPct}%` : ""}
-                    </span>
-                  </span>
-                  <span className="chapter-row-arrow" aria-hidden="true">
-                    →
-                  </span>
-                </div>
-              </Link>
-            </li>
+            <TimelineStep key={ch.id} state={state}>
+              <PathCard
+                to={routes.lessonChapter(subject.id, ch.id)}
+                state={state}
+                thumb={pickThumbVariant(ch.title, index)}
+                title={ch.title}
+                percent={percent}
+                action="chevron"
+                ariaLabel={`${ch.title}, просмотрено ${percent}%`}
+                meta={
+                  <>
+                    <span>{formatLessonsCount(videos.length)}</span>
+                    {durationLabel ? (
+                      <>
+                        <MetaDot />
+                        <span>{durationLabel}</span>
+                      </>
+                    ) : null}
+                    <MetaDot />
+                    <span>{completed ? "Пройдено" : `${percent}%`}</span>
+                  </>
+                }
+              />
+            </TimelineStep>
           );
         })}
-      </ul>
-      {(subject.subtopics || []).length === 0 && (
+      </ol>
+
+      {subtopics.length === 0 ? (
         <div className="empty-state card">
           <p className="muted">В этом предмете пока нет глав.</p>
         </div>
-      )}
-      <p className="back-row">
-        <Link to={routes.learningLessons}>← Все предметы</Link>
-      </p>
+      ) : null}
     </section>
   );
 }
