@@ -83,7 +83,6 @@ export default function VideosLesson() {
   const videos = chapter.videos || [];
   const watched = progress?.watchedSeconds || {};
   const videoCompleted = progress?.videoCompleted || {};
-  const stoppedVideoId = Number(progress?.lastVideoId || 0);
   const rowCompleted = (v) =>
     isLessonVideoCompleted(
       getVideoWatchedSeconds(watched, v.id),
@@ -91,19 +90,6 @@ export default function VideosLesson() {
       videoCompleted,
       v.id
     );
-  const stoppedIndex = videos.findIndex((v) => Number(v.id) === stoppedVideoId);
-  const nextVideoId =
-    stoppedIndex >= 0 && stoppedIndex + 1 < videos.length
-      ? Number(videos[stoppedIndex + 1].id)
-      : Number(videos.find((v) => !rowCompleted(v) && !v.locked)?.id || 0);
-
-  const formatDurationLabel = (seconds) => {
-    const total = Number(seconds || 0);
-    if (total <= 0) return null;
-    const min = Math.floor(total / 60);
-    const sec = total % 60;
-    return sec > 0 ? `${min} мин ${sec} сек` : `${min} мин`;
-  };
   const lessonsCount = videos.length;
 
   return (
@@ -126,14 +112,12 @@ export default function VideosLesson() {
 
       <ul className="video-lesson-list">
         {videos.map((v, index) => {
-          const vId = Number(v.id);
           const locked = Boolean(v.locked);
           const ready = !locked && isPlayableStream(v.streamPath);
           const processing = !locked && isProcessingStream(v.streamPath);
           const watchedSeconds = getVideoWatchedSeconds(watched, v.id);
           const completed = rowCompleted(v);
           const hasPartialProgress = !completed && watchedSeconds > 0;
-          const isNext = ready && vId === nextVideoId && !completed;
           const progressPct = getVideoWatchProgressPercent(
             watchedSeconds,
             Number(v.duration) || 0,
@@ -157,8 +141,6 @@ export default function VideosLesson() {
           const labelText = (() => {
             if (locked) return "По подписке";
             if (completed) return "Просмотрено";
-            if (hasPartialProgress) return "Продолжить";
-            if (isNext) return "Следующий";
             if (processing) return "Подготовка";
             if (!ready) return "Загрузка";
             return "Урок";
@@ -167,8 +149,6 @@ export default function VideosLesson() {
           const labelTone = (() => {
             if (locked) return "locked";
             if (completed) return "complete";
-            if (hasPartialProgress) return "progress";
-            if (isNext) return "next";
             if (processing || !ready) return "pending";
             return "default";
           })();
@@ -194,29 +174,6 @@ export default function VideosLesson() {
                     <span className="video-lesson-num">{index + 1}.</span>
                     <span className="video-lesson-title-text">{v.title}</span>
                   </h3>
-                  <p className="video-lesson-meta">
-                    <span className="video-lesson-meta-subject">{subject.title}</span>
-                    <span className="video-lesson-meta-sep" aria-hidden="true">
-                      ·
-                    </span>
-                    <span className="video-lesson-meta-chapter">{chapter.title}</span>
-                    {v.isTrial ? (
-                      <>
-                        <span className="video-lesson-meta-sep" aria-hidden="true">
-                          ·
-                        </span>
-                        <span className="video-lesson-meta-trial">Пробник</span>
-                      </>
-                    ) : null}
-                    {!locked && ready && !completed && formatDurationLabel(v.duration) ? (
-                      <>
-                        <span className="video-lesson-meta-sep" aria-hidden="true">
-                          ·
-                        </span>
-                        <span className="video-lesson-meta-duration">{formatDurationLabel(v.duration)}</span>
-                      </>
-                    ) : null}
-                  </p>
                 </div>
                 <FavoriteButton videoId={v.id} size="sm" className="video-lesson-favorite-btn" />
                 <LessonPlayButton locked={locked} ready={ready} />
