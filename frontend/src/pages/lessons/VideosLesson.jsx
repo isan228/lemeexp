@@ -111,7 +111,7 @@ export default function VideosLesson() {
       </header>
 
       <ul className="video-lesson-list">
-        {videos.map((v, index) => {
+        {videos.map((v) => {
           const locked = Boolean(v.locked);
           const ready = !locked && isPlayableStream(v.streamPath);
           const processing = !locked && isProcessingStream(v.streamPath);
@@ -143,7 +143,7 @@ export default function VideosLesson() {
             if (completed) return "Просмотрено";
             if (processing) return "Подготовка";
             if (!ready) return "Загрузка";
-            return "Урок";
+            return null;
           })();
 
           const labelTone = (() => {
@@ -169,9 +169,10 @@ export default function VideosLesson() {
                 aria-label={`${v.title}, просмотрено ${progressPct}%`}
               >
                 <div className="video-lesson-body">
-                  <span className={`video-lesson-label is-${labelTone}`}>{labelText}</span>
+                  {labelText ? (
+                    <span className={`video-lesson-label is-${labelTone}`}>{labelText}</span>
+                  ) : null}
                   <h3 className="video-lesson-title">
-                    <span className="video-lesson-num">{index + 1}.</span>
                     <span className="video-lesson-title-text">{v.title}</span>
                   </h3>
                 </div>
