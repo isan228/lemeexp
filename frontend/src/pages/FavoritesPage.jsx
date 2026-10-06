@@ -46,7 +46,7 @@ export default function FavoritesPage() {
         <article className="card favorites-empty">
           <p>Пока нет избранных уроков.</p>
           <p className="muted small">
-            Нажмите ☆ на странице урока или в списке видео, чтобы добавить в избранное.
+            Нажмите ☆ на странице урока, чтобы добавить его в избранное.
           </p>
           <Link to={routes.learningLessons} className="btn-primary inline">
             К каталогу

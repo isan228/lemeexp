@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
 import LockIcon from "../../components/LockIcon.jsx";
-import FavoriteButton from "../../components/FavoriteButton.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { SUBSCRIPTION_PLAN } from "../../config/billing.js";
 import { routes, GET_ACCESS_LABEL } from "../../config/site.js";
@@ -176,7 +175,6 @@ export default function VideosLesson() {
                     <span className="video-lesson-title-text">{v.title}</span>
                   </h3>
                 </div>
-                <FavoriteButton videoId={v.id} size="sm" className="video-lesson-favorite-btn" />
                 <LessonPlayButton locked={locked} ready={ready} />
               </div>
             </>
