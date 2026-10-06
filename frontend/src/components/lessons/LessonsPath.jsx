@@ -1,7 +1,6 @@
 import { Fragment } from "react";
 import { Link } from "react-router-dom";
 import LockIcon from "../LockIcon.jsx";
-import LessonThumb from "./LessonThumb.jsx";
 
 export function LessonsHeader({ backTo, backLabel = "Назад", crumbs = [], title, stats = [] }) {
   const visibleStats = stats.filter(Boolean);
@@ -97,7 +96,6 @@ export function TimelineStep({ state, children }) {
     <li className={`lp-step is-${state}`}>
       <span className="lp-node" aria-hidden="true">
         {state === "completed" ? <CheckIcon /> : null}
-        {state === "current" ? <span className="lp-node-core" /> : null}
       </span>
       <div className="lp-step-body">{children}</div>
     </li>
@@ -117,7 +115,7 @@ function CardAction({ action }) {
   if (action === "locked") {
     return (
       <span className="lp-play is-disabled" aria-hidden="true">
-        <LockIcon size={18} />
+        <LockIcon size={14} />
       </span>
     );
   }
@@ -137,20 +135,31 @@ function CardAction({ action }) {
   );
 }
 
+export function ClockIcon() {
+  return (
+    <svg className="lp-clock" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path d="M12 7.5V12l3 2" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 /**
- * Карточка урока/главы/предмета.
+ * Компактная карточка урока/главы/предмета: название, под ним мета + прогресс + статус.
  * state: completed | current | upcoming | locked | pending
  * action: play | locked | pending | chevron
  */
-export function PathCard({ to, state = "upcoming", thumb, title, meta, percent, action = "play", ariaLabel }) {
+export function PathCard({ to, state = "upcoming", title, meta, status, percent, action = "play", ariaLabel }) {
   const pct = Math.min(100, Math.max(0, Math.round(Number(percent) || 0)));
   const content = (
     <>
-      <LessonThumb variant={thumb} />
       <span className="lp-card-body">
         <span className="lp-card-title">{title}</span>
-        <span className="lp-card-meta">{meta}</span>
-        <ProgressBar percent={pct} label={`${title}: ${pct}%`} />
+        <span className="lp-card-row">
+          {meta ? <span className="lp-card-meta">{meta}</span> : null}
+          <ProgressBar percent={pct} label={`${title}: ${pct}%`} />
+          <span className="lp-card-status">{status ?? `${pct}%`}</span>
+        </span>
       </span>
       <CardAction action={action} />
     </>

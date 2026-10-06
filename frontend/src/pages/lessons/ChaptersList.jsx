@@ -10,8 +10,8 @@ import {
   subjectVideos,
   sumDuration
 } from "../../utils/lessonsFormat.js";
-import { pickThumbVariant } from "../../utils/lessonThumbVariant.js";
 import {
+  ClockIcon,
   CourseProgress,
   LessonsHeader,
   MetaDot,
@@ -98,7 +98,7 @@ export default function ChaptersList() {
       ) : null}
 
       <ol className="lp-timeline">
-        {items.map(({ ch, videos, percent, completed }, index) => {
+        {items.map(({ ch, videos, percent, completed }) => {
           const state = completed ? "completed" : Number(ch.id) === currentId ? "current" : "upcoming";
           const durationLabel = formatDuration(sumDuration(videos));
           return (
@@ -106,7 +106,6 @@ export default function ChaptersList() {
               <PathCard
                 to={routes.lessonChapter(subject.id, ch.id)}
                 state={state}
-                thumb={pickThumbVariant(ch.title, index)}
                 title={ch.title}
                 percent={percent}
                 action="chevron"
@@ -117,11 +116,10 @@ export default function ChaptersList() {
                     {durationLabel ? (
                       <>
                         <MetaDot />
+                        <ClockIcon />
                         <span>{durationLabel}</span>
                       </>
                     ) : null}
-                    <MetaDot />
-                    <span>{completed ? "Пройдено" : `${percent}%`}</span>
                   </>
                 }
               />

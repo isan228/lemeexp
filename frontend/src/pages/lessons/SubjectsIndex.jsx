@@ -11,7 +11,6 @@ import {
   formatSubjectsCount,
   subjectVideos
 } from "../../utils/lessonsFormat.js";
-import { pickThumbVariant } from "../../utils/lessonThumbVariant.js";
 import { CourseProgress, LessonsHeader, MetaDot, PathCard } from "../../components/lessons/LessonsPath.jsx";
 
 export default function SubjectsIndex() {
@@ -51,7 +50,7 @@ export default function SubjectsIndex() {
             />
           ) : null}
           <ul className="lp-card-list">
-            {chapters.map((subject, index) => {
+            {chapters.map((subject) => {
               const chaptersN = subject.subtopics?.length || 0;
               const videosN = subjectVideos(subject).length;
               const percent = getSubjectWatchProgressPercent(subject, watched, videoCompleted);
@@ -61,7 +60,6 @@ export default function SubjectsIndex() {
                   <PathCard
                     to={routes.lessonSubject(subject.id)}
                     state={completed ? "completed" : "upcoming"}
-                    thumb={pickThumbVariant(subject.title, index)}
                     title={subject.title}
                     percent={percent}
                     action="chevron"
@@ -71,12 +69,6 @@ export default function SubjectsIndex() {
                         <span>{formatChaptersCount(chaptersN)}</span>
                         <MetaDot />
                         <span>{formatLessonsCount(videosN)}</span>
-                        {percent > 0 ? (
-                          <>
-                            <MetaDot />
-                            <span>{completed ? "Пройдено" : `${percent}%`}</span>
-                          </>
-                        ) : null}
                       </>
                     }
                   />

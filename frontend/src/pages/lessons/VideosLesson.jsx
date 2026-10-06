@@ -11,11 +11,10 @@ import {
 } from "../../utils/videoProgress.js";
 import { isPlayableStream, isProcessingStream } from "../../utils/streamPath.js";
 import { formatDuration, formatLessonsCount, sumDuration } from "../../utils/lessonsFormat.js";
-import { pickThumbVariant } from "../../utils/lessonThumbVariant.js";
 import {
+  ClockIcon,
   CourseProgress,
   LessonsHeader,
-  MetaDot,
   PathCard,
   TimelineStep
 } from "../../components/lessons/LessonsPath.jsx";
@@ -117,7 +116,7 @@ export default function VideosLesson() {
       ) : null}
 
       <ol className="lp-timeline">
-        {items.map((item, index) => {
+        {items.map((item) => {
           const { v, locked, ready, processing, duration, watchedSeconds, completed, percent } = item;
           const isCurrent = Number(v.id) === currentId;
           const hasPartialProgress = !completed && watchedSeconds > 0;
@@ -140,13 +139,11 @@ export default function VideosLesson() {
 
           const status = locked
             ? GET_ACCESS_LABEL
-            : completed
-              ? "Пройдено"
-              : processing
-                ? "Подготовка видео"
-                : !ready
-                  ? "Загрузка"
-                  : `${percent}%`;
+            : processing
+              ? "Подготовка"
+              : !ready
+                ? "Загрузка"
+                : `${percent}%`;
           const durationLabel = formatDuration(duration);
 
           return (
@@ -154,22 +151,19 @@ export default function VideosLesson() {
               <PathCard
                 to={to}
                 state={state}
-                thumb={pickThumbVariant(v.title, index)}
                 title={v.title}
                 percent={percent}
                 action={locked ? "locked" : ready ? "play" : "pending"}
-                ariaLabel={`${v.title}. ${status}`}
+                ariaLabel={`${v.title}. ${completed ? "Пройдено" : status}`}
                 meta={
-                  <>
-                    {durationLabel ? (
-                      <>
-                        <span>{durationLabel}</span>
-                        <MetaDot />
-                      </>
-                    ) : null}
-                    <span className={locked ? "lp-meta-accent" : undefined}>{status}</span>
-                  </>
+                  durationLabel ? (
+                    <>
+                      <ClockIcon />
+                      <span>{durationLabel}</span>
+                    </>
+                  ) : null
                 }
+                status={locked ? <span className="lp-meta-accent">{status}</span> : status}
               />
             </TimelineStep>
           );
