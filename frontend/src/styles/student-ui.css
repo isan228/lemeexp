@@ -706,22 +706,27 @@ select:focus {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px 14px;
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid rgba(30, 58, 95, 0.12);
-  box-shadow: 0 2px 8px rgba(30, 58, 95, 0.1);
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.62) 0%, rgba(255, 255, 255, 0.38) 100%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow:
+    0 0 16px 4px rgba(255, 255, 255, 0.28),
+    0 4px 18px rgba(30, 58, 95, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .video-lesson-label {
   align-self: flex-start;
   display: inline-block;
-  padding: 3px 9px;
+  padding: 2px 8px;
   border-radius: 999px;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
   line-height: 1.2;
 }
@@ -753,10 +758,10 @@ select:focus {
 
 .video-lesson-title {
   margin: 0;
-  font-size: 1.02rem;
-  font-weight: 700;
-  line-height: 1.4;
-  letter-spacing: -0.015em;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.005em;
   color: var(--med-text);
 }
 
@@ -769,7 +774,7 @@ select:focus {
 }
 
 .video-lesson-title-text {
-  font-weight: 700;
+  font-weight: 600;
   color: #0f172a;
 }
 
@@ -2116,7 +2121,7 @@ select:focus {
   }
 
   .video-lesson-title {
-    font-size: 0.98rem;
+    font-size: 0.86rem;
   }
 
   .video-lesson-play-btn {
