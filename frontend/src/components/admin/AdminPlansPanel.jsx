@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { formatPlanPrice } from "../../config/billing.js";
+import { formatPlanPrice, isLifetimePlan, LIFETIME_PLAN_DAYS } from "../../config/billing.js";
 
 const DURATION_PRESETS = [
   { days: 30, label: "1 месяц" },
   { days: 90, label: "3 месяца" },
   { days: 180, label: "6 месяцев" },
-  { days: 365, label: "1 год" }
+  { days: 365, label: "1 год" },
+  { days: LIFETIME_PLAN_DAYS, label: "Навсегда" }
 ];
 
 const EMPTY_FORM = { title: "", price: "", durationDays: "30" };
@@ -22,7 +23,9 @@ function validateForm(form) {
   const price = Number(form.price);
   const durationDays = Number(form.durationDays);
   if (form.price === "" || !Number.isFinite(price) || price < 0) return "Укажите цену (0 или больше)";
-  if (!Number.isInteger(durationDays) || durationDays < 1) return "Укажите срок в днях (минимум 1)";
+  if (form.durationDays === "" || !Number.isInteger(durationDays) || durationDays < LIFETIME_PLAN_DAYS) {
+    return "Укажите срок в днях (0 — навсегда)";
+  }
   return "";
 }
 
@@ -44,11 +47,11 @@ function PlanFormFields({ form, onChange, idPrefix }) {
           <input id={`${idPrefix}-price`} type="number" min={0} step="any" value={form.price} onChange={set("price")} required />
         </div>
         <div className="adm-field">
-          <label htmlFor={`${idPrefix}-days`}>Срок, дней</label>
+          <label htmlFor={`${idPrefix}-days`}>Срок, дней (0 — навсегда)</label>
           <input
             id={`${idPrefix}-days`}
             type="number"
-            min={1}
+            min={LIFETIME_PLAN_DAYS}
             step={1}
             value={form.durationDays}
             onChange={set("durationDays")}
@@ -234,12 +237,12 @@ export default function AdminPlansPanel({ plans, loading, apiRequest, onPlansCha
                       <strong>{plan.title}</strong>
                       <div className="adm-plan-price">
                         <span>{formatPlanPrice(plan.amount)}</span>
-                        <span className="muted"> / {plan.periodLabel}</span>
+                        <span className="muted"> / {isLifetimePlan(plan) ? "навсегда" : plan.periodLabel}</span>
                       </div>
                       <div className="adm-lesson-meta">
                         {plan.active ? <span className="adm-badge ok">На сайте</span> : <span className="adm-badge pending">Скрыт</span>}
                         {" · "}
-                        {plan.periodDays} дн.
+                        {isLifetimePlan(plan) ? "бессрочно" : `${plan.periodDays} дн.`}
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

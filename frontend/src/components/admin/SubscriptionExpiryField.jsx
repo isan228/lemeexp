@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { isLifetimePlan } from "../../config/billing.js";
 import { dateInputEndMs, extendDateInput } from "../../utils/subscriptionDates.js";
 
 const SELECT_STYLE = { width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--adm-border)" };
@@ -33,11 +34,17 @@ export default function SubscriptionExpiryField({ idPrefix, subscriptionType, ex
                 key={plan.id}
                 type="button"
                 className="adm-btn adm-btn-secondary adm-btn-sm"
-                title={`Продлить на ${plan.periodDays} дн. от текущей даты окончания или от сегодня`}
+                title={
+                  isLifetimePlan(plan)
+                    ? "Выдать бессрочный доступ"
+                    : `Продлить на ${plan.periodDays} дн. от текущей даты окончания или от сегодня`
+                }
                 onClick={() =>
                   onChange({
                     subscriptionType: isPaid ? subscriptionType : "premium",
-                    expiresDate: extendDateInput(isPaid ? expiresDate : "", plan.periodDays, Date.now())
+                    expiresDate: isLifetimePlan(plan)
+                      ? ""
+                      : extendDateInput(isPaid ? expiresDate : "", plan.periodDays, Date.now())
                   })
                 }
               >

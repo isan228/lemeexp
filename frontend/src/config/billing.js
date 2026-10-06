@@ -9,6 +9,13 @@ export const SUBSCRIPTION_PLAN = {
   ]
 };
 
+/** Срок тарифа «навсегда» — подписка без даты окончания. */
+export const LIFETIME_PLAN_DAYS = 0;
+
+export function isLifetimePlan(plan) {
+  return plan?.periodDays === LIFETIME_PLAN_DAYS;
+}
+
 export function formatPlanPrice(amount) {
   const n = Number(amount);
   if (!Number.isFinite(n)) return "—";

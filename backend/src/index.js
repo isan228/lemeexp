@@ -22,6 +22,7 @@ import { computeFinalAmount, formatPromoRow, normalizePromoCode } from "./promo.
 import {
   createPlanStore,
   ensureSubscriptionPlansTable,
+  isLifetimeDuration,
   registerSubscriptionPlanRoutes
 } from "./subscriptionPlans.js";
 import {
@@ -1682,21 +1683,28 @@ const DEFAULT_PLAN_DURATION_DAYS = 30;
 
 async function activateSubscriptionForUser(userId, durationDays) {
   const nextSubscription = PAID_SUBSCRIPTION_TYPE;
+  const lifetime = isLifetimeDuration(durationDays);
   const days = Number(durationDays) > 0 ? Math.floor(Number(durationDays)) : DEFAULT_PLAN_DURATION_DAYS;
   const durationMs = days * 24 * 60 * 60 * 1000;
+  const nextExpiresAt = (currentExpiresAt) => {
+    if (lifetime) return null;
+    const base = currentExpiresAt ? new Date(currentExpiresAt).getTime() : Date.now();
+    return new Date(Math.max(Date.now(), base) + durationMs).toISOString();
+  };
 
   if (dbReady) {
     const updated = await pool.query(
       `update users
        set subscription_type = $2,
            subscription_expires_at = case
+             when $4::boolean then null
              when subscription_expires_at is not null and subscription_expires_at > now()
              then subscription_expires_at + make_interval(days => $3::int)
              else now() + make_interval(days => $3::int)
            end
        where id = $1
        returning id, email, nickname, subscription_type, subscription_expires_at`,
-      [userId, nextSubscription, days]
+      [userId, nextSubscription, days, lifetime]
     );
     if (!updated.rows[0]) {
       return null;
@@ -1716,9 +1724,7 @@ async function activateSubscriptionForUser(userId, durationDays) {
   const user = getMemRegisteredUserById(userId);
   if (user) {
     user.subscriptionType = nextSubscription;
-    const base = user.subscriptionExpiresAt ? new Date(user.subscriptionExpiresAt).getTime() : Date.now();
-    const from = Math.max(Date.now(), base);
-    user.subscriptionExpiresAt = new Date(from + durationMs).toISOString();
+    user.subscriptionExpiresAt = nextExpiresAt(user.subscriptionExpiresAt);
     memRegisteredUsersById.set(user.id, user);
     memRegisteredUsersByEmail.set(normalizeEmail(user.email), user);
     return buildProfilePayload(user);
@@ -1726,9 +1732,7 @@ async function activateSubscriptionForUser(userId, durationDays) {
 
   if (userId === demoUser.id) {
     demoUser.subscriptionType = nextSubscription;
-    const base = demoUser.subscriptionExpiresAt ? new Date(demoUser.subscriptionExpiresAt).getTime() : Date.now();
-    const from = Math.max(Date.now(), base);
-    demoUser.subscriptionExpiresAt = new Date(from + durationMs).toISOString();
+    demoUser.subscriptionExpiresAt = nextExpiresAt(demoUser.subscriptionExpiresAt);
     return buildProfilePayload(demoUser);
   }
 
@@ -1841,7 +1845,7 @@ async function completeFreeSubscriptionPayment({ paymentId, userId, plan, promo,
 
 /** Срок оплаченного платежа: сохранённый при создании, иначе — текущий срок тарифа. */
 async function resolvePaymentDurationDays(planKey, storedDays) {
-  if (Number(storedDays) > 0) return Number(storedDays);
+  if (Number(storedDays) > 0 || isLifetimeDuration(storedDays)) return Number(storedDays);
   const plan = /^\d+$/.test(String(planKey)) ? await planStore.getPlanById(planKey) : null;
   return plan?.periodDays ?? DEFAULT_PLAN_DURATION_DAYS;
 }
@@ -1968,7 +1972,7 @@ app.post("/billing/create-payment", auth, async (req, res) => {
     const finik = await createFinikPayment({
       paymentId,
       amount: finalAmount,
-      plan: `${plan.periodDays} days`,
+      plan: isLifetimeDuration(plan.periodDays) ? "lifetime" : `${plan.periodDays} days`,
       redirectUrl
     });
 

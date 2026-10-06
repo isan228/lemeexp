@@ -3,10 +3,17 @@ import { z } from "zod";
 /** Идентификатор тарифа из старых клиентов (сайт до появления тарифов, старые APK). */
 export const LEGACY_PLAN_ID = "standard";
 
+/** Срок тарифа «навсегда»: подписка выдаётся без даты окончания. */
+export const LIFETIME_PLAN_DAYS = 0;
+
+export function isLifetimeDuration(days) {
+  return days !== null && days !== undefined && days !== "" && Number(days) === LIFETIME_PLAN_DAYS;
+}
+
 const planCreateSchema = z.object({
   title: z.string().trim().max(120).optional().default(""),
   price: z.coerce.number().min(0).max(1_000_000),
-  durationDays: z.coerce.number().int().min(1).max(3650),
+  durationDays: z.coerce.number().int().min(LIFETIME_PLAN_DAYS).max(3650),
   active: z.boolean().optional().default(true)
 });
 
@@ -14,7 +21,7 @@ const planUpdateSchema = z
   .object({
     title: z.string().trim().max(120).optional(),
     price: z.coerce.number().min(0).max(1_000_000).optional(),
-    durationDays: z.coerce.number().int().min(1).max(3650).optional(),
+    durationDays: z.coerce.number().int().min(LIFETIME_PLAN_DAYS).max(3650).optional(),
     active: z.boolean().optional()
   })
   .refine((data) => Object.values(data).some((value) => value !== undefined), {
@@ -34,6 +41,7 @@ function pluralRu(n, one, few, many) {
 }
 
 export function formatPeriodLabel(days) {
+  if (isLifetimeDuration(days)) return "всё время";
   const d = Number(days);
   if (!Number.isFinite(d) || d <= 0) return "";
   if (d % 365 === 0) {
@@ -63,7 +71,7 @@ function formatPlanRow(row) {
   const title = String(row.title || "").trim();
   return {
     id: Number(row.id),
-    title: title || periodLabel,
+    title: title || (isLifetimeDuration(durationDays) ? "Навсегда" : periodLabel),
     customTitle: title,
     amount: toMoney(row.price) ?? 0,
     periodDays: durationDays,
