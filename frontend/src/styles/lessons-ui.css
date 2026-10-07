@@ -843,23 +843,6 @@ a.lp-card:hover .lp-chevron {
     text-overflow: ellipsis;
   }
 
-  .student-tab-badge {
-    position: absolute;
-    top: -4px;
-    right: -9px;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 4px;
-    box-sizing: border-box;
-    border-radius: 999px;
-    background: var(--med-danger);
-    color: #ffffff;
-    font-size: 10px;
-    font-weight: 700;
-    line-height: 16px;
-    text-align: center;
-  }
-
   .student-tab.active {
     color: var(--med-primary);
     background: var(--med-primary-weak);
