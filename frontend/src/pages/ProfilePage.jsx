@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { SUBSCRIPTION_PLAN } from "../config/billing.js";
 import { routes, GET_ACCESS_LABEL } from "../config/site.js";
@@ -41,7 +41,8 @@ function daysUntilExpiry(iso) {
 }
 
 export default function ProfilePage() {
-  const { profile, progress, chapters } = useAuth();
+  const { profile, progress, chapters, logout } = useAuth();
+  const navigate = useNavigate();
   const fullAccess = hasFullAccess(profile);
   const subscriptionType = profile?.subscriptionType || "free";
   const plan = fullAccess ? PLAN_LABELS[subscriptionType] || subscriptionType : PLAN_LABELS.free;
@@ -212,6 +213,15 @@ export default function ProfilePage() {
               <dd className="profile-id">{profile?.id ?? "—"}</dd>
             </div>
           </dl>
+          <button
+            type="button"
+            className="btn-ghost profile-logout"
+            onClick={() => {
+              void logout().then(() => navigate(routes.home, { replace: true }));
+            }}
+          >
+            Выйти из аккаунта
+          </button>
         </article>
       </div>
     </section>

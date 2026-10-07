@@ -1136,6 +1136,13 @@ select:focus {
   color: var(--med-text-secondary);
 }
 
+.profile-logout {
+  width: 100%;
+  margin-top: var(--med-space-5);
+  justify-content: center;
+  color: var(--med-danger);
+}
+
 .profile-plan-badge {
   display: inline-block;
   padding: 5px 12px;

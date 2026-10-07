@@ -13,8 +13,6 @@ const NAV = [
   { to: routes.learningSupport, icon: "support", label: "Поддержка" }
 ];
 
-const TABS = NAV.filter((item) => ["home", "lessons", "favorites", "profile"].includes(item.icon));
-
 export default function StudentLayout() {
   const { logout, profile, loadCatalog, token, apiRequest, progress, chapters, catalogError, catalogLoading } =
     useAuth();
@@ -164,15 +162,20 @@ export default function StudentLayout() {
         </main>
       </div>
       <nav className="student-tabbar" aria-label="Основная навигация">
-        {TABS.map((item) => (
+        {NAV.map((item) => (
           <NavLink
             key={item.to}
             end={item.end}
             to={item.to}
             className={({ isActive }) => (isActive ? "student-tab active" : "student-tab")}
           >
-            <NavIcon name={item.icon} />
-            <span>{item.label}</span>
+            <span className="student-tab-icon">
+              <NavIcon name={item.icon} />
+              {item.icon === "support" && supportUnread > 0 ? (
+                <span className="student-tab-badge">{supportUnread > 9 ? "9+" : supportUnread}</span>
+              ) : null}
+            </span>
+            <span className="student-tab-label">{item.label}</span>
           </NavLink>
         ))}
       </nav>
