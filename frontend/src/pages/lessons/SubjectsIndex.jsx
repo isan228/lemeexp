@@ -86,111 +86,36 @@ function ContinueCard({ item }) {
   );
 }
 
-const FILTERS = [
-  { id: "all", label: "Все" },
-  { id: "started", label: "В процессе" },
-  { id: "new", label: "Не начаты" },
-  { id: "done", label: "Завершены" }
-];
-
-function subjectStatus(percent, videosN) {
-  if (videosN > 0 && percent >= 100) return "done";
-  if (percent > 0) return "started";
-  return "new";
-}
-
-function Chevron() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function PlanProgress({ percent, label }) {
-  return (
-    <span className="lp-plan-progress">
-      <ProgressBar percent={percent} label={label} />
-      <span className="lp-plan-pct">{percent}%</span>
-    </span>
-  );
-}
-
-function PlanRow({ item, number, expanded, onToggle, watched, videoCompleted }) {
-  const { subject, videos, percent, status } = item;
-  const subtopics = subject.subtopics || [];
-  const duration = formatDuration(sumDuration(videos));
-  const panelId = `lp-plan-panel-${subject.id}`;
+function SubjectCard({ subject, watched, videoCompleted }) {
+  const videos = subjectVideos(subject);
+  const chaptersN = subject.subtopics?.length || 0;
+  const percent = getSubjectWatchProgressPercent(subject, watched, videoCompleted);
+  const completed = percent >= 100 && videos.length > 0;
 
   return (
-    <li className={`lp-plan-item is-${status}${expanded ? " is-open" : ""}`}>
-      <button
-        type="button"
-        className="lp-plan-row"
-        aria-expanded={expanded}
-        aria-controls={panelId}
-        onClick={onToggle}
-      >
-        <span className="lp-plan-num">{String(number).padStart(2, "0")}</span>
-        <span className="lp-plan-name">
-          <span className="lp-plan-title">{subject.title}</span>
-          <span className="lp-plan-sub">
-            {formatChaptersCount(subtopics.length)} · {formatLessonsCount(videos.length)}
-            {duration ? ` · ${duration}` : ""}
-          </span>
+    <Link
+      to={routes.lessonSubject(subject.id)}
+      className={`lp-subject${completed ? " is-completed" : ""}${percent > 0 ? " is-started" : ""}`}
+      aria-label={`${subject.title}, просмотрено ${percent}%`}
+    >
+      <span className="lp-subject-top">
+        <span className="lp-subject-title">{subject.title}</span>
+        <span className="lp-subject-pct">
+          {percent}
+          <small>%</small>
         </span>
-        <span className="lp-plan-cell">{subtopics.length}</span>
-        <span className="lp-plan-cell">{videos.length}</span>
-        <span className="lp-plan-cell">{duration || "—"}</span>
-        <PlanProgress percent={percent} label={`${subject.title}: ${percent}%`} />
-        <span className="lp-plan-chevron">
-          <Chevron />
-        </span>
-      </button>
-
-      {expanded ? (
-        <div className="lp-plan-panel" id={panelId}>
-          {subtopics.length > 0 ? (
-            <ol className="lp-plan-chapters">
-              {subtopics.map((ch, i) => {
-                const chVideos = ch.videos || [];
-                const chPercent = getChapterWatchProgressPercent(chVideos, watched, videoCompleted);
-                const chDuration = formatDuration(sumDuration(chVideos));
-                const chStatus = subjectStatus(chPercent, chVideos.length);
-                return (
-                  <li key={ch.id}>
-                    <Link to={routes.lessonChapter(subject.id, ch.id)} className={`lp-plan-chapter is-${chStatus}`}>
-                      <span className="lp-plan-chapter-num">
-                        {number}.{i + 1}
-                      </span>
-                      <span className="lp-plan-chapter-title">{ch.title}</span>
-                      <span className="lp-plan-chapter-meta">
-                        {formatLessonsCount(chVideos.length)}
-                        {chDuration ? ` · ${chDuration}` : ""}
-                      </span>
-                      <PlanProgress percent={chPercent} label={`${ch.title}: ${chPercent}%`} />
-                    </Link>
-                  </li>
-                );
-              })}
-            </ol>
-          ) : (
-            <p className="lp-plan-empty muted small">В этом предмете пока нет глав.</p>
-          )}
-          <Link to={routes.lessonSubject(subject.id)} className="lp-plan-open">
-            Открыть предмет →
-          </Link>
-        </div>
-      ) : null}
-    </li>
+      </span>
+      <span className="lp-subject-meta">
+        {formatChaptersCount(chaptersN)} · {formatLessonsCount(videos.length)}
+      </span>
+      <ProgressBar percent={percent} label={`${subject.title}: ${percent}%`} />
+    </Link>
   );
 }
 
 export default function SubjectsIndex() {
   const { chapters, catalogLoading, catalogError, progress, loadCatalog } = useAuth();
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState("all");
-  const [expanded, setExpanded] = useState(() => new Set());
   const watched = progress?.watchedSeconds || {};
   const videoCompleted = progress?.videoCompleted || {};
   const allVideos = chapters.flatMap(subjectVideos);
@@ -202,34 +127,8 @@ export default function SubjectsIndex() {
     [chapters, watched, videoCompleted]
   );
 
-  const items = useMemo(
-    () =>
-      chapters.map((subject, index) => {
-        const videos = subjectVideos(subject);
-        const percent = getSubjectWatchProgressPercent(subject, watched, videoCompleted);
-        return { subject, number: index + 1, videos, percent, status: subjectStatus(percent, videos.length) };
-      }),
-    [chapters, watched, videoCompleted]
-  );
-  const counts = items.reduce(
-    (acc, item) => ({ ...acc, all: acc.all + 1, [item.status]: acc[item.status] + 1 }),
-    { all: 0, started: 0, new: 0, done: 0 }
-  );
-
   const q = query.trim().toLowerCase();
-  const visible = items.filter(
-    (item) =>
-      (filter === "all" || item.status === filter) &&
-      (!q || String(item.subject.title).toLowerCase().includes(q))
-  );
-
-  const toggle = (id) =>
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const visible = q ? chapters.filter((subject) => String(subject.title).toLowerCase().includes(q)) : chapters;
 
   return (
     <section className="lessons-flow lessons-flow-padded lp-page lp-page-wide">
@@ -274,21 +173,7 @@ export default function SubjectsIndex() {
 
           {chapters.length > 0 ? (
             <div className="lp-section-head">
-              <div className="lp-filters" role="tablist" aria-label="Фильтр предметов">
-                {FILTERS.map((f) => (
-                  <button
-                    key={f.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={filter === f.id}
-                    className={`lp-filter${filter === f.id ? " is-active" : ""}`}
-                    onClick={() => setFilter(f.id)}
-                  >
-                    {f.label}
-                    <span className="lp-filter-count">{counts[f.id]}</span>
-                  </button>
-                ))}
-              </div>
+              <h2 className="lp-section-title">Все предметы</h2>
               {chapters.length > 4 ? (
                 <label className="lp-search">
                   <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -307,36 +192,20 @@ export default function SubjectsIndex() {
             </div>
           ) : null}
 
-          {visible.length > 0 ? (
-            <div className="lp-plan">
-              <div className="lp-plan-head" aria-hidden="true">
-                <span>№</span>
-                <span>Предмет</span>
-                <span>Главы</span>
-                <span>Уроки</span>
-                <span>Время</span>
-                <span>Прогресс</span>
-                <span />
-              </div>
-              <ol className="lp-plan-list">
-                {visible.map((item) => (
-                  <PlanRow
-                    key={item.subject.id}
-                    item={item}
-                    number={item.number}
-                    expanded={expanded.has(item.subject.id)}
-                    onToggle={() => toggle(item.subject.id)}
-                    watched={watched}
-                    videoCompleted={videoCompleted}
-                  />
-                ))}
-              </ol>
-            </div>
-          ) : chapters.length > 0 ? (
+          <div className="lp-subject-grid">
+            {visible.map((subject) => (
+              <SubjectCard
+                key={subject.id}
+                subject={subject}
+                watched={watched}
+                videoCompleted={videoCompleted}
+              />
+            ))}
+          </div>
+
+          {q && visible.length === 0 ? (
             <div className="empty-state card">
-              <p className="muted">
-                {q ? `Ничего не найдено по запросу «${query.trim()}».` : "В этой категории пока нет предметов."}
-              </p>
+              <p className="muted">Ничего не найдено по запросу «{query.trim()}».</p>
             </div>
           ) : null}
 
