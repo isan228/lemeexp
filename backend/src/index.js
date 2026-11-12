@@ -36,8 +36,8 @@ import {
 } from "./hlsTranscode.js";
 import { ensureVideoCommentsTables, registerVideoCommentRoutes } from "./videoComments.js";
 import { ensureVideoFavoritesTables, registerVideoFavoriteRoutes } from "./videoFavorites.js";
-import { createReadStream, mkdirSync } from "node:fs";
-import { access, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdirSync } from "node:fs";
+import { access, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -191,12 +191,24 @@ app.use(
 );
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json({ limit: "1mb" }));
+// Сегменты HLS идут пачками (буфер, перемотка) и часто с одного IP (класс за NAT),
+// поэтому у /hls отдельный лимит, а общий их не считает.
+app.use(
+  "/hls",
+  rateLimit({
+    windowMs: 60_000,
+    max: Number(process.env.HLS_RATE_LIMIT_PER_MIN || 3000),
+    standardHeaders: true,
+    legacyHeaders: false
+  })
+);
 app.use(
   rateLimit({
     windowMs: 60_000,
     max: 120,
     standardHeaders: true,
-    legacyHeaders: false
+    legacyHeaders: false,
+    skip: (req) => req.path.startsWith("/hls/")
   })
 );
 
@@ -700,6 +712,8 @@ async function auth(req, res, next) {
 
   try {
     req.user = jwt.verify(token, jwtSecret);
+    // Видео-токен (type: "video-access") подписан тем же секретом, но годится только для /hls.
+    if (req.user.type) return res.status(401).json({ message: "Invalid token" });
     if (req.user.role !== "admin" && (await isUserBanned(req.user.userId))) {
       return res.status(403).json({ message: "Аккаунт заблокирован" });
     }
@@ -3674,33 +3688,60 @@ app.post("/videos/:videoId/position", auth, async (req, res) => {
   res.status(204).send();
 });
 
+const VIDEO_TOKEN_MIN_TTL_SEC = 6 * 60 * 60;
+const VIDEO_TOKEN_MAX_TTL_SEC = 24 * 60 * 60;
+
+async function getVideoDurationSec(videoId) {
+  if (!dbReady) return 0;
+  const result = await pool.query(`select duration from videos where id = $1 limit 1`, [videoId]);
+  return Math.max(0, Number(result.rows[0]?.duration) || 0);
+}
+
+/**
+ * Токен вшит в URL всех сегментов и ключа, а плеер не перечитывает VOD-манифест,
+ * поэтому он должен жить дольше всего просмотра (с паузами).
+ */
+function videoTokenTtlSec(durationSec) {
+  return Math.min(VIDEO_TOKEN_MAX_TTL_SEC, Math.max(VIDEO_TOKEN_MIN_TTL_SEC, durationSec * 3));
+}
+
 app.post("/videos/:videoId/access-token", auth, async (req, res) => {
   const videoId = Number(req.params.videoId);
-  const allowed = await canUserWatchVideo(req.user.userId, videoId);
-  if (!allowed) {
-    return res.status(403).json({
-      message: "Для просмотра этого урока нужна подписка",
-      code: "subscription_required"
-    });
+  if (!Number.isInteger(videoId) || videoId <= 0) {
+    return res.status(400).json({ message: "Invalid video id" });
   }
 
-  const deviceId = getDeviceFromRequest(req);
-  const origin = getOrigin(req);
-  const originOk = origin && allowedOrigins.includes(origin);
+  try {
+    const allowed = await canUserWatchVideo(req.user.userId, videoId);
+    if (!allowed) {
+      return res.status(403).json({
+        message: "Для просмотра этого урока нужна подписка",
+        code: "subscription_required"
+      });
+    }
 
-  const token = jwt.sign(
-    {
-      userId: req.user.userId,
-      videoId,
-      type: "video-access",
-      deviceId,
-      origin: originOk ? origin : ""
-    },
-    jwtSecret,
-    { expiresIn: "5m" }
-  );
+    const deviceId = getDeviceFromRequest(req);
+    const origin = getOrigin(req);
+    const originOk = origin && allowedOrigins.includes(origin);
+    const expiresIn = videoTokenTtlSec(await getVideoDurationSec(videoId));
 
-  res.json({ token, expiresIn: 300 });
+    const token = jwt.sign(
+      {
+        userId: req.user.userId,
+        videoId,
+        type: "video-access",
+        deviceId,
+        origin: originOk ? origin : ""
+      },
+      jwtSecret,
+      { expiresIn }
+    );
+
+    res.json({ token, expiresIn });
+  } catch (error) {
+    console.error(`[hls] access-token video=${videoId} failed:`, error.message);
+    res.status(500).json({ message: "Не удалось получить доступ к видео" });
+  }
 });
 
 function getUploadFilenameFromStreamPath(streamPath) {
@@ -3782,25 +3823,44 @@ app.get("/hls/:videoId/manifest.m3u8", async (req, res) => {
   const accessToken = String(req.query.token || "");
   const deviceId = getDeviceFromRequest(req);
 
+  setStreamCors(req, res);
+
   if (await isHlsReady(videoId)) {
     try {
-      setStreamCors(req, res);
-      const body = await buildAuthenticatedManifest(videoId, req, accessToken, deviceId);
+      const body = await buildAuthenticatedManifest(videoId, accessToken, deviceId);
       res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
       res.setHeader("Cache-Control", "private, no-store");
       return res.send(body);
     } catch (error) {
-      return res.status(500).json({ message: "Failed to load HLS manifest", error: error.message });
+      console.error(`[hls] manifest video=${videoId} failed:`, error.message);
+      return res.status(500).json({ message: "Failed to load HLS manifest" });
     }
+  }
+
+  let streamPath = "";
+  if (dbReady) {
+    try {
+      const row = await pool.query(`select stream_path from videos where id = $1 limit 1`, [videoId]);
+      streamPath = row.rows[0]?.stream_path || "";
+    } catch (error) {
+      console.error(`[hls] manifest video=${videoId} lookup failed:`, error.message);
+      return res.status(500).json({ message: "Failed to load HLS manifest" });
+    }
+  }
+  if (dbReady && !isLegacyDemoStreamPath(streamPath)) {
+    return res.status(404).json({
+      message: hlsPackaging.has(videoId)
+        ? "Видео готовится к просмотру. Подождите пару минут."
+        : "Видеопоток не найден на сервере. Перезагрузите видео в админке."
+    });
   }
 
   const query = new URLSearchParams({
     token: accessToken,
     did: deviceId
   }).toString();
-  const host = `${req.protocol}://${req.get("host")}`;
-  const segment0 = `${host}/hls/${videoId}/segment_000.ts?${query}`;
-  const segment1 = `${host}/hls/${videoId}/segment_001.ts?${query}`;
+  const segment0 = `segment_000.ts?${query}`;
+  const segment1 = `segment_001.ts?${query}`;
   const body = [
     "#EXTM3U",
     "#EXT-X-VERSION:3",
@@ -3813,7 +3873,6 @@ app.get("/hls/:videoId/manifest.m3u8", async (req, res) => {
     "#EXT-X-ENDLIST"
   ].join("\n");
 
-  setStreamCors(req, res);
   res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
   res.setHeader("Cache-Control", "private, max-age=30");
   res.send(body);
@@ -3826,19 +3885,27 @@ app.get("/hls/:videoId/segments/:segmentName", async (req, res) => {
   const segmentName = safeSegmentName(req.params.segmentName);
   if (!segmentName) return res.status(400).json({ message: "Invalid segment" });
 
-  const filePath = path.join(getHlsDir(videoId), segmentName);
-  let fileStat;
-  try {
-    fileStat = await stat(filePath);
-  } catch {
-    return res.status(404).json({ message: "Segment not found" });
-  }
-
   setStreamCors(req, res);
-  res.setHeader("Content-Type", "video/mp2t");
-  res.setHeader("Cache-Control", "private, no-store");
-  res.setHeader("Content-Length", fileStat.size);
-  return createReadStream(filePath).pipe(res);
+  res.sendFile(
+    segmentName,
+    {
+      root: getHlsDir(videoId),
+      cacheControl: false,
+      headers: {
+        "Content-Type": "video/mp2t",
+        // URL содержит персональный токен — кэш только у этого клиента; сегменты зашифрованы.
+        "Cache-Control": "private, max-age=3600"
+      }
+    },
+    (error) => {
+      if (!error || res.headersSent) return;
+      if (error.code === "ENOENT" || error.status === 404) {
+        return res.status(404).json({ message: "Segment not found" });
+      }
+      console.error(`[hls] segment video=${videoId} ${segmentName}:`, error.message);
+      res.status(500).json({ message: "Failed to read segment" });
+    }
+  );
 });
 
 app.get("/hls/:videoId/segment_000.ts", (req, res) => {

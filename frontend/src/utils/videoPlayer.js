@@ -40,7 +40,9 @@ export function getHlsConfig() {
     maxBufferLength: 30,
     maxMaxBufferLength: 120,
     backBufferLength: safari ? 0 : 30,
-    fragLoadingMaxRetry: 2,
-    manifestLoadingMaxRetry: 2
+    fragLoadingMaxRetry: 4,
+    fragLoadingRetryDelay: 1000,
+    manifestLoadingMaxRetry: 3,
+    keyLoadingMaxRetry: 3
   };
 }

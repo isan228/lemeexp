@@ -42,6 +42,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
   AuthProvider? _auth;
   int _durationSec = 0;
   bool _wasPlaying = false;
+  Duration _lastPosition = Duration.zero;
+  int _errorReloads = 0;
+  static const _maxErrorReloads = 3;
 
   @override
   void initState() {
@@ -81,12 +84,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
     if (_refreshingToken || !mounted) return;
     final auth = _auth;
     final old = _videoController;
-    if (auth == null || old == null || !old.value.isInitialized) return;
+    if (auth == null || old == null) return;
+    // После ошибки video_player сбрасывает isInitialized и position — берём последние известные.
+    final recovering = old.value.hasError;
+    if (!recovering && !old.value.isInitialized) return;
 
     _refreshingToken = true;
     try {
-      final position = old.value.position;
-      final playing = old.value.isPlaying;
+      final position = recovering ? _lastPosition : old.value.position;
+      final playing = recovering ? _wasPlaying : old.value.isPlaying;
       final access = await auth.getVideoAccessToken(widget.videoId);
       if (!mounted) return;
 
@@ -127,8 +133,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
       _scheduleTokenRefresh(access.expiresIn);
       if (mounted) setState(() {});
     } catch (_) {
-      // Keep current stream; try again soon.
-      _tokenRefreshTimer = Timer(const Duration(seconds: 30), () => unawaited(_refreshAccessToken()));
+      if (!mounted) return;
+      _tokenRefreshTimer?.cancel();
+      _tokenRefreshTimer = recovering
+          ? Timer(const Duration(seconds: 3), _recoverFromStreamError)
+          // Keep current stream; try again soon.
+          : Timer(const Duration(seconds: 30), () => unawaited(_refreshAccessToken()));
     } finally {
       _refreshingToken = false;
     }
@@ -241,12 +251,32 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindi
 
   void _onTick() {
     final c = _videoController;
-    if (c == null || !c.value.isInitialized) return;
+    if (c == null) return;
+    if (c.value.hasError) {
+      _recoverFromStreamError();
+      return;
+    }
+    if (!c.value.isInitialized) return;
+    if (c.value.position > Duration.zero) _lastPosition = c.value.position;
     final playing = c.value.isPlaying;
+    if (playing) _errorReloads = 0;
     if (_wasPlaying && !playing) {
       unawaited(_persist(false));
     }
     _wasPlaying = playing;
+  }
+
+  /// Обрыв сети или устаревший токен: пересоздаём поток со свежим токеном с той же позиции.
+  void _recoverFromStreamError() {
+    if (_refreshingToken || !mounted) return;
+    if (_errorReloads >= _maxErrorReloads) {
+      if (_error == null) {
+        setState(() => _error = "Не удалось загрузить видео. Проверьте интернет и откройте урок снова.");
+      }
+      return;
+    }
+    _errorReloads += 1;
+    unawaited(_refreshAccessToken());
   }
 
   Future<void> _persist(bool refresh) async {

@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -114,33 +114,62 @@ function needsSafariCompatibleTranscode(video, audio) {
   return false;
 }
 
-const SAFARI_TRANSCODE_VIDEO_AUDIO = [
-  "-c:v",
-  "libx264",
-  "-preset",
-  "veryfast",
-  "-profile:v",
-  "baseline",
-  "-level",
-  "3.1",
-  "-pix_fmt",
-  "yuv420p",
-  "-crf",
-  "23",
-  "-c:a",
-  "aac",
-  "-b:a",
-  "128k",
-  "-ac",
-  "2"
-];
+const HLS_SEGMENT_SEC = 6;
+
+/** Только первая видео- и аудиодорожка: таймкоды/метаданные iPhone ломают MPEG-TS муксер. */
+const STREAM_MAP_ARGS = ["-map", "0:v:0", "-map", "0:a:0?", "-sn", "-dn"];
+
+/** Baseline 3.1 рассчитан максимум на 720p — для большего кадра нужен уровень 4.0. */
+function h264LevelFor(video) {
+  const width = Number(video?.width) || 0;
+  const height = Number(video?.height) || 0;
+  return width * height > 1280 * 720 ? "4.0" : "3.1";
+}
+
+function safariTranscodeArgs(video) {
+  return [
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-profile:v",
+    "baseline",
+    "-level",
+    h264LevelFor(video),
+    "-pix_fmt",
+    "yuv420p",
+    "-crf",
+    "23",
+    "-force_key_frames",
+    `expr:gte(t,n_forced*${HLS_SEGMENT_SEC})`,
+    "-c:a",
+    "aac",
+    "-b:a",
+    "128k",
+    "-ac",
+    "2"
+  ];
+}
 
 const SAFARI_COPY_H264 = ["-c:v", "copy", "-bsf:v", "h264_mp4toannexb", "-c:a", "copy"];
+
+function ffmpegArgs(inputPath, encodeArgs, keyInfoName) {
+  return [
+    "-y",
+    "-i",
+    inputPath,
+    ...STREAM_MAP_ARGS,
+    ...encodeArgs,
+    "-max_muxing_queue_size",
+    "1024",
+    ...hlsOutputArgs(keyInfoName)
+  ];
+}
 
 function hlsOutputArgs(keyInfoName) {
   return [
     "-hls_time",
-    "6",
+    String(HLS_SEGMENT_SEC),
     "-hls_playlist_type",
     "vod",
     "-hls_flags",
@@ -153,56 +182,72 @@ function hlsOutputArgs(keyInfoName) {
   ];
 }
 
-/** MP4 → AES-128 HLS (сегменты на диске, ключ только через API). */
-export async function packageVideoToHls(videoId, inputMp4Path) {
-  const outDir = getHlsDir(videoId);
-  await rm(outDir, { recursive: true, force: true });
-  await mkdir(outDir, { recursive: true });
+const KEY_NAME = "enc.key";
+const KEY_INFO_NAME = "keyinfo.txt";
 
-  const keyName = "enc.key";
-  const keyInfoName = "keyinfo.txt";
-  const keyPath = path.join(outDir, keyName);
-  const keyInfoPath = path.join(outDir, keyInfoName);
-  const key = crypto.randomBytes(16);
+async function prepareWorkDir(workDir, key) {
+  await rm(workDir, { recursive: true, force: true });
+  await mkdir(workDir, { recursive: true });
+  const keyPath = path.join(workDir, KEY_NAME);
   await writeFile(keyPath, key);
-
-  // ffmpeg: URI в плейлисте + путь к ключу относительно keyinfo (оба в outDir)
-  await writeFile(keyInfoPath, `${keyName}\n${keyName}\n`);
+  // ffmpeg: URI в плейлисте + путь к ключу относительно keyinfo (оба в workDir)
+  await writeFile(path.join(workDir, KEY_INFO_NAME), `${KEY_NAME}\n${KEY_NAME}\n`);
   try {
     await access(keyPath);
   } catch {
     throw new Error(`encryption key not written: ${keyPath}`);
   }
-
-  const { video, audio } = await probeStreamCodecs(inputMp4Path);
-  const transcode = needsSafariCompatibleTranscode(video, audio);
-
-  const encodeArgs = transcode ? SAFARI_TRANSCODE_VIDEO_AUDIO : SAFARI_COPY_H264;
-  const args = ["-y", "-i", inputMp4Path, ...encodeArgs, ...hlsOutputArgs(keyInfoName)];
-
-  try {
-    await runFfmpeg(args, outDir);
-  } catch (firstError) {
-    if (transcode) throw firstError;
-    await runFfmpeg(
-      ["-y", "-i", inputMp4Path, ...SAFARI_TRANSCODE_VIDEO_AUDIO, ...hlsOutputArgs(keyInfoName)],
-      outDir
-    ).catch(() => {
-      throw firstError;
-    });
-  }
-
-  await access(path.join(outDir, "index.m3u8"));
 }
 
-export async function buildAuthenticatedManifest(videoId, req, accessToken, deviceId) {
+/**
+ * MP4 → AES-128 HLS (сегменты на диске, ключ только через API).
+ * Пакуется во временную папку: пока идёт ffmpeg, старая версия урока остаётся доступной.
+ */
+export async function packageVideoToHls(videoId, inputMp4Path) {
+  const outDir = getHlsDir(videoId);
+  const workDir = `${outDir}.tmp-${process.pid}-${Date.now()}`;
+  const key = crypto.randomBytes(16);
+
+  try {
+    await prepareWorkDir(workDir, key);
+
+    const { video, audio } = await probeStreamCodecs(inputMp4Path);
+    const transcode = needsSafariCompatibleTranscode(video, audio);
+    const transcodeArgs = ffmpegArgs(inputMp4Path, safariTranscodeArgs(video), KEY_INFO_NAME);
+
+    try {
+      await runFfmpeg(
+        transcode ? transcodeArgs : ffmpegArgs(inputMp4Path, SAFARI_COPY_H264, KEY_INFO_NAME),
+        workDir
+      );
+    } catch (firstError) {
+      if (transcode) throw firstError;
+      await prepareWorkDir(workDir, key);
+      await runFfmpeg(transcodeArgs, workDir).catch(() => {
+        throw firstError;
+      });
+    }
+
+    await access(path.join(workDir, "index.m3u8"));
+    await rm(outDir, { recursive: true, force: true });
+    await rename(workDir, outDir);
+  } catch (error) {
+    await rm(workDir, { recursive: true, force: true }).catch(() => {});
+    throw error;
+  }
+}
+
+/**
+ * Ссылки на ключ и сегменты — относительные (резолвятся от URL манифеста),
+ * чтобы схема/хост за прокси не превращались в http:// на https-сайте.
+ */
+export async function buildAuthenticatedManifest(videoId, accessToken, deviceId) {
   const raw = await readFile(path.join(getHlsDir(videoId), "index.m3u8"), "utf8");
-  const host = `${req.protocol}://${req.get("host")}`;
   const q = new URLSearchParams({
     token: accessToken,
     did: deviceId
   }).toString();
-  const keyUri = `${host}/hls/${videoId}/key?${q}`;
+  const keyUri = `key?${q}`;
 
   return raw
     .split("\n")
@@ -212,7 +257,7 @@ export async function buildAuthenticatedManifest(videoId, req, accessToken, devi
         return trimmed.replace(/URI="[^"]*"/, `URI="${keyUri}"`);
       }
       if (trimmed.endsWith(".ts") && !trimmed.startsWith("#")) {
-        return `${host}/hls/${videoId}/segments/${encodeURIComponent(trimmed)}?${q}`;
+        return `segments/${encodeURIComponent(trimmed)}?${q}`;
       }
       return line;
     })
