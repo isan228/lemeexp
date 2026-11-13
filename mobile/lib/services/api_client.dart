@@ -3,6 +3,7 @@ import "dart:convert";
 import "package:http/http.dart" as http;
 
 import "../config/api_config.dart";
+import "../models/models.dart";
 import "session_storage.dart";
 
 class ApiException implements Exception {
@@ -22,9 +23,19 @@ class ApiClient {
   final SessionStorage _storage;
   final http.Client _http;
 
+  static const _requestTimeout = Duration(seconds: 30);
+
   String _token = "";
   String _refresh = "";
   String _deviceId = "";
+  Future<bool>? _refreshing;
+
+  /// После успешного /auth/refresh: новый access-токен и профиль (если сервер его прислал).
+  void Function(String token, UserProfile? profile)? onSessionRefreshed;
+
+  /// Сервер окончательно отклонил сессию (refresh 401/403) — нужен повторный вход.
+  /// Сетевые ошибки и 5xx сюда не попадают.
+  void Function()? onSessionRejected;
 
   String get token => _token;
   bool get isAuthenticated => _token.isNotEmpty;
@@ -77,44 +88,80 @@ class ApiClient {
       final uri = _uri(path, query);
       final headers = _headers(auth: auth);
       final encoded = body == null ? null : jsonEncode(body);
+      final Future<http.Response> future;
       switch (method.toUpperCase()) {
         case "GET":
-          return _http.get(uri, headers: headers);
+          future = _http.get(uri, headers: headers);
         case "POST":
-          return _http.post(uri, headers: headers, body: encoded);
+          future = _http.post(uri, headers: headers, body: encoded);
         case "PATCH":
-          return _http.patch(uri, headers: headers, body: encoded);
+          future = _http.patch(uri, headers: headers, body: encoded);
         case "DELETE":
-          return _http.delete(uri, headers: headers, body: encoded);
+          future = _http.delete(uri, headers: headers, body: encoded);
         default:
           throw ApiException("Unsupported method $method");
       }
+      return future.timeout(_requestTimeout);
     }
 
+    final usedToken = _token;
     var response = await send();
-    if (response.statusCode == 401 && retry && _refresh.isNotEmpty && auth) {
-      final refreshed = await _tryRefresh();
-      if (refreshed) {
+    if (response.statusCode == 401 && retry && auth && usedToken.isNotEmpty) {
+      if (_token.isNotEmpty && _token != usedToken) {
+        // Пока запрос летел, другой запрос уже обновил токен.
+        response = await send();
+      } else if (_refresh.isEmpty) {
+        onSessionRejected?.call();
+      } else if (await _tryRefresh()) {
         response = await send();
       }
     }
     return response;
   }
 
-  Future<bool> _tryRefresh() async {
-    final res = await _http.post(
-      _uri("/auth/refresh"),
-      headers: _headers(auth: false),
-      body: jsonEncode({"refreshToken": _refresh}),
-    );
+  /// Параллельные 401 ждут одно обновление: сервер ротирует refresh-токен.
+  Future<bool> _tryRefresh() {
+    return _refreshing ??= _doRefresh().whenComplete(() => _refreshing = null);
+  }
+
+  Future<bool> _doRefresh() async {
+    final http.Response res;
+    try {
+      res = await _http
+          .post(
+            _uri("/auth/refresh"),
+            headers: _headers(auth: false),
+            body: jsonEncode({"refreshToken": _refresh}),
+          )
+          .timeout(_requestTimeout);
+    } catch (_) {
+      return false;
+    }
+    if (res.statusCode == 401 || res.statusCode == 403) {
+      onSessionRejected?.call();
+      return false;
+    }
     if (res.statusCode < 200 || res.statusCode >= 300) return false;
-    final data = jsonDecode(res.body) as Map<String, dynamic>;
+
+    final Map<String, dynamic> data;
+    try {
+      data = Map<String, dynamic>.from(jsonDecode(res.body) as Map);
+    } catch (_) {
+      return false;
+    }
     final nextToken = data["token"] as String? ?? "";
     final nextRefresh = data["refreshToken"] as String? ?? _refresh;
     if (nextToken.isEmpty) return false;
+    UserProfile? profile;
+    final rawProfile = data["profile"];
+    if (rawProfile is Map) {
+      profile = UserProfile.fromJson(Map<String, dynamic>.from(rawProfile));
+    }
+
     _token = nextToken;
     _refresh = nextRefresh;
-    await _storage.saveSession(token: nextToken, refreshToken: nextRefresh);
+    await _storage.saveSession(token: nextToken, refreshToken: nextRefresh, profile: profile);
+    onSessionRefreshed?.call(nextToken, profile);
     return true;
   }
 

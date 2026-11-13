@@ -86,6 +86,7 @@ class SessionStorage {
     return (token: token, refresh: refresh, profile: profile);
   }
 
+  /// `null` в refreshToken/profile — «не менять», а не «удалить»: удаляет только [clear].
   Future<void> saveSession({
     required String token,
     String? refreshToken,
@@ -95,10 +96,8 @@ class SessionStorage {
     if (refreshToken != null) {
       await _writeSecret(_refreshKey, _refreshPrefKey, refreshToken);
     }
-    final prefs = await SharedPreferences.getInstance();
-    if (profile == null) {
-      await prefs.remove(_profileKey);
-    } else {
+    if (profile != null) {
+      final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_profileKey, jsonEncode(profile.toJson()));
     }
   }

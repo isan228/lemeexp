@@ -1,3 +1,5 @@
+import "dart:async";
+
 import "package:flutter/foundation.dart";
 
 import "../models/models.dart";
@@ -8,6 +10,8 @@ import "../utils/helpers.dart";
 class AuthProvider extends ChangeNotifier {
   AuthProvider({SessionStorage? storage, ApiClient? api}) : _storage = storage ?? SessionStorage() {
     _api = api ?? ApiClient(_storage);
+    _api.onSessionRefreshed = _onSessionRefreshed;
+    _api.onSessionRejected = _onSessionRejected;
   }
 
   final SessionStorage _storage;
@@ -25,6 +29,8 @@ class AuthProvider extends ChangeNotifier {
   List<FavoriteItem> favoriteItems = const [];
   int supportUnread = 0;
 
+  bool _loggingOut = false;
+
   bool get isLoggedIn => (token ?? "").isNotEmpty;
 
   Future<void> bootstrap() async {
@@ -36,16 +42,36 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
     if (!isLoggedIn) return;
 
-    // Если токен есть, а профиль потерялся — восстановим через refresh / каталог.
-    if (profile == null && session.refresh.isNotEmpty) {
-      final refreshed = await _api.request("GET", "/progress", retry: true);
-      if (refreshed.statusCode == 401) {
-        await logout();
-        return;
-      }
+    try {
+      await refreshProfile();
+      if (!isLoggedIn) return;
+      await loadCatalog();
+      await refreshSupportUnread();
+    } catch (_) {
+      // Нет сети — остаёмся в аккаунте с сохранёнными данными.
     }
-    await loadCatalog();
-    await refreshSupportUnread();
+  }
+
+  void _onSessionRefreshed(String nextToken, UserProfile? nextProfile) {
+    token = nextToken;
+    if (nextProfile != null) profile = nextProfile;
+    notifyListeners();
+  }
+
+  void _onSessionRejected() {
+    if (!isLoggedIn || _loggingOut) return;
+    // Сразу, чтобы параллельные запросы не пытались обновить уже мёртвую сессию.
+    _api.clearTokens();
+    unawaited(logout());
+  }
+
+  /// Актуальный профиль с сервера (подписка могла измениться). Ошибки сети сессию не трогают.
+  Future<void> refreshProfile() async {
+    if (!isLoggedIn) return;
+    final res = await _api.request("GET", "/auth/me");
+    if (res.statusCode != 200) return;
+    final raw = (await _api.decodeMap(res))["profile"];
+    if (raw is Map) updateProfile(UserProfile.fromJson(Map<String, dynamic>.from(raw)));
   }
 
   Future<void> _persistAuth(String nextToken, String nextRefresh, UserProfile? nextProfile) async {
@@ -134,6 +160,16 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    if (_loggingOut) return;
+    _loggingOut = true;
+    try {
+      await _logout();
+    } finally {
+      _loggingOut = false;
+    }
+  }
+
+  Future<void> _logout() async {
     try {
       final session = await _storage.readSession();
       if (session.refresh.isNotEmpty) {
@@ -163,7 +199,9 @@ class AuthProvider extends ChangeNotifier {
 
   void updateProfile(UserProfile? next) {
     profile = next;
-    _storage.saveSession(token: token ?? "", profile: next);
+    // ApiClient хранит самый свежий access-токен (после refresh); token провайдера мог устареть.
+    final current = _api.token.isNotEmpty ? _api.token : (token ?? "");
+    unawaited(_storage.saveSession(token: current, profile: next));
     notifyListeners();
   }
 

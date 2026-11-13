@@ -9,21 +9,22 @@ const LS_TOKEN = "drm_token";
 const LS_REFRESH = "drm_refresh";
 const LS_PROFILE = "drm_profile";
 
+function parseProfile(raw) {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 function readInitialSession() {
   if (typeof window === "undefined") {
     return { token: "", refresh: "", profile: null };
   }
   const token = localStorage.getItem(LS_TOKEN) || "";
   const refresh = localStorage.getItem(LS_REFRESH) || "";
-  let profile = null;
-  const pRaw = localStorage.getItem(LS_PROFILE);
-  if (pRaw) {
-    try {
-      profile = JSON.parse(pRaw);
-    } catch {
-      profile = null;
-    }
-  }
+  const profile = parseProfile(localStorage.getItem(LS_PROFILE));
   return { token, refresh, profile };
 }
 
@@ -97,43 +98,116 @@ export function AuthProvider({ children }) {
     }
   }, [updateProfile]);
 
+  // Другая вкладка обновила токен или вышла — подхватываем, иначе вкладки ротируют refresh наперегонки.
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key === LS_TOKEN) {
+        tokenRef.current = e.newValue || "";
+        setToken(e.newValue || "");
+      } else if (e.key === LS_REFRESH) {
+        refreshTokenRef.current = e.newValue || "";
+      } else if (e.key === LS_PROFILE) {
+        setProfile(parseProfile(e.newValue));
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  const refreshPromiseRef = useRef(null);
+
+  /**
+   * Одно обновление токена на все параллельные 401.
+   * @returns {Promise<{ ok: boolean, token?: string, rejected?: boolean }>}
+   *   rejected — сервер окончательно отклонил сессию (401/403), а не временный сбой.
+   */
+  const refreshSession = useCallback(() => {
+    if (refreshPromiseRef.current) return refreshPromiseRef.current;
+    const run = (async () => {
+      const refreshToken = localStorage.getItem(LS_REFRESH) || refreshTokenRef.current;
+      if (!refreshToken) return { ok: false, rejected: true };
+      let res;
+      try {
+        res = await fetch(`${apiBase}/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...deviceIdHeaders() },
+          body: JSON.stringify({ refreshToken })
+        });
+      } catch {
+        return { ok: false, rejected: false };
+      }
+      if (!res.ok) {
+        return { ok: false, rejected: res.status === 401 || res.status === 403 };
+      }
+      const data = await res.json().catch(() => null);
+      if (!data?.token) return { ok: false, rejected: false };
+      setAuthState(data.token, data.refreshToken, data.profile || undefined);
+      return { ok: true, token: data.token };
+    })();
+    refreshPromiseRef.current = run;
+    void run.finally(() => {
+      refreshPromiseRef.current = null;
+    });
+    return run;
+  }, [setAuthState]);
+
   const apiRequest = useCallback(
     async (path, options = {}, retry = true) => {
-      const headers = {
-        ...deviceIdHeaders(),
-        ...(options.headers || {}),
-        ...(tokenRef.current ? { Authorization: `Bearer ${tokenRef.current}` } : {})
-      };
+      const usedToken = tokenRef.current;
+      const send = (accessToken) =>
+        fetch(`${apiBase}${path}`, {
+          ...options,
+          headers: {
+            ...deviceIdHeaders(),
+            ...(options.headers || {}),
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
+          }
+        });
 
-      const response = await fetch(`${apiBase}${path}`, { ...options, headers });
-      if (response.status !== 401 || !retry || !refreshTokenRef.current) {
+      const response = await send(usedToken);
+      if (response.status !== 401 || !retry || !usedToken) {
         return response;
       }
 
-      const refreshResponse = await fetch(`${apiBase}/auth/refresh`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...deviceIdHeaders() },
-        body: JSON.stringify({ refreshToken: refreshTokenRef.current })
-      });
-      if (!refreshResponse.ok) return response;
+      const latestToken = localStorage.getItem(LS_TOKEN) || tokenRef.current;
+      if (latestToken && latestToken !== usedToken) {
+        tokenRef.current = latestToken;
+        return send(latestToken);
+      }
 
-      const refreshData = await refreshResponse.json();
-      setAuthState(refreshData.token, refreshData.refreshToken, undefined);
-
-      return fetch(`${apiBase}${path}`, {
-        ...options,
-        headers: {
-          ...deviceIdHeaders(),
-          ...(options.headers || {}),
-          Authorization: `Bearer ${refreshData.token}`
-        }
-      });
+      const result = await refreshSession();
+      if (result.ok) return send(result.token);
+      if (result.rejected && tokenRef.current === usedToken) {
+        setAuthState("", "", null);
+      }
+      return response;
     },
-    [setAuthState]
+    [refreshSession, setAuthState]
   );
 
+  // Профиль в localStorage может устареть (оплата, правка в админке) — сверяем с сервером.
+  useEffect(() => {
+    if (!bootstrap.token) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiRequest("/auth/me");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && data?.profile) updateProfile(data.profile);
+      } catch {
+        /* офлайн — остаёмся с сохранённым профилем */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [bootstrap.token, apiRequest, updateProfile]);
+
   const chaptersRef = useRef([]);
-  chaptersRef.current = chapters;
+  useEffect(() => {
+    chaptersRef.current = chapters;
+  }, [chapters]);
 
   const loadFavorites = useCallback(async () => {
     if (!tokenRef.current) {

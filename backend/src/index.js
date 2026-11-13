@@ -56,6 +56,8 @@ const port = Number(process.env.PORT || 4000);
 const jwtSecret = process.env.JWT_SECRET || "replace-in-production";
 const jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || "replace-in-production-2";
 const maxDevices = Number(process.env.MAX_DEVICES_PER_USER || 2);
+/** Скользящий срок: каждый /auth/refresh продлевает сессию ещё на столько же дней. */
+const refreshTokenTtlDays = Math.max(1, Number(process.env.REFRESH_TOKEN_TTL_DAYS) || 30);
 const hlsKeySecret = process.env.HLS_KEY_SECRET || "replace-hls-secret";
 const adminEmail = process.env.ADMIN_EMAIL || "admin@example.com";
 const adminPassword = process.env.ADMIN_PASSWORD || "admin1234";
@@ -476,7 +478,7 @@ function signAccessToken(user) {
 
 function signRefreshToken(user, deviceId) {
   return jwt.sign({ userId: user.id, type: "refresh", deviceId }, jwtRefreshSecret, {
-    expiresIn: "7d"
+    expiresIn: `${refreshTokenTtlDays}d`
   });
 }
 
@@ -658,16 +660,16 @@ async function storeRefreshToken(userId, deviceId, token) {
     const tokenHash = await bcrypt.hash(token, 10);
     await pool.query(
       `insert into refresh_tokens (user_id, device_id, token_hash, expires_at)
-       values ($1, $2, $3, now() + interval '7 days')
+       values ($1, $2, $3, now() + make_interval(days => $4::int))
        on conflict (user_id, device_id) do update
        set token_hash = excluded.token_hash, expires_at = excluded.expires_at`,
-      [userId, deviceId, tokenHash]
+      [userId, deviceId, tokenHash, refreshTokenTtlDays]
     );
     return;
   }
 
   if (redis?.isReady) {
-    await redis.setEx(`refresh:${userId}:${deviceId}`, 60 * 60 * 24 * 7, token);
+    await redis.setEx(`refresh:${userId}:${deviceId}`, 60 * 60 * 24 * refreshTokenTtlDays, token);
     return;
   }
   memState.refreshTokens.set(`${userId}:${deviceId}`, token);
@@ -712,15 +714,21 @@ async function auth(req, res, next) {
 
   try {
     req.user = jwt.verify(token, jwtSecret);
-    // Видео-токен (type: "video-access") подписан тем же секретом, но годится только для /hls.
-    if (req.user.type) return res.status(401).json({ message: "Invalid token" });
-    if (req.user.role !== "admin" && (await isUserBanned(req.user.userId))) {
-      return res.status(403).json({ message: "Аккаунт заблокирован" });
-    }
-    return next();
   } catch {
     return res.status(401).json({ message: "Invalid token" });
   }
+  // Видео-токен (type: "video-access") подписан тем же секретом, но годится только для /hls.
+  if (req.user.type) return res.status(401).json({ message: "Invalid token" });
+
+  try {
+    if (req.user.role !== "admin" && (await isUserBanned(req.user.userId))) {
+      return res.status(403).json({ message: "Аккаунт заблокирован" });
+    }
+  } catch (error) {
+    console.error("[auth] ban check failed:", error.message);
+    return res.status(503).json({ message: "Сервер временно недоступен, попробуйте ещё раз" });
+  }
+  return next();
 }
 
 function requireAdmin(req, res, next) {
@@ -1098,8 +1106,7 @@ function buildProfilePayload(user) {
 async function getUserRecordById(userId) {
   const id = Number(userId);
   if (id === adminUser.id) return adminUser;
-  if (id === demoUser.id) return demoUser;
-  if (!dbReady) return getMemRegisteredUserById(id);
+  if (!dbReady) return id === demoUser.id ? demoUser : getMemRegisteredUserById(id);
   const result = await pool.query(
     `select id, email, password_hash, nickname, subscription_type, exam_date, banned, subscription_expires_at
      from users where id = $1 limit 1`,
@@ -3563,10 +3570,15 @@ app.post("/auth/refresh", async (req, res) => {
   const parsed = refreshSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: "Invalid payload" });
 
+  let payload;
   try {
-    const payload = jwt.verify(parsed.data.refreshToken, jwtRefreshSecret);
-    if (payload.type !== "refresh") return res.status(401).json({ message: "Invalid token type" });
+    payload = jwt.verify(parsed.data.refreshToken, jwtRefreshSecret);
+  } catch {
+    return res.status(401).json({ message: "Invalid refresh token" });
+  }
+  if (payload.type !== "refresh") return res.status(401).json({ message: "Invalid token type" });
 
+  try {
     const user = dbReady ? await pool.query(`select * from users where id = $1`, [payload.userId]) : null;
 
     const stored = await getRefreshToken(payload.userId, payload.deviceId);
@@ -3582,17 +3594,22 @@ app.post("/auth/refresh", async (req, res) => {
 
     let authUser;
     if (dbReady) {
-      if (!user.rows[0]) {
+      const row = user.rows[0];
+      if (!row) {
         return res.status(401).json({ message: "User not found" });
       }
-      if (user.rows[0].banned) {
+      if (row.banned) {
         await revokeAllUserSessions(payload.userId);
         return res.status(403).json({ message: "Аккаунт заблокирован" });
       }
       authUser = {
-        id: user.rows[0].id,
-        email: user.rows[0].email,
-        subscriptionType: user.rows[0].subscription_type
+        id: row.id,
+        email: row.email,
+        nickname: row.nickname,
+        subscriptionType: row.subscription_type,
+        subscriptionExpiresAt: row.subscription_expires_at
+          ? new Date(row.subscription_expires_at).toISOString()
+          : null
       };
     } else {
       authUser = getAuthUserForRefresh(payload.userId);
@@ -3609,9 +3626,22 @@ app.post("/auth/refresh", async (req, res) => {
     const nextRefresh = signRefreshToken(authUser, payload.deviceId);
     await storeRefreshToken(payload.userId, payload.deviceId, nextRefresh);
 
-    return res.json({ token, refreshToken: nextRefresh });
-  } catch {
-    return res.status(401).json({ message: "Invalid refresh token" });
+    return res.json({ token, refreshToken: nextRefresh, profile: buildProfilePayload(authUser) });
+  } catch (error) {
+    // Сбой БД/Redis — не повод выкидывать пользователя: клиент повторит позже.
+    console.error("[auth] refresh failed:", error.message);
+    return res.status(503).json({ message: "Сервер временно недоступен, попробуйте ещё раз" });
+  }
+});
+
+app.get("/auth/me", auth, async (req, res) => {
+  try {
+    const user = await getUserRecordById(req.user.userId);
+    if (!user) return res.status(401).json({ message: "User not found" });
+    return res.json({ profile: buildProfilePayload(user) });
+  } catch (error) {
+    console.error("[auth] me failed:", error.message);
+    return res.status(503).json({ message: "Сервер временно недоступен, попробуйте ещё раз" });
   }
 });
 

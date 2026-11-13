@@ -1,5 +1,6 @@
 import { Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
+import { routes } from "../config/site.js";
 
 export default function RequireAuth() {
   const { token, hydrated } = useAuth();
@@ -11,7 +12,7 @@ export default function RequireAuth() {
     );
   }
   if (!token) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={routes.login} replace />;
   }
   return <Outlet />;
 }
